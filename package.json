@@ -1,0 +1,22 @@
+{
+  "name": "magmalake.org",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The magmalake project website - data lake building blocks in Mojo.",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "deploy": "astro build && wrangler deploy"
+  },
+  "devDependencies": {
+    "astro": "^5.16.2",
+    "wrangler": "^4.48.0"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.7.3"
+  }
+}
