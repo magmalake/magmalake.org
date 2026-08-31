@@ -1,0 +1,42 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base
+  title="Page not found"
+  description="That page does not exist on magmalake.org."
+>
+  <section class="section section--flush nf">
+    <div class="wrap">
+      <p class="eyebrow">404</p>
+      <h1 class="nf__title">No such page</h1>
+      <p class="lede">
+        Nothing is served at this path. The site is a single page — try the sections below,
+        or go straight to the source.
+      </p>
+      <div class="nf__links">
+        <a href="/">Home</a>
+        <a href="/#tins">The tins</a>
+        <a href="/#performance">Performance</a>
+        <a href="https://github.com/magmalake" rel="noopener">GitHub</a>
+        <a href="https://mojoshelf.org" rel="noopener">mojoshelf</a>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .nf { padding-block: clamp(4rem, 14vh, 8rem); }
+  .nf__title {
+    font-size: clamp(2rem, 6vw, 3.25rem);
+    letter-spacing: -0.035em;
+    margin-bottom: 1rem;
+  }
+  .nf__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    margin-top: 2rem;
+    font-size: 0.9375rem;
+  }
+</style>

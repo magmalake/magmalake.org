@@ -1,0 +1,208 @@
+---
+const highlights = [
+  { value: "12", label: "tins on mojoshelf" },
+  { value: "v1–v3", label: "Iceberg formats read" },
+  { value: "232M", label: "Parquet rows/s, one core" },
+  { value: "0", label: "JVM or Python in the path" },
+];
+---
+
+<section class="hero">
+  <div class="hero__glow" aria-hidden="true"></div>
+  <div class="wrap wrap--wide hero__inner">
+    <p class="hero__kicker">An exploration of running data workflows on Mojo</p>
+
+    <h1 class="hero__title">
+      A data lake that lives<br />
+      <span class="hero__accent">natively in Mojo</span>
+    </h1>
+
+    <p class="hero__lede">
+      magmalake is an experiment: can a modern data stack — Apache Iceberg and
+      everything underneath it — exist in Mojo without reaching back through Python
+      or the JVM, and what does it cost to find out? Twelve small tins, each
+      independently usable, each checked against the reference implementation of
+      the format it claims to speak.
+    </p>
+
+    <div class="hero__code">
+      <pre><code><span class="k">from</span> iceberg <span class="k">import</span> Catalog
+
+<span class="k">var</span> table = Catalog.rest(<span class="s">"https://polaris.example/api/catalog"</span>).load(<span class="s">"db.events"</span>)
+<span class="k">var</span> rows = table.scan().filter(<span class="s">'["=", "region", "eu"]'</span>).select([<span class="s">"id"</span>, <span class="s">"amount"</span>]).to_table()</code></pre>
+      <p class="hero__code-note">
+        Metadata, manifests, scan planning, Parquet decode, deletes and deletion
+        vectors, S3 IO and the REST catalog — all of it Mojo.
+      </p>
+    </div>
+
+    <div class="hero__actions">
+      <a class="btn btn--primary" href="https://github.com/magmalake" rel="noopener">
+        Browse the org on GitHub
+      </a>
+      <a class="btn" href="#tins">See the twelve tins</a>
+    </div>
+
+    <dl class="hero__stats">
+      {
+        highlights.map((h) => (
+          <div class="stat">
+            <dt class="stat__value">{h.value}</dt>
+            <dd class="stat__label">{h.label}</dd>
+          </div>
+        ))
+      }
+    </dl>
+  </div>
+</section>
+
+<style>
+  .hero {
+    position: relative;
+    overflow: hidden;
+    padding-block: clamp(3.5rem, 9vw, 6.5rem) clamp(3rem, 7vw, 5rem);
+  }
+
+  .hero__glow {
+    position: absolute;
+    inset: -30% -10% auto -10%;
+    height: 70vh;
+    background:
+      radial-gradient(
+        60% 55% at 22% 0%,
+        color-mix(in srgb, var(--ember) 16%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        45% 50% at 82% 12%,
+        color-mix(in srgb, var(--lake) 14%, transparent),
+        transparent 70%
+      );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .hero__inner { position: relative; z-index: 1; }
+
+  .hero__kicker {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ember);
+    margin: 0 0 1.4rem;
+    display: inline-block;
+    border: 1px solid color-mix(in srgb, var(--ember) 32%, transparent);
+    background: var(--ember-wash);
+    border-radius: 100px;
+    padding: 0.35rem 0.9rem;
+  }
+
+  .hero__title {
+    font-size: clamp(2.5rem, 7vw, 4.5rem);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.02;
+    margin-bottom: 1.5rem;
+  }
+  .hero__accent {
+    background: linear-gradient(100deg, var(--ember) 8%, var(--lake) 92%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .hero__lede {
+    font-size: clamp(1.0625rem, 1.9vw, 1.25rem);
+    line-height: 1.62;
+    color: var(--text-muted);
+    max-width: 62ch;
+    margin-bottom: 2.25rem;
+  }
+
+  .hero__code {
+    max-width: 76ch;
+    margin-bottom: 2.25rem;
+  }
+  .hero__code pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.25rem;
+    box-shadow: var(--shadow);
+  }
+  .hero__code code { color: var(--text); }
+  .hero__code .k { color: var(--ember); }
+  .hero__code .s { color: var(--lake); }
+  .hero__code-note {
+    margin: 0.75rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--text-faint);
+  }
+
+  .hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 3rem;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.65rem 1.25rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.15s ease;
+  }
+  .btn:hover {
+    border-color: var(--text-muted);
+    box-shadow: var(--shadow);
+  }
+  .btn--primary {
+    background: var(--ember);
+    border-color: var(--ember);
+    color: #fff;
+  }
+  :root[data-theme="dark"] .btn--primary { color: #1a0d06; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .btn--primary { color: #1a0d06; }
+  }
+  .btn--primary:hover {
+    background: var(--ember-soft);
+    border-color: var(--ember-soft);
+  }
+
+  .hero__stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+    margin: 0;
+    padding-top: 2rem;
+    border-top: 1px solid var(--rule);
+  }
+  .stat { min-width: 0; }
+  .stat__value {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+  .stat__label {
+    margin: 0.3rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+
+  @media (max-width: 720px) {
+    .hero__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem 1rem; }
+    .hero__code pre { font-size: 0.9em; }
+  }
+</style>

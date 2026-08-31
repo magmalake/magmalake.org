@@ -1,0 +1,77 @@
+---
+import type { Group } from "../data/perf";
+
+interface Props {
+  group: Group;
+}
+const { group } = Astro.props;
+---
+
+<div class="perf">
+  <div class="perf__head">
+    <h3 class="perf__title">{group.title}</h3>
+    <p class="perf__blurb">{group.blurb}</p>
+  </div>
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Operation</th>
+          <th scope="col">magmalake</th>
+          <th scope="col">Reference</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          group.rows.map((r) => (
+            <tr>
+              <td>
+                <span class="perf__op">{r.op}</span>
+                {r.note && <span class="perf__note">{r.note}</span>}
+              </td>
+              <td class="num">{r.lead ? <strong>{r.result}</strong> : r.result}</td>
+              <td class="ref">{r.reference ?? "—"}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class="scroll-hint">scroll the table sideways &rarr;</p>
+</div>
+
+<style>
+  .perf + .perf { margin-top: 2.75rem; }
+
+  .perf__head { margin-bottom: 1rem; }
+
+  .perf__title {
+    font-size: 1.0625rem;
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+  }
+
+  .perf__blurb {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin: 0;
+    max-width: 72ch;
+  }
+
+  .perf__op {
+    display: block;
+    font-weight: 500;
+    font-size: 0.875rem;
+  }
+
+  .perf__note {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    margin-top: 0.15rem;
+    line-height: 1.4;
+  }
+
+  .ref { font-size: 0.8125rem; }
+</style>

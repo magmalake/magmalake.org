@@ -1,0 +1,215 @@
+---
+/**
+ * The layering, drawn in CSS grid rather than SVG so the labels stay readable
+ * at every width and the whole thing reflows to a single column on a phone.
+ */
+---
+
+<figure class="stack">
+  <div class="stack__band stack__band--top">
+    <span class="stack__tier">Table format</span>
+    <div class="stack__row stack__row--1">
+      <a class="box box--lead" href="https://github.com/magmalake/iceberg.mojo" rel="noopener">
+        <span class="box__name">iceberg</span>
+        <span class="box__sub">metadata &middot; scan planning &middot; read &middot; write &middot; commit</span>
+        <span class="box__meta">v1–v3 &middot; deletes &middot; deletion vectors &middot; schema evolution</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="joins joins--4" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+  <div class="stack__band">
+    <span class="stack__tier">File formats &amp; storage</span>
+    <div class="stack__row stack__row--2">
+      <a class="box" href="https://github.com/magmalake/parquet.mojo" rel="noopener">
+        <span class="box__name">parquet</span>
+        <span class="box__sub">read &middot; write &middot; Arrow C Data out</span>
+      </a>
+      <a class="box" href="https://github.com/magmalake/avro.mojo" rel="noopener">
+        <span class="box__name">avro</span>
+        <span class="box__sub">object container files, both ways</span>
+      </a>
+      <a class="box" href="https://github.com/magmalake/roaring.mojo" rel="noopener">
+        <span class="box__name">roaring</span>
+        <span class="box__sub">32/64-bit &middot; DV blob framing</span>
+      </a>
+      <a class="box" href="https://github.com/magmalake/objectstore.mojo" rel="noopener">
+        <span class="box__name">objectstore</span>
+        <span class="box__sub">local &middot; HTTP &middot; S3 &middot; GCS &middot; Azure &middot; SigV4</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="joins joins--3" aria-hidden="true"><i></i><i></i><i></i></div>
+
+  <div class="stack__band">
+    <span class="stack__tier">Primitives</span>
+    <div class="stack__row stack__row--3">
+      <a class="box box--small" href="https://github.com/magmalake/thrift.mojo" rel="noopener">
+        <span class="box__name">thrift</span>
+        <span class="box__sub">compact + binary protocol</span>
+      </a>
+      <div class="box box--small box--group">
+        <span class="box__name">
+          <a href="https://github.com/magmalake/zstd.mojo" rel="noopener">zstd</a>
+          <a href="https://github.com/magmalake/lz4.mojo" rel="noopener">lz4</a>
+          <a href="https://github.com/magmalake/snappy.mojo" rel="noopener">snappy</a>
+        </span>
+        <span class="box__sub">compression codecs</span>
+      </div>
+      <a class="box box--small" href="https://github.com/magmalake/hashes.mojo" rel="noopener">
+        <span class="box__name">hashes</span>
+        <span class="box__sub">CRC-32 &middot; murmur3 &middot; XXH64 &middot; SHA-256</span>
+      </a>
+    </div>
+  </div>
+
+  <a class="box box--aside" href="https://github.com/magmalake/threads.mojo" rel="noopener">
+    <span class="box__name">threads</span>
+    <span class="box__sub">pthreads &middot; atomics &middot; parallel_for</span>
+    <span class="box__meta">alongside every layer — a stopgap until Mojo ships its own</span>
+  </a>
+
+  <figcaption>
+    Each box is an independently usable tin with its own repository, its own tests and its
+    own release cadence. Nothing above depends on anything outside this diagram except
+    libzstd, liblz4 and libcurl.
+  </figcaption>
+</figure>
+
+<style>
+  .stack {
+    margin: 0;
+    --gap: 0.7rem;
+  }
+
+  .stack__band { position: relative; }
+
+  .stack__tier {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 0.5rem;
+  }
+
+  .stack__row {
+    display: grid;
+    gap: var(--gap);
+  }
+  .stack__row--1 { grid-template-columns: 1fr; }
+  .stack__row--2 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .stack__row--3 { grid-template-columns: minmax(0, 1fr) minmax(0, 2.09fr) minmax(0, 1fr); }
+
+  .box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.85rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  a.box:hover {
+    border-color: var(--ember);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow);
+  }
+
+  .box--lead {
+    padding: 1.15rem 1.25rem;
+    border-color: var(--border-strong);
+    background: linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--ember) 7%, var(--surface)),
+      var(--surface) 62%
+    );
+  }
+  .box--lead .box__name { font-size: 1.2rem; color: var(--ember); }
+
+  .box__name {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 0.9375rem;
+    letter-spacing: -0.01em;
+  }
+
+  .box__sub {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.45;
+  }
+
+  .box__meta {
+    font-size: 0.7rem;
+    color: var(--text-faint);
+    margin-top: 0.15rem;
+  }
+
+  .box--group { gap: 0.25rem; }
+  .box--group .box__name {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 0.85rem;
+  }
+  .box--group .box__name a {
+    color: var(--text);
+    text-decoration: none;
+  }
+  .box--group .box__name a:hover { color: var(--ember); }
+
+  .box--aside {
+    margin-top: 1.4rem;
+    border-style: dashed;
+    border-color: var(--border-strong);
+    background: var(--surface-2);
+  }
+  .box--aside .box__name { color: var(--lake); }
+
+  /* connector ticks between bands */
+  .joins {
+    display: grid;
+    height: 1.5rem;
+    gap: var(--gap);
+    margin-block: 0.15rem 0.6rem;
+  }
+  .joins--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .joins--3 { grid-template-columns: minmax(0, 1fr) minmax(0, 2.09fr) minmax(0, 1fr); }
+  .joins i {
+    display: block;
+    width: 1px;
+    height: 100%;
+    margin-inline: auto;
+    background: linear-gradient(
+      to bottom,
+      var(--border-strong),
+      color-mix(in srgb, var(--border-strong) 30%, transparent)
+    );
+  }
+
+  figcaption {
+    margin-top: 1.5rem;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    max-width: 66ch;
+  }
+
+  @media (max-width: 880px) {
+    .stack__row--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stack__row--3 { grid-template-columns: 1fr; }
+    /* Bands stack vertically; the connector ticks no longer line up with
+       anything, so drop them and separate the bands with space instead. */
+    .joins { display: none; }
+    .stack__band { margin-bottom: 1.5rem; }
+  }
+
+  @media (max-width: 520px) {
+    .stack__row--2 { grid-template-columns: 1fr; }
+  }
+</style>

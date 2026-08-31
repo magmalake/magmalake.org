@@ -1,0 +1,184 @@
+---
+import type { Tin } from "../data/tins";
+
+interface Props {
+  tin: Tin;
+  featured?: boolean;
+}
+
+const { tin, featured = false } = Astro.props;
+---
+
+<article class:list={["tin", featured && "tin--featured"]}>
+  <header class="tin__head">
+    <h3 class="tin__name">
+      <a href={tin.repo} rel="noopener">{tin.name}</a>
+    </h3>
+    <span class="tin__version">{tin.version}</span>
+  </header>
+
+  <p class="tin__what">{tin.what}</p>
+
+  <ul class="tin__bullets">
+    {tin.bullets.map((b) => <li>{b}</li>)}
+  </ul>
+
+  <div class="tin__oracle">
+    <span class="tin__oracle-label">Checked against</span>
+    <span class="tin__oracle-value">{tin.oracle}</span>
+  </div>
+
+  <footer class="tin__foot">
+    <code class="tin__install">shelf add {tin.pkg}</code>
+    <a class="tin__repo" href={tin.repo} rel="noopener">
+      Repository
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true"
+           stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 9 9 3M4.2 3H9v4.8" />
+      </svg>
+    </a>
+  </footer>
+</article>
+
+<style>
+  .tin {
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.35rem 1.4rem 1.1rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .tin:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow);
+  }
+
+  .tin--featured {
+    border-color: color-mix(in srgb, var(--ember) 38%, var(--border));
+    background: linear-gradient(
+      170deg,
+      color-mix(in srgb, var(--ember) 5%, var(--surface)),
+      var(--surface) 55%
+    );
+  }
+
+  .tin__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.7rem;
+  }
+
+  .tin__name {
+    font-family: var(--font-mono);
+    font-size: 1.0625rem;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+  .tin__name a {
+    color: var(--text);
+    text-decoration: none;
+  }
+  .tin__name a:hover { color: var(--ember); }
+  .tin--featured .tin__name a { color: var(--ember); }
+
+  .tin__version {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-faint);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 0.1rem 0.5rem;
+    white-space: nowrap;
+  }
+
+  .tin__what {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin-bottom: 0.9rem;
+  }
+
+  .tin__bullets {
+    list-style: none;
+    margin: 0 0 1.1rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .tin__bullets li {
+    position: relative;
+    padding-left: 1rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--text);
+  }
+  .tin__bullets li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.55em;
+    width: 5px;
+    height: 5px;
+    border-radius: 1px;
+    background: var(--lake);
+    transform: rotate(45deg);
+  }
+
+  .tin__oracle {
+    margin-top: auto;
+    padding: 0.7rem 0.85rem;
+    background: var(--lake-wash);
+    border: 1px solid color-mix(in srgb, var(--lake) 22%, transparent);
+    border-radius: var(--radius-sm);
+    margin-bottom: 1rem;
+  }
+  .tin__oracle-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--lake);
+    margin-bottom: 0.2rem;
+  }
+  .tin__oracle-value {
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--text);
+  }
+
+  .tin__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .tin__install {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    white-space: nowrap;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+  .tin__repo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.8125rem;
+    text-decoration: none;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .tin__repo:hover { color: var(--ember); }
+</style>
