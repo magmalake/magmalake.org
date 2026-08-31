@@ -1,0 +1,131 @@
+---
+import Logo from "./Logo.astro";
+const year = 2026;
+---
+
+<footer class="foot">
+  <div class="wrap wrap--wide foot__inner">
+    <div class="foot__brand">
+      <a class="foot__mark" href="/" aria-label="magmalake home">
+        <Logo size={20} />
+        <span>magmalake</span>
+      </a>
+      <p class="foot__tag">Data lake building blocks in Mojo. An experiment, run in the open.</p>
+    </div>
+
+    <div class="foot__cols">
+      <div class="foot__col">
+        <h3>Project</h3>
+        <a href="https://github.com/magmalake" rel="noopener">GitHub organisation</a>
+        <a href="https://github.com/magmalake/iceberg.mojo" rel="noopener">iceberg.mojo</a>
+        <a href="https://github.com/magmalake/parquet.mojo" rel="noopener">parquet.mojo</a>
+        <a href="https://github.com/magmalake/threads.mojo" rel="noopener">threads.mojo</a>
+      </div>
+      <div class="foot__col">
+        <h3>Packaging</h3>
+        <a href="https://mojoshelf.org" rel="noopener">mojoshelf.org</a>
+        <a href="https://www.modular.com/mojo" rel="noopener">The Mojo language</a>
+      </div>
+      <div class="foot__col">
+        <h3>Standards</h3>
+        <a href="https://iceberg.apache.org" rel="noopener">Apache Iceberg</a>
+        <a href="https://parquet.apache.org" rel="noopener">Apache Parquet</a>
+        <a href="https://avro.apache.org" rel="noopener">Apache Avro</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap wrap--wide foot__legal">
+    <p>
+      Copyright {year} Marius Seritan. Every repository is licensed
+      <a href="https://www.apache.org/licenses/LICENSE-2.0" rel="noopener">Apache-2.0</a>.
+    </p>
+    <p>
+      Apache Iceberg, Parquet, Avro and Thrift are trademarks of the Apache Software
+      Foundation. This project is not affiliated with or endorsed by the ASF or Modular.
+    </p>
+  </div>
+</footer>
+
+<style>
+  .foot {
+    border-top: 1px solid var(--rule);
+    background: var(--bg-alt);
+    padding-block: 3.5rem 2rem;
+  }
+
+  .foot__inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr);
+    gap: 2.5rem;
+    align-items: start;
+  }
+
+  .foot__mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text);
+    text-decoration: none;
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    font-size: 1rem;
+  }
+
+  .foot__tag {
+    margin: 0.7rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    max-width: 30ch;
+  }
+
+  .foot__cols {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2rem;
+  }
+
+  .foot__col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .foot__col h3 {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 0.15rem;
+  }
+
+  .foot__col a {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+  .foot__col a:hover { color: var(--ember); }
+
+  .foot__legal {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+  }
+  .foot__legal p {
+    font-size: 0.78rem;
+    color: var(--text-faint);
+    margin: 0 0 0.4rem;
+    max-width: 78ch;
+  }
+  .foot__legal a { color: var(--text-muted); }
+
+  @media (max-width: 860px) {
+    .foot__inner { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .foot__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+</style>

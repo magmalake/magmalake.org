@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://magmalake.org/sitemap-index.xml

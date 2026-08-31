@@ -1,0 +1,28 @@
+---
+interface Props {
+  size?: number;
+}
+const { size = 22 } = Astro.props;
+---
+
+{/* A caldera seen from above: a cold rim, a molten core. */}
+<svg
+  width={size}
+  height={size}
+  viewBox="0 0 24 24"
+  fill="none"
+  aria-hidden="true"
+  class="logo"
+>
+  <path
+    d="M12 1.9 22 20.2H2L12 1.9Z"
+    stroke="var(--lake)"
+    stroke-width="1.6"
+    stroke-linejoin="round"
+  />
+  <path d="M12 9.4 17.4 19H6.6L12 9.4Z" fill="var(--ember)" />
+</svg>
+
+<style>
+  .logo { display: block; flex-shrink: 0; }
+</style>
