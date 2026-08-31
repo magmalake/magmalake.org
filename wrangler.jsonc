@@ -1,0 +1,22 @@
+{
+  // Cloudflare Workers static assets: an assets-only Worker (no `main`), so
+  // every request is served straight from the uploaded `dist/` with no Worker
+  // invocation and no per-request cost.
+  //
+  //   npm run build          -> produces ./dist
+  //   npx wrangler deploy    -> uploads ./dist to the Worker
+  //
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "magmalake-org",
+  "compatibility_date": "2026-08-31",
+  "assets": {
+    "directory": "./dist",
+    // Astro emits directory-style pages; serve /path and /path/ alike.
+    "html_handling": "auto-trailing-slash",
+    // Static site with a real 404 page, not an SPA.
+    "not_found_handling": "404-page"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
