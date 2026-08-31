@@ -6,6 +6,7 @@ import TinCard from "../components/TinCard.astro";
 import PerfTable from "../components/PerfTable.astro";
 import { tins, tinsByTier, TIER_LABEL } from "../data/tins";
 import { perfGroups, passes } from "../data/perf";
+import { upstreamIssues, STATUS_LABEL } from "../data/upstream";
 
 const description =
   "An exploration of running data workflows on Mojo: a native Apache Iceberg stack — Parquet, Avro, Thrift, codecs, Roaring bitmaps, object storage and threads — published as tins on mojoshelf and gated against the reference implementation of every format.";
@@ -27,17 +28,6 @@ const notYet = [
   "Predicates inside list and map elements",
 ];
 
-const upstream = [
-  {
-    project: "PyIceberg",
-    bug: "v3 manifest schemas mishandled on both the read and the write path",
-  },
-  {
-    project: "pyarrow",
-    bug: "statistics under list<struct>, and codec and logical-type reporting",
-  },
-  { project: "iceberg-rust", bug: "metrics pruning" },
-];
 ---
 
 <Base title="Data lake building blocks in Mojo" description={description} bare={false}>
@@ -265,13 +255,21 @@ const upstream = [
         <h3 class="upstream__title">Building it found bugs upstream</h3>
         <p class="upstream__blurb">
           Holding three implementations against each other surfaces disagreements, and not all
-          of them were magmalake's fault. Each is documented in the repository that found it.
+          of them were magmalake's fault. Each one below was cut down to a standalone script
+          or unit test with no magmalake code in it, then either reported upstream or — where
+          someone had got there first — matched to the report that already existed.
         </p>
         <ul class="upstream__list">
           {
-            upstream.map((u) => (
+            upstreamIssues.map((u) => (
               <li>
-                <span class="upstream__project">{u.project}</span>
+                <a class="upstream__head" href={u.url} rel="noopener">
+                  <span class="upstream__project">{u.project}</span>
+                  <span class="upstream__ref">{u.ref}</span>
+                  <span class:list={["upstream__tag", `upstream__tag--${u.status}`]}>
+                    {STATUS_LABEL[u.status]}
+                  </span>
+                </a>
                 <span class="upstream__bug">{u.bug}</span>
               </li>
             ))
@@ -542,13 +540,40 @@ const upstream = [
     border-left: 2px solid color-mix(in srgb, var(--ember) 45%, transparent);
     padding-left: 0.85rem;
   }
+  .upstream__head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.55rem;
+    margin-bottom: 0.3rem;
+    text-decoration: none;
+  }
+  .upstream__head:hover .upstream__ref { text-decoration: underline; }
   .upstream__project {
-    display: block;
     font-family: var(--font-mono);
     font-size: 0.8125rem;
     font-weight: 600;
     color: var(--ember);
-    margin-bottom: 0.15rem;
+  }
+  .upstream__ref {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  .upstream__tag {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    color: var(--text-faint);
+    white-space: nowrap;
+  }
+  .upstream__tag--filed {
+    color: var(--ember);
+    border-color: color-mix(in srgb, var(--ember) 45%, transparent);
   }
   .upstream__bug {
     display: block;
