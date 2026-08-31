@@ -43,22 +43,23 @@ const notYet = [
         <div class="prose">
           <p>
             Now that Mojo has reached 1.0 I used Claude to see if one can implement
-            a meaningfully big Data library in mojo.
+            a meaningfully large data library in Mojo. I set my sights on
+            <a href="https://iceberg.apache.org" rel="noopener">Apache Iceberg</a>.
             The following formats are implemented rather than wrapped: Parquet, Avro, Thrift,
             Iceberg itself, Roaring bitmaps, Snappy and the hashes all decode bytes in
-            Mojo instead of delegating. Some very mature C library are currently
+            Mojo instead of delegating. Some very mature C libraries are currently
             linked, not reimplemented — <strong>libzstd</strong> and
             <strong>liblz4</strong> for those two codecs, <strong>libcurl</strong> for HTTP
             and TLS, and <strong>pthreads</strong> for the threads the language does not yet
             provide. What is gone is the Python and JVM layer that every other route from
             Mojo to Iceberg has to go through.
-        </p>
+          </p>
           <p>
             What came out is twelve tins. Some of the answers are encouraging — native
             Parquet decode is <em>faster</em> than pyarrow on a single core. Some are not:
             writes are slower, thread-pooled scans lose, and the language is still missing
             pieces a data stack assumes. I don't think the misses are limitations of the
-            approach or the tech stack, it's just a matter of putting more time time and tokens.
+            approach or the tech stack, it is a matter of putting in more time and tokens.
           </p>
         </div>
 
@@ -67,13 +68,13 @@ const notYet = [
           <p>
             Magmalake leans on the packaging infrastructure defined by
             <a href="https://mojoshelf.org" rel="noopener">mojoshelf.org</a> — a registry for
-            Mojo <em>tins</em> on tpp of pixi. Every tin here is published there and installable with one
+            Mojo <em>tins</em> on top of pixi. Every tin here is published there and installable with one
             command.
           </p>
           <pre class="callout__code"><code>pixi shelf add iceberg-mojo</code></pre>
           <p class="callout__fine">
             Source tins can be consumed as git submodules, or as pixi git source dependencies.
-            Twelve packages, one registry, no vendoring.
+            The pixi approach is recommended because it encapsulates any additional build process.
           </p>
           <a class="callout__link" href="https://mojoshelf.org" rel="noopener">
             mojoshelf.org
