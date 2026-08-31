@@ -95,8 +95,8 @@ const notYet = [
       <h2 class="section-title">Twelve tins, one layering</h2>
       <p class="lede" style="margin-bottom: 2.5rem;">
         Iceberg sits on Parquet, Avro, Roaring and objectstore; those sit on Thrift, the
-        compression codecs and the hashes; threads runs alongside all of it. Nothing is
-        bundled — take the one you need.
+        compression codecs and the hashes; threads runs alongside all of it. I kept them
+        separate, so you can take just the one you need.
       </p>
       <StackDiagram />
     </div>
@@ -110,7 +110,7 @@ const notYet = [
       <p class="lede">
         Every tin is Apache-2.0, published on mojoshelf, and CI-tested on stable Mojo 1.0.0
         and the current nightly, across macOS and Linux. Each carries its own correctness
-        oracle — an outside implementation it has to agree with.
+        oracle — an outside implementation I made it agree with.
       </p>
 
       {
@@ -134,10 +134,11 @@ const notYet = [
       <p class="eyebrow">Performance</p>
       <h2 class="section-title">Measured, including where it loses</h2>
       <p class="lede">
-        Apple M4, single core unless a row says otherwise. Same machine, same files,
-        reproducible from each repository with <code>pixi run bench</code>. magmalake beats
-        pyarrow on single-core Parquet reads; it loses on writes and on multi-threaded scans,
-        where the remaining Iceberg gap is largely libzstd itself.
+        I measured all of this on an Apple M4, single core unless a row says otherwise —
+        same machine, same files, reproducible from each repository with
+        <code>pixi run bench</code>. magmalake beats pyarrow on single-core Parquet reads.
+        It loses on writes and on multi-threaded scans, where what is left of the Iceberg
+        gap is mostly libzstd itself.
       </p>
 
       <div class="perf-groups">
@@ -170,8 +171,8 @@ const notYet = [
         <div class="panel">
           <h3 class="panel__title">How these numbers were found</h3>
           <p class="panel__fine" style="margin-bottom: 1rem;">
-            Four optimisation passes, each of which located its bottleneck by profiling rather
-            than by guessing. None of them was where it seemed obvious to look.
+            Four optimisation passes. I profiled before each one instead of guessing, which
+            was just as well — not one of the bottlenecks was where I would have looked first.
           </p>
           <ol class="passes">
             {
@@ -194,8 +195,8 @@ const notYet = [
       <p class="eyebrow">Correctness</p>
       <h2 class="section-title">Gated on someone else's implementation</h2>
       <p class="lede">
-        A format library that only passes its own tests has proved nothing. Every format tin
-        here is checked against the reference implementation of the format, in both
+        A format library that only passes its own tests has proved nothing, so I gated every
+        format tin here against the reference implementation of the format — in both
         directions where the format has two.
       </p>
 
@@ -254,9 +255,9 @@ const notYet = [
         <h3 class="upstream__title">Building it found bugs upstream</h3>
         <p class="upstream__blurb">
           Holding three implementations against each other surfaces disagreements, and not all
-          of them were magmalake's fault. Each one below was cut down to a standalone script
-          or unit test with no magmalake code in it, then either reported upstream or — where
-          someone had got there first — matched to the report that already existed.
+          of them turned out to be my fault. I cut each one below down to a standalone script
+          or unit test with no magmalake code in it, then either reported it upstream or —
+          where someone had got there first — matched it to the report that already existed.
         </p>
         <ul class="upstream__list">
           {
@@ -309,7 +310,7 @@ const notYet = [
           <h3 class="cta__title">Take a tin</h3>
           <p class="cta__text">
             Each of the {tins.length} repositories is independently usable and independently
-            installable. Start with whichever layer you need.
+            installable. Start with whichever layer you need — you do not have to take the stack.
           </p>
         </div>
         <div class="cta__actions">
