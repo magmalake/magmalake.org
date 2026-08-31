@@ -1,0 +1,220 @@
+export type Tier = "table" | "format" | "primitive" | "oracle";
+
+export interface Tin {
+  /** Short display name, as it appears in the stack diagram. */
+  name: string;
+  /** The mojoshelf registry name — `shelf add <pkg>`. */
+  pkg: string;
+  repo: string;
+  version: string;
+  tier: Tier;
+  /** One sentence: what it is. */
+  what: string;
+  /** The correctness oracle — what gates it in CI. */
+  oracle: string;
+  /** Up to four short capability bullets. */
+  bullets: string[];
+}
+
+export const TIER_LABEL: Record<Tier, string> = {
+  table: "Table format",
+  format: "File formats & storage",
+  primitive: "Primitives",
+  oracle: "Cross-implementation oracle",
+};
+
+export const tins: Tin[] = [
+  {
+    name: "iceberg",
+    pkg: "iceberg-mojo",
+    repo: "https://github.com/magmalake/iceberg.mojo",
+    version: "0.4.4",
+    tier: "table",
+    what:
+      "Native Apache Iceberg. Read a table's metadata.json, pick a snapshot, decode its manifests, plan a scan and read the rows — then create, append, delete, overwrite and expire. No JVM, no Python, no Rust in the path.",
+    oracle: "PyIceberg 0.11.1 and DuckDB 1.5.5 — cell-exact, both directions",
+    bullets: [
+      "Format v1–v3 reads: position and equality deletes, v3 deletion vectors, schema evolution, nested types",
+      "Writes: create, fast-append, delete (copy-on-write and merge-on-read), overwrite, dynamic partition overwrite, expire_snapshots",
+      "REST and filesystem catalogs; local, HTTP, S3, GCS and Azure IO",
+      "Scans 1M rows in 35.8 ms single-core, 12.1 ms across four workers",
+    ],
+  },
+  {
+    name: "parquet",
+    pkg: "parquet-mojo",
+    repo: "https://github.com/magmalake/parquet.mojo",
+    version: "0.3.3",
+    tier: "format",
+    what:
+      "The first native Apache Parquet reader and writer in Mojo. It decodes the footer, the page headers, the levels and the values itself, and hands the result back as Arrow arrays over the Arrow C Data Interface.",
+    oracle: "pyarrow, value-exact on 33 fixtures; pyarrow reads back every file it writes",
+    bullets: [
+      "Every physical and logical type, every encoding, v1 and v2 pages",
+      "Nested lists, maps and structs reconstructed from definition and repetition levels",
+      "Row-group, page-index and bloom-filter pruning; field-id projection for Iceberg",
+      "Reads 1M rows in 4.3 ms — 232M rows/s, 1.9× pyarrow",
+    ],
+  },
+  {
+    name: "avro",
+    pkg: "avro-mojo",
+    repo: "https://github.com/magmalake/avro.mojo",
+    version: "0.3.0",
+    tier: "format",
+    what:
+      "Pure-Mojo Apache Avro: schema parsing, the binary encoding, Object Container Files both ways, and schema resolution. The core has no dependencies at all — not even FFI.",
+    oracle: "fastavro, both directions, across all four codecs",
+    bullets: [
+      "Object Container Files, read and write, null / deflate / snappy / zstandard",
+      "A schema-compiled RecordCursor with no per-record allocation",
+      "Iceberg field-ids and OCF metadata survive parsing intact",
+      "Decodes manifest-shaped records at 19.2M/s — 11× fastavro",
+    ],
+  },
+  {
+    name: "objectstore",
+    pkg: "objectstore-mojo",
+    repo: "https://github.com/magmalake/objectstore.mojo",
+    version: "0.3.0",
+    tier: "format",
+    what:
+      "Storage and HTTP for Iceberg tables: a FileIO abstraction over local files, HTTP(S) range reads and S3, with the pooled HTTP transport the rest of the stack was missing.",
+    oracle: "AWS SigV4 suite 37/37, and S3 verified end-to-end against MinIO in CI",
+    bullets: [
+      "S3 with SigV4, vended credentials, presigned URLs and multipart upload",
+      "Pooled libcurl transport — 0.15 ms per range read on a reused connection",
+      "Pure-Mojo SHA-256 and HMAC on hardware crypto paths, 2.7 GB/s",
+      "GCS, Azure and plain HTTP range reads alongside local files",
+    ],
+  },
+  {
+    name: "roaring",
+    pkg: "roaring-mojo",
+    repo: "https://github.com/magmalake/roaring.mojo",
+    version: "0.1.0",
+    tier: "format",
+    what:
+      "Pure-Mojo Roaring bitmaps, 32- and 64-bit, implementing the portable RoaringFormatSpec serialization plus Iceberg's deletion-vector v1 blob framing.",
+    oracle: "pyroaring, byte-exact in both directions",
+    bullets: [
+      "Bitmap32 and Bitmap64 with array, bitset and run containers",
+      "Portable serialization including the 64-bit extension",
+      "Iceberg deletion-vector blob framing with its own CRC-32",
+      "No dependencies",
+    ],
+  },
+  {
+    name: "thrift",
+    pkg: "thrift-mojo",
+    repo: "https://github.com/magmalake/thrift.mojo",
+    version: "0.1.0",
+    tier: "primitive",
+    what:
+      "Apache Thrift serialization in pure Mojo — compact and binary protocols — plus every struct, union and enum of the Parquet metadata schema, generated ahead of time.",
+    oracle: "Apache Thrift itself — 13 generated wire vectors, byte-identical",
+    bullets: [
+      "TCompactProtocol and TBinaryProtocol behind one trait",
+      "All of parquet.thrift, pre-generated",
+      "Footer, page-header and page-index decode helpers",
+      "No RPC, no runtime IDL, no dependencies",
+    ],
+  },
+  {
+    name: "zstd",
+    pkg: "zstd-mojo",
+    repo: "https://github.com/magmalake/zstd.mojo",
+    version: "0.1.1",
+    tier: "primitive",
+    what:
+      "A Mojo binding to libzstd — one-shot and streaming, both directions — through a small C shim loaded at runtime, so consumers need no link flags.",
+    oracle: "Python zstandard, against independently produced frames baked in as constants",
+    bullets: [
+      "One-shot and streaming compress and decompress",
+      "Frame introspection: is_zstd_frame, frame_content_size",
+      "The shim is dlopen'd once, not per call",
+      "10–14 GB/s decompress",
+    ],
+  },
+  {
+    name: "lz4",
+    pkg: "lz4-mojo",
+    repo: "https://github.com/magmalake/lz4.mojo",
+    version: "0.1.1",
+    tier: "primitive",
+    what:
+      "A Mojo binding to liblz4 covering the block format, the frame format and the legacy Hadoop framing that older Parquet files still use.",
+    oracle: "CPython's lz4 package, on known vectors and round trips",
+    bullets: [
+      "LZ4_RAW blocks for Parquet pages",
+      "LZ4F frames for Iceberg Puffin blobs",
+      "Hadoop framing for legacy Parquet LZ4",
+      "8–19 GB/s",
+    ],
+  },
+  {
+    name: "snappy",
+    pkg: "snappy-mojo",
+    repo: "https://github.com/magmalake/snappy.mojo",
+    version: "0.1.1",
+    tier: "primitive",
+    what:
+      "Snappy in pure Mojo — the raw block format and the CRC-32C-checksummed framing format. No FFI, no C dependency.",
+    oracle: "python-snappy, byte-exact",
+    bullets: [
+      "Raw block format and sNaPpY framing",
+      "CRC-32C verified per chunk",
+      "Pure Mojo — nothing to build, nothing to link",
+      "Up to 20 GB/s incompressible, ~3 GB/s compressible",
+    ],
+  },
+  {
+    name: "hashes",
+    pkg: "hashes-mojo",
+    repo: "https://github.com/magmalake/hashes.mojo",
+    version: "0.1.0",
+    tier: "primitive",
+    what:
+      "The three hashes Iceberg and Parquet actually need — CRC-32, MurmurHash3 x86-32 and XXH64 — in pure Mojo, with no dependencies and no FFI.",
+    oracle: "zlib, mmh3 and xxhash, plus the Iceberg spec's Appendix B vectors",
+    bullets: [
+      "CRC-32 for page CRCs and deletion-vector checksums",
+      "MurmurHash3 for the Iceberg bucket[N] transform",
+      "XXH64 for Parquet bloom filters",
+      "1.2–1.5 GB/s, identical results on every platform",
+    ],
+  },
+  {
+    name: "threads",
+    pkg: "threads-mojo",
+    repo: "https://github.com/magmalake/threads.mojo",
+    version: "0.1.0",
+    tier: "primitive",
+    what:
+      "Minimal OS threads for Mojo: spawn and join pthreads, share state through atomics and a mutex, and fan a loop out over cores with parallel_for. A stopgap, distilled from flare, until the language ships its own.",
+    oracle: "Contended-count and memory-visibility proofs designed to give a wrong number, not a flake",
+    bullets: [
+      "parallel_for over cores — Mojo currently ships no other way to use a second one",
+      "Atomics that bridge the stable/nightly std.atomic split",
+      "Mutex, spawn, join and thread pinning",
+      "Spawn and join in 14 µs; parallel_for scales ~4×",
+    ],
+  },
+  {
+    name: "iceberg-rs",
+    pkg: "iceberg-rs-mojo",
+    repo: "https://github.com/magmalake/iceberg-rs.mojo",
+    version: "0.1.0",
+    tier: "oracle",
+    what:
+      "Apache Iceberg over a thin Rust cdylib wrapping iceberg-rust behind a C ABI. Superseded — no longer required for any operation — and kept only as a third independent implementation to check the native one against.",
+    oracle: "PyIceberg reading through the same sqlite catalog file the binding wrote",
+    bullets: [
+      "56 extern \"C\" functions over one shared tokio runtime",
+      "SQL/JDBC catalog against real object storage",
+      "Kept as a cross-implementation oracle, not a dependency",
+    ],
+  },
+];
+
+export const tinsByTier = (tier: Tier) => tins.filter((t) => t.tier === tier);
