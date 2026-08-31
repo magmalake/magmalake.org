@@ -9,6 +9,9 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "magmalake-org",
   "compatibility_date": "2026-08-31",
+  // The apex domain magmalake.org is registered in this Cloudflare account;
+  // wrangler creates and manages the DNS record for a custom domain itself.
+  "routes": [{ "pattern": "magmalake.org", "custom_domain": true }],
   "assets": {
     "directory": "./dist",
     // Astro emits directory-style pages; serve /path and /path/ alike.
