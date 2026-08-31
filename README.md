@@ -1,8 +1,8 @@
 # magmalake.org
 
 The project website for [magmalake](https://github.com/magmalake) — data lake building
-blocks in Mojo. A static [Astro](https://astro.build) site, deployed to Cloudflare Workers
-static assets.
+blocks in Mojo — live at [magmalake.org](https://magmalake.org). A static
+[Astro](https://astro.build) site, deployed to Cloudflare Workers static assets.
 
 ## Develop
 

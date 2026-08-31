@@ -42,44 +42,37 @@ const notYet = [
       <div class="two-col">
         <div class="prose">
           <p>
-            The question behind magmalake is narrow and answerable: <strong>can a modern
-            data stack exist natively in Mojo</strong> — and what does it cost to build one?
-            The formats are implemented rather than wrapped: Parquet, Avro, Thrift,
+            Now that Mojo has reached 1.0 I used Claude to see if one can implement
+            a meaningfully big Data library in mojo.
+            The following formats are implemented rather than wrapped: Parquet, Avro, Thrift,
             Iceberg itself, Roaring bitmaps, Snappy and the hashes all decode bytes in
-            Mojo instead of delegating. Where a mature C library is genuinely the right
-            answer it is linked, not reimplemented — <strong>libzstd</strong> and
+            Mojo instead of delegating. Some very mature C library are currently
+            linked, not reimplemented — <strong>libzstd</strong> and
             <strong>liblz4</strong> for those two codecs, <strong>libcurl</strong> for HTTP
             and TLS, and <strong>pthreads</strong> for the threads the language does not yet
             provide. What is gone is the Python and JVM layer that every other route from
             Mojo to Iceberg has to go through.
         </p>
           <p>
-            Before this, none of it existed. There was no Parquet page decode in Mojo, no
-            Avro, no zstd or snappy or lz4, no Roaring bitmaps, no SHA-256, and no table
-            format anywhere in the ecosystem. Every Mojo dataframe reached Parquet by calling
-            through to PyArrow. So the experiment had to start at the bottom and work up.
-          </p>
-          <p>
             What came out is twelve tins. Some of the answers are encouraging — native
             Parquet decode is <em>faster</em> than pyarrow on a single core. Some are not:
             writes are slower, thread-pooled scans lose, and the language is still missing
-            pieces a data stack assumes. Both halves are on this page, because an experiment
-            you only report the wins from is not an experiment.
+            pieces a data stack assumes. I don't think the misses are limitations of the
+            approach or the tech stack, it's just a matter of putting more time time and tokens.
           </p>
         </div>
 
         <aside class="callout">
           <h3 class="callout__title">Packaged on mojoshelf</h3>
           <p>
-            The Mojo ecosystem is young enough that there is no established way to publish and
-            consume a library, so magmalake leans on the packaging infrastructure defined by
+            Magmalake leans on the packaging infrastructure defined by
             <a href="https://mojoshelf.org" rel="noopener">mojoshelf.org</a> — a registry for
-            Mojo <em>tins</em>. Every tin here is published there and installable with one
+            Mojo <em>tins</em> on tpp of pixi. Every tin here is published there and installable with one
             command.
           </p>
           <pre class="callout__code"><code>pixi shelf add iceberg-mojo</code></pre>
           <p class="callout__fine">
-            Source tins are consumed as git submodules, or as pixi git source dependencies.
+            Source tins can be consumed as git submodules, or as pixi git source dependencies.
             Twelve packages, one registry, no vendoring.
           </p>
           <a class="callout__link" href="https://mojoshelf.org" rel="noopener">
@@ -209,10 +202,10 @@ const notYet = [
         <div class="proof">
           <h3>Iceberg</h3>
           <p>
-            Row-sets <strong>cell-exact against PyIceberg 0.11.1 and DuckDB 1.5.5</strong>, in
-            both directions, including deletes, deletion vectors and schema evolution. Tables
-            magmalake writes are read back cell-exact by both — and PyIceberg can append to a
-            table magmalake created.
+            Row-sets <strong>cell-exact against PyIceberg 0.11.1 and DuckDB 1.5.5</strong>
+            across <strong>48 of 48 filter cases</strong>, in both directions, including
+            deletes, deletion vectors and schema evolution. Tables magmalake writes are read
+            back cell-exact by both — and PyIceberg can append to a table magmalake created.
           </p>
         </div>
         <div class="proof">
