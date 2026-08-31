@@ -44,10 +44,15 @@ const notYet = [
           <p>
             The question behind magmalake is narrow and answerable: <strong>can a modern
             data stack exist natively in Mojo</strong> — and what does it cost to build one?
-            Not a demo, not a binding, not a thin veneer over an existing C library, but the
-            real thing: an Apache Iceberg implementation with the file formats, the codecs,
-            the hashes and the object storage all written underneath it.
-          </p>
+            The formats are implemented rather than wrapped: Parquet, Avro, Thrift,
+            Iceberg itself, Roaring bitmaps, Snappy and the hashes all decode bytes in
+            Mojo instead of delegating. Where a mature C library is genuinely the right
+            answer it is linked, not reimplemented — <strong>libzstd</strong> and
+            <strong>liblz4</strong> for those two codecs, <strong>libcurl</strong> for HTTP
+            and TLS, and <strong>pthreads</strong> for the threads the language does not yet
+            provide. What is gone is the Python and JVM layer that every other route from
+            Mojo to Iceberg has to go through.
+        </p>
           <p>
             Before this, none of it existed. There was no Parquet page decode in Mojo, no
             Avro, no zstd or snappy or lz4, no Roaring bitmaps, no SHA-256, and no table

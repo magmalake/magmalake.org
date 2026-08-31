@@ -47,12 +47,13 @@ export const tins: Tin[] = [
     version: "0.3.3",
     tier: "format",
     what:
-      "The first native Apache Parquet reader and writer in Mojo. It decodes the footer, the page headers, the levels and the values itself, and hands the result back as Arrow arrays over the Arrow C Data Interface.",
+      "The first native Apache Parquet reader and writer in Mojo. It decodes the footer, the page headers, the levels and the values itself, and hands the result back in Arrow memory layout, exportable over the Arrow C Data Interface. That interface is the boundary, not a full Arrow library: there are no compute kernels, no IPC and no Flight.",
     oracle: "pyarrow, value-exact on 33 fixtures; pyarrow reads back every file it writes",
     bullets: [
       "Every physical and logical type, every encoding, v1 and v2 pages",
       "Nested lists, maps and structs reconstructed from definition and repetition levels",
       "Row-group, page-index and bloom-filter pruning; field-id projection for Iceberg",
+      "Arrow C Data Interface export, verified by pyarrow importing the arrays",
       "Reads 1M rows in 4.3 ms — 232M rows/s, 1.9× pyarrow",
     ],
   },
