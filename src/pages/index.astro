@@ -55,7 +55,7 @@ const notYet = [
             Mojo to Iceberg has to go through.
           </p>
           <p>
-            What came out is thirteen tins. Some of the answers are encouraging — native
+            What came out is the stack below. Some of the answers are encouraging — native
             Parquet decode is <em>faster</em> than pyarrow on a single core. Some are not:
             writes are slower, thread-pooled scans lose, and the language is still missing
             pieces a data stack assumes. I don't think the misses are limitations of the
@@ -102,7 +102,7 @@ const notYet = [
   <section class="section" id="stack">
     <div class="wrap wrap--wide">
       <p class="eyebrow">The stack</p>
-      <h2 class="section-title">Thirteen tins, one layering</h2>
+      <h2 class="section-title">How they layer</h2>
       <p class="lede" style="margin-bottom: 2.5rem;">
         Iceberg sits on Parquet, Avro, Roaring and objectstore; those sit on Thrift, the
         compression codecs and the hashes; threads runs alongside all of it. I kept them
@@ -144,15 +144,60 @@ const notYet = [
       <p class="eyebrow">Performance</p>
       <h2 class="section-title">Measured, including where it loses</h2>
       <p class="lede">
-        I measured all of this on an Apple M4, single core unless a row says otherwise —
-        same machine, same files, reproducible from each repository with
-        <code>pixi run bench</code>. magmalake beats pyarrow on single-core Parquet reads.
-        It loses on writes and on multi-threaded scans, where what is left of the Iceberg
-        gap is mostly libzstd itself.
+        I measured all of this on 1 September 2026, on an Apple M4, single core unless a
+        row says otherwise — same machine, same files, and every row reproducible from
+        its own repository.
+        magmalake beats pyarrow on single-core Parquet reads. It loses on writes and on
+        multi-threaded scans, where what is left of the Iceberg gap is mostly libzstd
+        itself.
+      </p>
+      <p class="lede">
+        Every number here is a <em>mean over calibrated repetitions</em>, not a
+        best-of-N, and each benchmark reports its own spread. That change alone moved
+        several published figures — one benchmark had its random-number generator inside
+        the timed loop, and most of the fast operations had been timing a cold pass over
+        a buffer they had just built. Where a row measures a C library rather than Mojo,
+        it says so.
       </p>
 
       <div class="perf-groups">
         {perfGroups.map((g) => <PerfTable group={g} />)}
+      </div>
+
+      <div class="panel" style="margin-bottom: 2.5rem;">
+        <h3 class="panel__title">Reproducing any of this</h3>
+        <p>
+          Every tin carries its own benchmarks and runs them through the same harness,
+          <a href="https://github.com/magmalake/bench.mojo" rel="noopener">bench.mojo</a>.
+          Clone the repo a row belongs to and run:
+        </p>
+        <pre class="callout__code"><code>git clone https://github.com/magmalake/parquet.mojo
+cd parquet.mojo
+
+pixi run -e bench bench                    # the table, with spread
+pixi run -e bench bench -- --json          # every repetition, machine-readable
+pixi run -e bench bench -- --list          # what this repo measures
+pixi run -e bench bench -- --only bench_read_wide</code></pre>
+        <p>
+          The <code>bench</code> environment is stable Mojo 1.0.0: a precompiled Mojo
+          package is stamped with the compiler version that built it, and every tin
+          builds with 1.0.0. The libraries themselves test on stable and nightly.
+        </p>
+        <p>
+          <strong>Nothing here is published from CI.</strong> CI runs the tests, on
+          stable and nightly across macOS and Linux; the numbers above were taken by
+          hand on one machine and pasted in, which is why they carry a date and a
+          machine rather than a build number. Per-commit tracking — each repo keeping a
+          rolling history on its own <code>gh-pages</code> — is the next piece of work,
+          and <code>--json</code> already emits what it will consume.
+        </p>
+        <p>
+          A few benchmarks need a fixture that is generated rather than committed —
+          parquet wants <code>python tools/bench_pyarrow.py --make</code> first, iceberg
+          builds a warehouse, objectstore needs MinIO. Each repo's README says which, and
+          the bench stops with instructions rather than measuring the wrong thing. Expect
+          your absolute numbers to differ from an M4; the ratios are what travel.
+        </p>
       </div>
 
       <div class="two-col two-col--wide">

@@ -16,8 +16,13 @@ export interface Group {
 }
 
 /**
- * Apple M4, single core unless the row says otherwise. Every number is
- * reproducible from the owning repo with `pixi run bench`.
+ * Apple M4, single core unless the row says otherwise.
+ *
+ * Every number is reproducible from the owning repo with
+ * `pixi run -e bench bench`, and comes from bench.mojo: a mean over three to
+ * five calibrated repetitions, not a best-of-N. `-- --json` prints every
+ * repetition. The Iceberg rows are the exception — that repo's bench has not
+ * moved to the harness yet and still reports a single pass.
  */
 export const perfGroups: Group[] = [
   {
@@ -29,9 +34,9 @@ export const perfGroups: Group[] = [
       {
         op: "Parquet read, 1M rows",
         note: "int64 / double / dictionary",
-        result: "4.3 ms — 232M rows/s",
+        result: "4.75 ms — 211M rows/s",
         lead: true,
-        reference: "pyarrow 8.2 ms — 1.9× faster",
+        reference: "pyarrow 9.0 ms — 1.9× faster",
       },
       {
         op: "Parquet read, 4 cores",
@@ -42,8 +47,8 @@ export const perfGroups: Group[] = [
       },
       {
         op: "Parquet write, 1M rows",
-        result: "42 ms",
-        reference: "pyarrow 31 ms — slower",
+        result: "46.6 ms",
+        reference: "pyarrow 31.6 ms — slower",
       },
       {
         op: "Parquet footer",
@@ -71,11 +76,11 @@ export const perfGroups: Group[] = [
       },
       {
         op: "Avro decode, manifest-shaped records",
-        result: "19.2M records/s — 27.5M with field selection",
+        result: "17.9M records/s — 25.8M with field selection",
         lead: true,
-        reference: "fastavro 1.74M — 11–13× faster",
+        reference: "fastavro 1.66M — 11–12× faster",
       },
-      { op: "Avro inflate", result: "860 MB/s" },
+      { op: "Avro inflate", result: "1.03 GB/s" },
     ],
   },
   {
@@ -93,18 +98,25 @@ export const perfGroups: Group[] = [
       },
       {
         op: "zstd / lz4 decompress",
-        note: "FFI",
-        result: "10–14 GB/s / 8–19 GB/s",
+        note: "FFI — these measure libzstd and liblz4, not Mojo",
+        result: "11–33 GB/s / 14–21 GB/s",
       },
       {
         op: "snappy decompress",
         note: "pure Mojo",
-        result: "up to 20 GB/s incompressible, ~3 GB/s compressible",
+        result: "28.5 GB/s incompressible, 3.1 GB/s compressible",
       },
       {
         op: "CRC-32 / murmur3 / XXH64",
         note: "pure Mojo",
-        result: "1.2–1.5 GB/s",
+        result: "1.3–1.7 GB/s",
+      },
+      {
+        op: "Roaring bitmap, 10M random values",
+        note: "add / serialize / deserialize",
+        result: "1.30 s / 24 ms / 67 ms",
+        reference:
+          "the add figure was published as 5–11 s until the RNG was moved out of the timed loop",
       },
       {
         op: "threads: spawn and join",
