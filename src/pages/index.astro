@@ -73,6 +73,11 @@ const notYet = [
           </p>
           <pre class="callout__code"><code>pixi shelf add iceberg-mojo</code></pre>
           <p class="callout__fine">
+            Working with a coding agent? <code>npx skills add mojoshelf/mojoshelf --skill
+            mojoshelf-consume --yes</code> teaches it to find and install tins on its own —
+            it installs the <code>shelf</code> CLI too.
+          </p>
+          <p class="callout__fine">
             Tins are <strong>git source dependencies, not conda-channel packages</strong> —
             <code>pixi add</code> will not find them, which is the first thing people trip on.
             <code>pixi shelf add</code> resolves the tin and everything it depends on.
