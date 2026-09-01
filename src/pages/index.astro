@@ -73,6 +73,11 @@ const notYet = [
           </p>
           <pre class="callout__code"><code>pixi shelf add iceberg-mojo</code></pre>
           <p class="callout__fine">
+            Tins are <strong>git source dependencies, not conda-channel packages</strong> —
+            <code>pixi add</code> will not find them, which is the first thing people trip on.
+            <code>pixi shelf add</code> resolves the tin and everything it depends on.
+          </p>
+          <p class="callout__fine">
             Source tins can be consumed as git submodules, or as pixi git source dependencies.
             The pixi approach is recommended because it encapsulates any additional build process.
           </p>
