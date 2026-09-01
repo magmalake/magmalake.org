@@ -17,7 +17,7 @@
     </div>
   </div>
 
-  <div class="joins joins--4" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div class="joins joins--4" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
 
   <div class="stack__band">
     <span class="stack__tier">File formats &amp; storage</span>
@@ -37,6 +37,10 @@
       <a class="box" href="https://github.com/magmalake/objectstore.mojo" rel="noopener">
         <span class="box__name">objectstore</span>
         <span class="box__sub">local &middot; HTTP &middot; S3 &middot; GCS &middot; Azure &middot; SigV4</span>
+      </a>
+      <a class="box" href="https://github.com/magmalake/sqlite.mojo" rel="noopener">
+        <span class="box__name">sqlite</span>
+        <span class="box__sub">embedded SQL &middot; the catalog store</span>
       </a>
     </div>
   </div>
@@ -101,7 +105,7 @@
     gap: var(--gap);
   }
   .stack__row--1 { grid-template-columns: 1fr; }
-  .stack__row--2 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .stack__row--2 { grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); }
   .stack__row--3 { grid-template-columns: minmax(0, 1fr) minmax(0, 2.09fr) minmax(0, 1fr); }
 
   .box {
@@ -179,7 +183,7 @@
     gap: var(--gap);
     margin-block: 0.15rem 0.6rem;
   }
-  .joins--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .joins--4 { grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); }
   .joins--3 { grid-template-columns: minmax(0, 1fr) minmax(0, 2.09fr) minmax(0, 1fr); }
   .joins i {
     display: block;

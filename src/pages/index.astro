@@ -55,7 +55,7 @@ const notYet = [
             Mojo to Iceberg has to go through.
           </p>
           <p>
-            What came out is twelve tins. Some of the answers are encouraging — native
+            What came out is thirteen tins. Some of the answers are encouraging — native
             Parquet decode is <em>faster</em> than pyarrow on a single core. Some are not:
             writes are slower, thread-pooled scans lose, and the language is still missing
             pieces a data stack assumes. I don't think the misses are limitations of the
@@ -92,7 +92,7 @@ const notYet = [
   <section class="section" id="stack">
     <div class="wrap wrap--wide">
       <p class="eyebrow">The stack</p>
-      <h2 class="section-title">Twelve tins, one layering</h2>
+      <h2 class="section-title">Thirteen tins, one layering</h2>
       <p class="lede" style="margin-bottom: 2.5rem;">
         Iceberg sits on Parquet, Avro, Roaring and objectstore; those sit on Thrift, the
         compression codecs and the hashes; threads runs alongside all of it. I kept them
@@ -300,7 +300,12 @@ const notYet = [
           <ul>{notYet.map((n) => <li>{n}</li>)}</ul>
           <p class="status-col__fine">
             The spec's v4 drafts — relative paths and <code>content_stats</code> — are tracked
-            but not implemented.
+            but not implemented. What is proposed but unbuilt lives in
+            <a href="https://github.com/magmalake/.github/issues" rel="noopener">the issue
+            tracker</a> — currently
+            <a href="https://github.com/magmalake/.github/issues/1" rel="noopener">a spec for a
+            PostgreSQL tin</a>, which would let the SQL catalog run on something other than a
+            local file.
           </p>
         </div>
       </div>

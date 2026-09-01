@@ -90,6 +90,22 @@ export const tins: Tin[] = [
     ],
   },
   {
+    name: "sqlite",
+    pkg: "sqlite-mojo",
+    repo: "https://github.com/magmalake/sqlite.mojo",
+    version: "0.3.0",
+    tier: "format",
+    what:
+      "An embedded SQL database: connections, prepared statements, typed columns and RAII transactions over libsqlite3. A fork of ehsanmok/sqlite, made dependency-free so it installs from the registry with no external git repos.",
+    oracle: "round-tripped against the sqlite3 shell in both directions",
+    bullets: [
+      "Every column type, with NULL distinct from empty",
+      "Prepared statements, named parameters, explicit transactions",
+      "libsqlite3 opened once per process, not per connection",
+      "Backs the SQL catalog iceberg.mojo uses for PyIceberg parity",
+    ],
+  },
+  {
     name: "roaring",
     pkg: "roaring-mojo",
     repo: "https://github.com/magmalake/roaring.mojo",
