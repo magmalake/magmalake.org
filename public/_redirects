@@ -1,0 +1,5 @@
+# Short links to the org issue tracker, which lives in the .github repo.
+# 302, not 301: if issues ever move repo, a cached permanent redirect would
+# outlive the decision.
+/issues/*  https://github.com/magmalake/.github/issues/:splat  302
+/issues    https://github.com/magmalake/.github/issues         302
