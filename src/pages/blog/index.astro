@@ -1,0 +1,84 @@
+---
+import { getCollection } from "astro:content";
+import Base from "../../layouts/Base.astro";
+
+const posts = (await getCollection("blog", ({ data }) => !data.draft)).sort(
+  (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
+);
+---
+
+<Base
+  title="Writing"
+  description="Notes from building a data stack in Mojo — durable execution, file formats, and what the measurements actually say."
+>
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">Writing</p>
+      <h1 class="section-title">Notes from the build</h1>
+      <p class="lede">
+        Longer pieces about the parts that turned out to be interesting — what
+        the APIs should look like, and what the measurements actually say.
+      </p>
+
+      <ul class="posts">
+        {
+          posts.map((post) => (
+            <li class="posts__item">
+              <a class="posts__link" href={`/blog/${post.id}`}>
+                <h2 class="posts__title">{post.data.title}</h2>
+                <p class="posts__desc">{post.data.description}</p>
+                <time
+                  class="posts__date"
+                  datetime={post.data.date.toISOString().slice(0, 10)}
+                >
+                  {post.data.date.toLocaleDateString("en-GB", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </time>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .posts {
+    list-style: none;
+    padding: 0;
+    margin: 2.5rem 0 0;
+    display: grid;
+    gap: 1rem;
+    max-width: 46rem;
+  }
+  .posts__link {
+    display: block;
+    padding: 1.35rem 1.4rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s ease;
+  }
+  .posts__link:hover { border-color: var(--ember); }
+  .posts__title {
+    font-size: 1.15rem;
+    letter-spacing: -0.015em;
+    margin: 0 0 0.4rem;
+  }
+  .posts__desc {
+    color: var(--text-muted);
+    margin: 0 0 0.6rem;
+    line-height: 1.6;
+    font-size: 0.9375rem;
+  }
+  .posts__date {
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+  }
+</style>

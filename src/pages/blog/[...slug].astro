@@ -1,0 +1,94 @@
+---
+import { getCollection, render } from "astro:content";
+import Base from "../../layouts/Base.astro";
+
+export async function getStaticPaths() {
+  const posts = await getCollection("blog", ({ data }) => !data.draft);
+  return posts.map((post) => ({ params: { slug: post.id }, props: { post } }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+const iso = post.data.date.toISOString().slice(0, 10);
+const shown = post.data.date.toLocaleDateString("en-GB", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+---
+
+<Base title={post.data.title} description={post.data.description}>
+  <article class="section post">
+    <div class="wrap">
+      <p class="eyebrow">{post.data.eyebrow}</p>
+      <h1 class="post__title">{post.data.title}</h1>
+      <p class="post__meta">
+        <time datetime={iso}>{shown}</time>
+        {
+          post.data.sourceUrl && (
+            <>
+              {" · "}
+              <a href={post.data.sourceUrl} rel="noopener">
+                {post.data.sourceLabel ?? "source"}
+              </a>
+            </>
+          )
+        }
+      </p>
+      <Content />
+    </div>
+  </article>
+</Base>
+
+<style is:global>
+  .post { padding-block: clamp(3rem, 10vh, 5rem); }
+  .post .wrap { max-width: 46rem; }
+  .post__title {
+    font-size: clamp(1.85rem, 5vw, 2.75rem);
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    margin: 0 0 0.75rem;
+  }
+  .post__meta {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    margin-bottom: 2rem;
+  }
+  .post h2 {
+    font-size: 1.3rem;
+    letter-spacing: -0.015em;
+    margin: 2.75rem 0 0.85rem;
+  }
+  .post p { margin: 0 0 1.15rem; line-height: 1.7; }
+  .post ul { margin: 0 0 1.15rem 1.1rem; line-height: 1.7; }
+  /* Markdown code fences, styled like the hand-written blocks were. */
+  .post pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    margin: 0 0 1.4rem;
+  }
+  .post table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin: 0 0 1.4rem;
+  }
+  .post th,
+  .post td {
+    text-align: left;
+    padding: 0.5rem 0.7rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .post th {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+</style>
