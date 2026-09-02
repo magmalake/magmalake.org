@@ -1,6 +1,6 @@
 ---
 title: Writing ergonomic multithreaded code in Mojo 1.0, 1.0, 1.0, …
-description: Mojo 1.0 ships no thread pool and no way to send a closure across a thread boundary. Here is the pattern that makes threads ergonomic anyway — a thin function, a typed context, and about twenty lines you write once.
+description: First-class async is explicitly post-1.0, and the concurrency library Mojo 1.0 does ship is one its own team tells you to avoid. Here is what you can use today — a thin function, a typed context, and about twenty lines you write once.
 eyebrow: Concurrency
 date: 2026-09-02
 sourceUrl: https://github.com/magmalake/threads.mojo
@@ -8,9 +8,20 @@ sourceLabel: threads.mojo
 draft: true
 ---
 
-Mojo compiles to native code and your machine has ten cores. Using them is a
-two-part problem: there is no thread pool in the standard library, and the
-threads you can reach through FFI will not accept a closure. The Mojo way is to propose a solution as a library, so let’s see how far we can go.
+Mojo compiles to native code and your machine has ten cores. Using them is
+awkward today, for a reason the roadmap states plainly: first-class `async`,
+"fully integrated with Mojo's type and memory models", is Phase 2 work that
+has not started. A robust async model was explicitly [not part of
+1.0](https://www.modular.com/blog/the-path-to-mojo-1-0).
+
+What 1.0 does ship is `std.runtime.asyncrt` — "the low level concurrency
+library" — and the honest summary is that you should not build on it yet.
+Modular says so themselves; the next section shows what happens when you try.
+Meanwhile `parallelize` is still alive, but it now lives in MAX rather than
+the standard library, alongside the rest of the accelerator APIs.
+
+That leaves the threads your OS already has, reached through FFI. Those will
+not accept a closure. The Mojo way is to propose a solution as a library, so let’s see how far we can go.
 
 We can definitely write a program that saturates every core. Here is the complete code using the threads tin.
 
@@ -52,6 +63,51 @@ twenty lines, written once, and it appears in full two sections down. The
 other two questions the listing raises: why `task` is a top-level function
 rather than a closure, and why the counter is built from a `ref` rather than
 owned.
+
+## The runtime you have
+
+Before the pattern, the alternative, because it is right there in the standard
+library and it is reasonable to ask why not use it.
+
+`std.runtime.asyncrt` gives you `Task`, `TaskGroup`, `create_task` and
+`parallelism_level`. Small examples work. `TaskGroup` with four trivial tasks
+returns the right answer.
+
+Two things stop it being the answer today. The first is sizing:
+
+```mojo
+print(parallelism_level())   # 4, on a ten-core machine
+```
+
+Four workers on ten cores, and per Modular that is [not adjustable from
+outside](https://forum.modular.com/t/configure-asyncrt-parallelism-level/2107)
+— "not a value that can be set externally right now". This number is shared
+infrastructure rather than a knob for your program; the Mojo compiler reads it
+to decide its own thread count.
+
+The second is that it deadlocks. Take a working `TaskGroup` program and add a
+plain loop that calls the same function synchronously before the group is
+built:
+
+```mojo
+for i in range(n):
+    sink += digest(i, r)     # a warm-up loop, on the main thread
+
+var tg = TaskGroup()
+for i in range(n):
+    tg.create_task(work(i, r, p))
+tg.wait()                    # never returns
+```
+
+`wait()` never returns. Four runs out of four, with as few as **four** tasks —
+so it is not load, it is shape. Delete the warm-up loop and the same binary
+completes every time. `initialize_runtime()` does not help. I did not chase the
+root cause, so take that as a report rather than a diagnosis.
+
+None of which is a complaint, because Modular's own guidance says the same
+thing. Josh Peterson: "I would avoid using asyncrt for this kind of async
+programming now." Owen Hilyard, on the state of async generally: "it would be
+generous to call it 'half baked'."
 
 ## Thin functions
 
@@ -132,9 +188,26 @@ field access the compiler checks; add a field and every task sees it.
 Note what `Ctx[T]` does not do. It types the sharing; it does not synchronise
 it. `MutUntrackedOrigin` is the annotation saying so — you have stepped
 outside what the borrow checker can prove, deliberately, because the thing you
-are proving is that ten threads may hold this at once. Keeping the state in
-one struct is what makes that reviewable: there is a single place to look and
-ask which fields are written concurrently.
+are proving is that ten threads may hold this at once.
+
+Be clear about how far outside. Rust would stop you here unless your type were
+`Send`, and Mojo has no `Send` and no `Sync`. They are not missing from your
+program; they are missing from the language, they are prerequisites in the
+[structured-async proposal](https://forum.modular.com/t/structured-async-for-mojo/487),
+and they are not on the roadmap. So there is no annotation you could add that
+would make the compiler check this, and none of the usual instincts about the
+borrow checker having your back apply.
+
+The compiler is not merely silent, either. In one of the programs above it
+optimised away a loop whose only effect was through the pointer, and warned
+that the write "was never used" — it could not see that the pointer aliased
+the variable. That is the same blindness, showing up as a wrong answer instead
+of a data race.
+
+Which puts the weight on review rather than on types. Keeping the state in one
+struct is what makes that possible: a single place to look and ask which
+fields are written concurrently, and a short enough list that the question has
+an answer.
 
 ## Atomics are views
 
@@ -165,12 +238,29 @@ and compare against the same loop written serially:
 | serial `for` loop | 127 ms |
 | `parallel_for` | 17 ms |
 
-About 7×, and the two runs produce the same sum. Ten cores never give you a speedup of ten;
-threads cost something to start and the atomic on the shared counter is a real
-contention point. Seven is a reasonable number for work of this shape.
+About 7×, and the two runs produce the same sum. Both figures are stable to
+the millisecond across runs, which is itself worth knowing: this is native
+code with no runtime deciding when to schedule you.
 
-Both figures are stable to the millisecond across runs, which is itself worth
-knowing: this is native code with no runtime deciding when to schedule you.
+Ten cores never give you a speedup of ten, and the missing three are worth
+pricing rather than waving at. The counter is the shared thing, so measure the
+counter on its own — a million `fetch_add` calls, first on one thread, then
+spread across ten:
+
+| a million atomic increments | wall clock |
+| --- | --- |
+| one thread, no contention | 1 ms |
+| ten threads, same counter | 28 ms |
+
+Same instruction, same total count, **28× the cost** — that is the cache line
+holding the counter bouncing between cores. Correct either way: both runs end
+at exactly 1,000,000.
+
+Which sets the rule for when threads are worth it. `digest` was deliberately
+sized so the arithmetic dwarfs the increment, and that is why the first table
+shows a win. Give each task nothing to do but touch the shared counter and
+the same code loses to a serial loop. The question is never "how many cores"
+but "how much work per synchronisation" — and 28 ns is the number to beat.
 
 ## Longer-lived threads
 
@@ -202,8 +292,14 @@ C surface it binds to is not going anywhere.
 
 We did not set out to write a threading library. We were porting a durable
 execution client, which needs to serve a handler on every core, and
-`std.algorithm.parallelize` had gone from the nightly we were tracking. There
-was no thread pool left to reach for.
+`std.algorithm.parallelize` had gone from the nightly we were tracking.
+
+We assumed it had been withdrawn. It had not: 1.0 moved the accelerator APIs
+into a separate `max` package and `parallelize` went with them, to
+`max.algorithm.backend.cpu`. It is still there, and if you already depend on
+MAX it is the shortest path. We wanted a threading primitive without an AI
+platform underneath it, which is a preference rather than a limitation, and
+worth saying plainly.
 
 The pthread FFI wrapper took an afternoon. Everything after that was learning
 what the thin-function constraint actually implies, mostly by writing code
@@ -225,6 +321,20 @@ filled in — Rust made the same journey, and everyone who wrote a `Future` by
 hand before `async` recognises the shape. Until then the pattern above is what
 we use everywhere, and the twenty lines of `Ctx[T]` turn out to buy back most
 of the ergonomics.
+
+Nothing here is a workaround Modular would disown. Asked about CPU threading
+today, Owen Hilyard's answer was: "Nothing actually stops you from using C ffi
+to lean on the platform threading primitives, but I know that's not exactly an
+ideal path." That is this library, described by someone who works on the
+language — the sanctioned option, with the caveat attached. Chris Lattner on
+the design taking its time: "I think the combination of features we have in
+Mojo will allow us to do something quite special, but I don't want to rush
+it."
+
+So treat `threads.mojo` as scaffolding with a known expiry. When `Send`,
+`Sync` and first-class `async` land, the ergonomic answer will be in the
+language and most of this post should stop being true. We would rather have
+ten cores in the meantime.
 
 The one deviation worth flagging for anyone reading the source: `Pointer` is
 now the current spelling, and `UnsafePointer` compiles with a deprecation
