@@ -212,6 +212,23 @@ export const tins: Tin[] = [
     ],
   },
   {
+    name: "restate",
+    pkg: "restate-mojo",
+    repo: "https://github.com/magmalake/restate.mojo",
+    version: "0.2.0",
+    tier: "primitive",
+    what:
+      "Durable execution in Mojo, via Restate. A Rust shim embeds the official Restate SDK — Rust owns the HTTP/2 endpoint, the event loop and the journal — while your handlers are Mojo, driven by a synchronous loop where every durable operation crosses one C-ABI call.",
+    oracle:
+      "Two end-to-end suites against a real restate-server booted per run, on macOS and Linux",
+    bullets: [
+      "State, sleep, run and awakeables from a plain next() loop",
+      "app.serve(num_workers) runs that loop on N threads via threads-mojo's WorkerPool",
+      "Self-calls need two or more workers: one worker has no second thread to run the callee",
+      "Payloads are raw bytes — parse and serialize in your handler",
+    ],
+  },
+  {
     name: "threads",
     pkg: "threads-mojo",
     repo: "https://github.com/magmalake/threads.mojo",
