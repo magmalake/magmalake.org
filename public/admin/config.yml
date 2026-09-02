@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=https://unpkg.com/@sveltia/cms/schema/sveltia-cms.json
+#
+# Sveltia CMS — edit posts from a browser, including a phone.
+#
+# The fields below mirror the Zod schema in src/content.config.ts. If they
+# drift, the CMS will happily write frontmatter the build then rejects, so
+# change both together.
+
+backend:
+  name: github
+  repo: magmalake/magmalake.org
+  branch: main
+  # Sveltia runs no hosted OAuth service, so this points at our own
+  # authenticator. See README-CMS.md for deploying it.
+  base_url: https://magmalake-cms-auth.mseritan.workers.dev
+
+# Editing straight on main. Set to a branch name to open a PR per change
+# instead, once more than one person is writing.
+publish_mode: simple
+
+media_folder: public/media
+public_folder: /media
+
+collections:
+  - name: blog
+    label: Posts
+    label_singular: Post
+    folder: src/content/blog
+    create: true
+    slug: "{{slug}}"
+    extension: md
+    format: yaml-frontmatter
+    preview_path: blog/{{slug}}
+    sortable_fields: [date, title]
+    fields:
+      - { label: Title, name: title, widget: string }
+      - label: Description
+        name: description
+        widget: text
+        hint: One or two sentences. Used for search results and link previews.
+      - { label: Eyebrow, name: eyebrow, widget: string, default: Durable execution }
+      - { label: Date, name: date, widget: datetime, time_format: false, format: YYYY-MM-DD }
+      - label: Source URL
+        name: sourceUrl
+        widget: string
+        required: false
+        hint: The repository the post is about, shown under the title.
+      - { label: Source label, name: sourceLabel, widget: string, required: false }
+      - label: Draft
+        name: draft
+        widget: boolean
+        default: false
+        hint: Drafts are excluded from the build.
+      - label: Body
+        name: body
+        widget: markdown
