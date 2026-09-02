@@ -1,9 +1,6 @@
 ---
 title: Writing ergonomic multithreaded code in Mojo 1.0, 1.0, 1.0, …
-description: >-
-  Mojo 1.0 ships no thread pool and no way to send a closure across a thread
-  boundary. Here is the pattern that makes threads ergonomic anyway — a thin
-  function, a typed context, and about twenty lines you write once.
+description: Mojo 1.0 ships no thread pool and no way to send a closure across a thread boundary. Here is the pattern that makes threads ergonomic anyway — a thin function, a typed context, and about twenty lines you write once.
 eyebrow: Concurrency
 date: 2026-09-02
 sourceUrl: https://github.com/magmalake/threads.mojo
@@ -13,10 +10,9 @@ draft: true
 
 Mojo compiles to native code and your machine has ten cores. Using them is a
 two-part problem: there is no thread pool in the standard library, and the
-threads you can reach through FFI will not accept a closure. Neither is fatal.
-Both shape the code you write.
+threads you can reach through FFI will not accept a closure. The Mojo way is to propose a solution as a library, so let’s see how far we can go.
 
-Here is a complete program that saturates every core.
+We can definitely write a program that saturates every core. Here is the complete code using the threads tin.
 
 ## The whole program
 
@@ -60,18 +56,18 @@ owned.
 ## Thin functions
 
 A thread starts through the C ABI. `pthread_create` takes a bare function
-pointer and exactly one `void*`, and that shape reaches all the way up: the
+pointer and exactly one `void*`, and that signature reaches all the way up: the
 work function must be **thin** — a function with no captured state.
 
 Mojo will tell you so, precisely:
 
-```
+```plain
 error: invalid call to 'parallel_for': 'parallel_for' parameter 'work' has
 'WorkFn' type, but value has type 'def(i: Int, ptr: Pointer[UInt8,
 MutUntrackedOrigin]) capturing thin -> None'
 ```
 
-That is the error for this, the version everyone writes first:
+That error is for the version everyone writes first:
 
 ```mojo
 var total = Int64(0)
@@ -82,7 +78,7 @@ def task(i: Int, ptr: OpaquePtr) -> None:
 ```
 
 `capturing thin` is the detail worth internalising. `@parameter` does not mean
-"non-capturing"; it means the closure is a compile-time value that *may*
+"non-capturing"; it means the closure is a compile-time value that _may_
 capture, and that is a different type from a plain thin function. It stays a
 different type even when the closure captures nothing at all — deleting the
 body's reference to `total` does not make the error go away. There is no
@@ -90,12 +86,12 @@ annotation that demotes it.
 
 Dropping `@parameter` fails earlier and more bluntly:
 
-```
+```plain
 error: Could not infer capture convention of the captured value total
 ```
 
 So the rule is simple, if unfamiliar: **work functions are top-level `def`s**.
-Everything they need arrives through the one pointer.
+Everything they need arrives through the one pointer argument.
 
 ## A typed context
 
@@ -142,7 +138,7 @@ ask which fields are written concurrently.
 
 ## Atomics are views
 
-`AtomicCounter` is a *view over a cell*, not a counter that owns storage:
+`AtomicCounter` is a _view over a cell_, not a counter that owns storage:
 
 ```mojo
 def counter(ref cell: Int64) -> AtomicCounter:
@@ -160,18 +156,18 @@ need one, do not keep the view.
 
 ## What it costs
 
-The whole point. Swap the one-line task body for a `digest(i)` doing a few
+Let’s evaluate the synchronization costs. Swap the one-line task body for a `digest(i)` doing a few
 hundred thousand rounds of arithmetic, run 400 of them on a ten-core machine,
 and compare against the same loop written serially:
 
-| | wall clock |
-|---|---|
+|  | wall clock |
+| --- | --- |
 | serial `for` loop | 127 ms |
 | `parallel_for` | 17 ms |
 
-About 7×, and the two runs produce the same sum. Ten cores never give you ten;
+About 7×, and the two runs produce the same sum. Ten cores never give you a speedup of ten;
 threads cost something to start and the atomic on the shared counter is a real
-contention point. Seven is the honest number for work of this shape.
+contention point. Seven is a reasonable number for work of this shape.
 
 Both figures are stable to the millisecond across runs, which is itself worth
 knowing: this is native code with no runtime deciding when to schedule you.
@@ -180,7 +176,7 @@ knowing: this is native code with no runtime deciding when to schedule you.
 
 `parallel_for` is right when the work is a known set of independent tasks.
 When threads must outlive one call — a server with a socket per worker —
-`WorkerPool` is the other shape:
+`WorkerPool` is the other API:
 
 ```mojo
 comptime WorkerFn = def(Int, OpaquePtr, AtomicFlag) thin -> None
