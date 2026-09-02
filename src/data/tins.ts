@@ -14,6 +14,8 @@ export interface Tin {
   oracle: string;
   /** Up to four short capability bullets. */
   bullets: string[];
+  /** Published benchmark history, for the tins that run one in CI. */
+  benchmarks?: string;
 }
 
 export const TIER_LABEL: Record<Tier, string> = {
@@ -44,6 +46,7 @@ export const tins: Tin[] = [
     name: "parquet",
     pkg: "parquet-mojo",
     repo: "https://github.com/magmalake/parquet.mojo",
+    benchmarks: "https://magmalake.github.io/parquet.mojo/benchmarks/",
     version: "0.3.3",
     tier: "format",
     what:
@@ -61,6 +64,7 @@ export const tins: Tin[] = [
     name: "avro",
     pkg: "avro-mojo",
     repo: "https://github.com/magmalake/avro.mojo",
+    benchmarks: "https://magmalake.github.io/avro.mojo/benchmarks/",
     version: "0.3.0",
     tier: "format",
     what:
@@ -109,6 +113,7 @@ export const tins: Tin[] = [
     name: "roaring",
     pkg: "roaring-mojo",
     repo: "https://github.com/magmalake/roaring.mojo",
+    benchmarks: "https://magmalake.github.io/roaring.mojo/benchmarks/",
     version: "0.1.0",
     tier: "format",
     what:
@@ -125,6 +130,7 @@ export const tins: Tin[] = [
     name: "thrift",
     pkg: "thrift-mojo",
     repo: "https://github.com/magmalake/thrift.mojo",
+    benchmarks: "https://magmalake.github.io/thrift.mojo/benchmarks/",
     version: "0.1.0",
     tier: "primitive",
     what:
@@ -141,6 +147,7 @@ export const tins: Tin[] = [
     name: "zstd",
     pkg: "zstd-mojo",
     repo: "https://github.com/magmalake/zstd.mojo",
+    benchmarks: "https://magmalake.github.io/zstd.mojo/benchmarks/",
     version: "0.1.1",
     tier: "primitive",
     what:
@@ -157,6 +164,7 @@ export const tins: Tin[] = [
     name: "lz4",
     pkg: "lz4-mojo",
     repo: "https://github.com/magmalake/lz4.mojo",
+    benchmarks: "https://magmalake.github.io/lz4.mojo/benchmarks/",
     version: "0.1.1",
     tier: "primitive",
     what:
@@ -173,6 +181,7 @@ export const tins: Tin[] = [
     name: "snappy",
     pkg: "snappy-mojo",
     repo: "https://github.com/magmalake/snappy.mojo",
+    benchmarks: "https://magmalake.github.io/snappy.mojo/benchmarks/",
     version: "0.1.1",
     tier: "primitive",
     what:
@@ -189,6 +198,7 @@ export const tins: Tin[] = [
     name: "hashes",
     pkg: "hashes-mojo",
     repo: "https://github.com/magmalake/hashes.mojo",
+    benchmarks: "https://magmalake.github.io/hashes.mojo/benchmarks/",
     version: "0.1.0",
     tier: "primitive",
     what:

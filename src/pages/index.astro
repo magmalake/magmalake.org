@@ -184,12 +184,25 @@ pixi run -e bench bench -- --only bench_read_wide</code></pre>
           builds with 1.0.0. The libraries themselves test on stable and nightly.
         </p>
         <p>
-          <strong>Nothing here is published from CI.</strong> CI runs the tests, on
-          stable and nightly across macOS and Linux; the numbers above were taken by
-          hand on one machine and pasted in, which is why they carry a date and a
-          machine rather than a build number. Per-commit tracking — each repo keeping a
-          rolling history on its own <code>gh-pages</code> — is the next piece of work,
-          and <code>--json</code> already emits what it will consume.
+          <strong>The table above is hand-measured; the trend lines are not.</strong>
+          Those numbers were taken in one sitting on the M4 named at the top, which is
+          why they carry a date rather than a build number. Every merge also runs the
+          same benchmarks on a GitHub runner and appends to a history that repo
+          publishes itself:
+        </p>
+        <ul class="bench-links">
+          {
+            tins.filter((t) => t.benchmarks).map((t) => (
+              <li><a href={t.benchmarks} rel="noopener"><code>{t.name}</code></a></li>
+            ))
+          }
+        </ul>
+        <p>
+          Expect those to be slower and noisier than the table — a shared runner is not
+          a workstation. They are worth reading as <em>trends</em>, not as absolute
+          figures: each history is keyed by machine, so a run on a laptop and a run on
+          CI are separate series and never averaged, and a benchmark is only flagged as
+          regressed when it falls further than its own recent variance.
         </p>
         <p>
           A few benchmarks need a fixture that is generated rather than committed —
@@ -754,4 +767,13 @@ pixi run -e bench bench -- --only bench_read_wide</code></pre>
     background: var(--ember-soft);
     border-color: var(--ember-soft);
   }
+  .bench-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem;
+  }
+  .bench-links code { font-size: 0.85rem; }
 </style>
