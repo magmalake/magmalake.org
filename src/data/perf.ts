@@ -97,9 +97,9 @@ export const perfGroups: Group[] = [
         reference: "OpenSSL 3.2 GB/s",
       },
       {
-        op: "zstd / lz4 decompress",
-        note: "FFI — these measure libzstd and liblz4, not Mojo",
-        result: "11–33 GB/s / 14–21 GB/s",
+        op: "zstd / lz4 / brotli decompress",
+        note: "FFI — these measure libzstd, liblz4 and libbrotli, not Mojo",
+        result: "11–33 GB/s / 14–21 GB/s / 2.5 GB/s",
       },
       {
         op: "snappy decompress",

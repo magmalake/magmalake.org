@@ -24,7 +24,7 @@ const worksToday = [
 const notYet = [
   "Compaction — rewrite_manifests",
   "Encryption",
-  "Brotli",
+  "More than 2 GiB of string data in one Parquet column chunk",
   "Predicates inside list and map elements",
 ];
 
@@ -48,8 +48,9 @@ const notYet = [
             The following formats are implemented rather than wrapped: Parquet, Avro, Thrift,
             Iceberg itself, Roaring bitmaps, Snappy and the hashes all decode bytes in
             Mojo instead of delegating. Some very mature C libraries are currently
-            linked, not reimplemented — <strong>libzstd</strong> and
-            <strong>liblz4</strong> for those two codecs, <strong>libcurl</strong> for HTTP
+            linked, not reimplemented — <strong>libzstd</strong>,
+            <strong>liblz4</strong> and <strong>libbrotli</strong> for those three codecs,
+            <strong>libcurl</strong> for HTTP
             and TLS, and <strong>pthreads</strong> for the threads the language does not yet
             provide. What is gone is the Python and JVM layer that every other route from
             Mojo to Iceberg has to go through.
@@ -320,9 +321,10 @@ pixi run -e bench bench -- --only bench_read_wide</code></pre>
         <div class="proof">
           <h3>Everything else</h3>
           <p>
-            Codecs against Python <code>zstandard</code>, <code>lz4</code> and
-            <code>python-snappy</code>; hashes against zlib, mmh3 and xxhash plus the Iceberg
-            spec's own vectors; threads against contended-count and memory-visibility proofs.
+            Codecs against Python <code>zstandard</code>, <code>lz4</code>,
+            <code>brotli</code> and <code>python-snappy</code>; hashes against zlib, mmh3 and
+            xxhash plus the Iceberg spec's own vectors; threads against contended-count and
+            memory-visibility proofs.
           </p>
         </div>
       </div>
