@@ -1,6 +1,6 @@
 ---
 title: How far I trust parquet.mojo, and why
-description: A native Parquet reader now reads 66 of the 69 files in Apache's own corpus. That number is worth less than it looks, and the reason is a decoder that read every file without error and got every value wrong.
+description: Our native Parquet reader now reads 66 of the 69 files in Apache's own corpus.
 eyebrow: Correctness
 date: 2026-09-02
 sourceUrl: https://github.com/magmalake/parquet.mojo
@@ -8,15 +8,13 @@ sourceLabel: parquet.mojo
 draft: false
 ---
 
-Writing a Parquet reader is not the hard part. Convincing yourself it is
-*right* is the hard part, and it is the only part anyone downstream should
-care about. So here is the current state of parquet.mojo's validation, what
+Here is the current state of parquet.mojo's validation, what
 each layer of it is actually worth, and the three files it still cannot read.
 
 The scoreboard first:
 
 | check | state |
-|---|---|
+| --- | --- |
 | Unit and parity tests | 52, plus 5 more for the FFI codecs — on nightly and stable, Linux and macOS |
 | pyarrow value parity | 24 fixtures, **more than 20,000 value assertions**, at four batch sizes |
 | Second writer | 9 real Iceberg data files, six written by parquet-rs 58 |
@@ -27,46 +25,15 @@ The scoreboard first:
 That last row is the one that looks like the headline. It is not, and I want
 to explain why before I lean on it.
 
-## The decoder that read everything and got everything wrong
+## The oracles we use
 
-Parquet 2.12 added ALP — Adaptive Lossless floating-Point, from the SIGMOD
-2024 paper. I implemented it in Mojo: a page header, an offset array, and
-independent vectors of frame-of-reference bit-packed integers, decoded as
-`encoded * 10^factor / 10^exponent` with exceptions patched over the positions
-they name.
-
-It worked on the first build. The corpus file opened, every page decoded, no
-error was raised anywhere, and **every single value was wrong**.
-
-The cause was one line. The spec describes the *encoder* subtracting the frame
-of reference with unsigned wrapping arithmetic, so I reversed it the same way,
-and the round trip did not survive `Int64 -> UInt64 -> add -> Int64`. Since the
-frame of reference is by definition the minimum encoded value and the deltas
-are non-negative, the sum always fits the signed type; it is a plain signed
-addition now.
-
-What caught it was not my tests. It was that
-`alp_extended.zstd.parquet` carries the same 9032 values twice — once
-ALP-encoded, once as PLAIN — for no reason other than to let a decoder
-bit-compare its own output against a reference it did not produce. All six ALP
-columns are now bit-identical to their PLAIN twins, at vector sizes 32, 1024
-and 4096, including the vectors carrying exceptions.
-
-This is the whole lesson, and everything below is organised around it: **a
-codec that produces *some* output tells you nothing.** "It read the file" is
-not evidence. "It round-tripped" is barely better — a round trip proves only
-that your encoder and your decoder agree with each other, and two halves of the
-same misunderstanding agree perfectly.
-
-## So the oracle has to come from somewhere else
-
-pyarrow is the primary one, and it is used more aggressively than "we compared
-the output." `tools/oracle_pyarrow.py` reads each fixture and dumps **every
-value of every column** to JSON beside it: nulls as `null`, floats as their
+pyarrow is the primary oracle, and it is used more aggressively than "we compared
+the output." `tools/oracle_pyarrow.py` reads each fixture and dumps **every**
+**value of every column** to JSON beside it: nulls as `null`, floats as their
 exact IEEE-754 bits, decimals as their unscaled 128-bit integer, binary as hex,
 timestamps as the integer they store, lists as arrays, structs as objects, maps
 as arrays of pairs. The Mojo suite reproduces each of those from its own decode,
-value by value *and* as a CRC32 over a canonical serialisation of the whole
+value by value _and_ as a CRC32 over a canonical serialisation of the whole
 column — then does it again at batch sizes 1, 3, 64 and 997, because a bug that
 only appears when a value straddles a batch boundary is a real bug.
 
@@ -95,28 +62,26 @@ maximum. Each must raise. None may crash or read out of bounds.
 
 ## What the corpus adds
 
-Fixtures are files I chose. apache/parquet-testing is files other people chose,
-including several nobody would write on purpose, and that is exactly its value.
+Fixtures are files I chose. The corpus at apache/parquet-testing is files other people chose,
+including several nobody would write on purpose.
 `pixi run -e codecs conformance <checkout>` runs the whole thing and prints a
 line per file.
 
-It is also the only part of this suite that tests *rejection*. `bad_data/`
+It is also the only part of this suite that tests _rejection_. `bad_data/`
 holds eight files every implementation should refuse, and we refuse seven.
 
-## The three that do not read
-
-I would rather name them than average them into a pass rate.
+## The three files that do not read
 
 **Two are deliberately corrupt** — `datapage_v1-corrupt-checksum.parquet` and
 `rle-dict-uncompressed-corrupt-checksum.parquet`. Refusing them is the correct
 answer, and they are counted as unreadable only because the runner's job is to
-make a *new* failure stand out instead of blending into a known-bad list.
+make a _new_ failure stand out instead of blending into a known-bad list.
 
-**The third is `large_string_map.brotli.parquet`, and it is not what it looks
-like.** Until this week it was listed as "BROTLI codec not implemented", which
+**The third is `large_string_map.brotli.parquet`, and it is not what it looks**
+**like.** Until this week it was listed as "BROTLI codec not implemented", which
 was true and which was also hiding the real problem. Brotli now works — I bound
 libbrotli rather than implementing RFC 7932, whose static dictionary alone is
-122 KB of data that is *part of the format* — and the file decodes its Brotli
+122 KB of data that is _part of the format_ — and the file decodes its Brotli
 pages perfectly. All 2,147,483,648 bytes of them. Then the offsets wrap.
 
 Arrow's `binary`/`string` layout addresses value bytes with 32-bit offsets, and
@@ -149,7 +114,7 @@ in the file, not in pyarrow's reader — DuckDB agrees with us. That is
 [apache/arrow#51097](https://github.com/apache/arrow/issues/51097), reduced to
 a standalone repro with no magmalake code in it before it was filed.
 
-## What I would not claim
+## Summary
 
 Every codec the Parquet spec defines now reads, and every encoding including
 ALP. That is coverage, not proof. There is no fuzzing here, no property-based
