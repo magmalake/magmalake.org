@@ -22,7 +22,7 @@ import Base from "../../layouts/Base.astro";
         looks like in Mojo.
       </p>
 
-      <h2>The promise</h2>
+      <h2>Write the linear code</h2>
 
       <p>
         An order flow: reserve stock, charge a card, ship. Read it as if
@@ -34,7 +34,8 @@ var charged  = charge(app, inv)
 var shipped  = ship(app, inv)`}</code></pre>
 
       <p>
-        Now the card declines. Restate re-delivers the invocation, the handler
+        A first failure happens and the card declines. Under the hood
+        Restate re-delivers the invocation, the handler
         runs again from the top, and <strong>reserve does not run a second
         time</strong> — its result is replayed from the journal.
       </p>
@@ -48,9 +49,9 @@ var shipped  = ship(app, inv)`}</code></pre>
 [attempt 2] execute  ship     -> shipped`}</code></pre>
 
       <p>
-        That reservation id ends in a nanosecond timestamp. A second execution
-        could not have produced the same string, so an identical value across
-        attempts is the journal, not luck.
+        That reservation_id ends in a nanosecond timestamp. A second execution
+        could not have produced the same string, the journal guarantess identical outcomes across
+        attempts.
       </p>
 
       <h2>The whole program</h2>
