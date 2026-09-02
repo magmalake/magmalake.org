@@ -4,7 +4,7 @@ import Base from "../../layouts/Base.astro";
 
 <Base
   title="Writing async-like code in durable execution"
-  description="Durable execution gives you retries and replay without callbacks. Getting there in Mojo meant closing a hole in the run block, bounding its retries, and deleting an API that deadlocked."
+  description="Write straight-line Mojo. If the process dies halfway through, it resumes without redoing the work that already succeeded. Here is the whole API, and how to handle every way a step can fail."
 >
   <article class="section post">
     <div class="wrap">
@@ -16,109 +16,107 @@ import Base from "../../layouts/Base.astro";
       </p>
 
       <p class="lede">
-        A durable execution engine promises something that sounds impossible:
-        write ordinary straight-line code, and if the process dies halfway
-        through, it resumes without redoing the parts that already succeeded.
-        No callbacks, no state machine, no reconciliation job. This is what
-        that looks like in Mojo, and what it took to make the failure paths
-        honest.
+        Write ordinary straight-line code. If the process dies halfway through,
+        it resumes without redoing the parts that already succeeded — no
+        callbacks, no state machine, no reconciliation job. This is what that
+        looks like in Mojo.
       </p>
 
-      <h2>The shape of the promise</h2>
+      <h2>The promise</h2>
 
       <p>
-        Here is an order flow. It reserves stock, charges a card, and ships.
-        Read it as if nothing can go wrong:
+        An order flow: reserve stock, charge a card, ship. Read it as if
+        nothing can go wrong.
       </p>
 
       <pre class="post__code"><code>{`var reserved = reserve(app, inv)
 var charged  = charge(app, inv)
-var shipped  = ship(app, inv)
-app.complete(inv, String(reserved, " / ", charged, " / ", shipped))`}</code></pre>
+var shipped  = ship(app, inv)`}</code></pre>
 
       <p>
-        Now let the card decline. The invocation fails, Restate re-delivers it,
-        and the handler runs again from the top — but <em>reserve does not run
-        a second time</em>. Its result was journaled the first time through and
-        is replayed from the log:
+        Now the card declines. Restate re-delivers the invocation, the handler
+        runs again from the top, and <strong>reserve does not run a second
+        time</strong> — its result is replayed from the journal.
       </p>
 
-      <pre class="post__code"><code>{`--- attempt 1 at t+0s
+      <pre class="post__code"><code>{`--- attempt 1
 [attempt 1] execute  reserve  -> res-order-1-c4ea8c
-[attempt 1] execute  charge   -> boom: card declined (retrying in-place)
---- attempt 2 at t+0s
+[attempt 1] execute  charge   -> card declined
+--- attempt 2
 [attempt 2] REPLAY   reserve  -> res-order-1-c4ea8c
-[attempt 2] execute  charge   -> boom: card declined (retrying in-place)
---- attempt 3 at t+2s
-[attempt 3] REPLAY   reserve  -> res-order-1-c4ea8c
-[attempt 3] execute  charge   -> chg-order-1-b40aa
-[attempt 3] execute  ship     -> shipped
-[attempt 3] done`}</code></pre>
+[attempt 2] execute  charge   -> chg-order-1-b40aa
+[attempt 2] execute  ship     -> shipped`}</code></pre>
 
       <p>
-        The reservation id ends in a nanosecond timestamp, so a second
-        execution could not have produced the same string. That it is identical
-        across three attempts is the journal doing its job, not luck. This is
-        the whole pitch: retry semantics you would otherwise hand-roll with a
-        state table and an idempotency key, expressed as a function that reads
-        top to bottom.
+        That reservation id ends in a nanosecond timestamp. A second execution
+        could not have produced the same string, so an identical value across
+        attempts is the journal, not luck.
       </p>
 
-      <h2>Where the journal boundary goes</h2>
+      <h2>The whole program</h2>
 
       <p>
-        The mechanism is a <code>run</code> block. You ask the journal whether
-        this step already happened; if not, you do the work and record the
-        result:
+        Nothing is elided here. This is a complete, runnable service.
       </p>
 
-      <pre class="post__code"><code>{`var replayed = app.run_enter(inv)
-if replayed:
-    return replayed.value()          # already done, here is what it returned
-var value = charge_the_card()
-return app.run_exit(inv, value)      # journal it`}</code></pre>
+      <pre class="post__code"><code>{`from restate import App, Ctx, Invocation, Unit
+
+def handle_process(
+    app: App, inv: Invocation, worker: Int, ctx: Ctx[Unit]
+) raises:
+    var reserved = reserve(app, inv)
+    var charged  = charge(app, inv)
+    var shipped  = ship(app, inv)
+    app.complete(inv, String(reserved, " / ", charged, " / ", shipped))
+
+def main() raises:
+    var nothing = Unit()
+    _ = App.run[Unit, __functions_in_module()]("Orders", nothing)`}</code></pre>
 
       <p>
-        Which raises the question this post is really about: what happens when
-        <code>charge_the_card()</code> throws?
-      </p>
-
-      <p>
-        In our first version, nothing good. There was no way to close a run
-        block that had failed. Raising between <code>run_enter</code> and
-        <code>run_exit</code> left the block open, and the journal kept
-        expecting an exit that never came. Every later attempt died the same
-        way:
-      </p>
-
-      <pre class="post__code"><code>{`restate.mojo protocol error: expected rst_run_exit`}</code></pre>
-
-      <p>
-        The invocation could then neither complete nor terminally fail. It
-        retried that protocol error forever. The workaround was to do the
-        fallible call <em>before</em> opening the block and journal the result
-        only once you had one — which works, and leaves a window where a crash
-        after a successful charge but before the journal write charges the card
-        twice on retry.
+        <code>App.run</code> finds every <code>handle_*</code> function in the
+        module, registers each under the name after the prefix, and serves them
+        across a pool of worker threads — one per core by default. A request to
+        <code>/Orders/order-1/process</code> arrives at
+        <code>handle_process</code>.
       </p>
 
       <p>
-        That window is exactly what a run block exists to close, so the
-        workaround was the wrong shape. The fix was to expose what the
-        underlying SDK already had: a way to fail the block.
+        <code>Unit</code> says this service keeps nothing in process memory.
+        Everything it remembers lives in Restate state, keyed by the object
+        key. Services that do share state across handlers put it in a struct;
+        that comes later.
       </p>
 
-      <h2>Three ways to fail, and they are not interchangeable</h2>
+      <h2>Journal a step</h2>
 
       <p>
-        The interesting part is that "it failed" is not one thing. There are
-        three, and choosing wrong is the most common way to misuse a durable
-        execution engine:
+        A step becomes replayable by asking the journal whether it already
+        happened, then recording the result if not.
+      </p>
+
+      <pre class="post__code"><code>{`def reserve(app: App, inv: Invocation) raises -> String:
+    var replayed = app.run_enter(inv)
+    if replayed:
+        return replayed.value()        # already done
+    return app.run_exit(inv, reserve_stock())`}</code></pre>
+
+      <p>
+        Wrap anything whose effect you do not want repeated: a charge, an
+        email, an id from a remote service. Reads that are cheap and idempotent
+        do not need it.
+      </p>
+
+      <h2>Handle failure modes</h2>
+
+      <p>
+        "It failed" is three different things, and picking the wrong one is the
+        most common way to misuse a durable execution engine.
       </p>
 
       <table class="post__table">
         <thead>
-          <tr><th>Call</th><th>Journaled?</th><th>What happens</th></tr>
+          <tr><th>Call</th><th>Journaled</th><th>Effect</th></tr>
         </thead>
         <tbody>
           <tr>
@@ -128,184 +126,192 @@ return app.run_exit(inv, value)      # journal it`}</code></pre>
           </tr>
           <tr>
             <td><code>run_fail(terminal=True)</code></td>
-            <td>yes, as a failure</td>
-            <td>raised so you can compensate and finish</td>
+            <td>as a failure</td>
+            <td>raised, so you can compensate and finish</td>
           </tr>
           <tr>
             <td><code>app.fail(inv, msg)</code></td>
-            <td>ends the invocation</td>
+            <td>ends it</td>
             <td>the caller gets an error, nothing is retried</td>
           </tr>
         </tbody>
       </table>
 
       <p>
-        Abandoning a permanently broken invocation retries it forever. Failing
-        a transient one throws away work that would have succeeded on the next
-        attempt. A malformed order will not become well-formed by being tried
-        again; a card network having a bad minute will.
+        A malformed order will not become well-formed by being tried again. A
+        card network having a bad minute will. Retry the second, fail the
+        first.
       </p>
 
+      <pre class="post__code"><code>{`var slot = app.run_enter(inv)
+while True:
+    if slot:
+        return slot.value()
+    try:
+        return app.run_exit(inv, charge_the_card())
+    except e:
+        slot = app.run_fail(inv, String(e), terminal=False)`}</code></pre>
+
+      <h2>Suspension is not failure</h2>
+
       <p>
-        There is a fourth state that is not a failure at all, and it is the one
-        that bit us while writing the example. Between retries an invocation
-        can be <em>suspended</em> — parked on a durable timer, to be resumed
-        later. That arrives as an exception like any other. Catch it as if the
-        step had failed and you will compensate for work that was merely
-        waiting:
+        There is a fourth state. Waiting on a durable sleep, an awakeable or a
+        retry delay, an invocation is <em>suspended</em> — parked, to be
+        resumed later. It arrives as an exception like any other. Treat it as a
+        failure and you will compensate for work that is merely waiting.
       </p>
 
       <pre class="post__code"><code>{`except e:
     if is_suspended(e):
-        raise e          # not a failure — let the driver park it
+        raise e          # parked, not failed
     compensate()`}</code></pre>
 
-      <h2>Retries need a budget</h2>
+      <h2>Bound retries</h2>
 
       <p>
-        Once a step can fail transiently, something has to decide how long to
-        keep trying. Our first version left that to Restate's server-side
-        policy, which retries indefinitely. That is right for a payment and
-        wrong for a courtesy email nobody is waiting on, and there was no way
-        to say which one you had.
+        Retries are unbounded unless you say otherwise. That is right for a
+        payment and wrong for a courtesy email nobody is waiting on.
       </p>
 
       <pre class="post__code"><code>{`var slot = app.run_enter_policy(inv, initial_delay_ms=250, max_attempts=3)`}</code></pre>
 
       <p>
         Three attempts a quarter-second apart, then the block fails terminally
-        and the handler carries on without the notification. The order still
-        gets placed:
+        and the handler carries on. The order still gets placed.
       </p>
 
-      <pre class="post__code"><code>{`--- notify attempt 5
-[attempt 5] execute  notify   -> smtp timeout
---- notify attempt 6
+      <pre class="post__code"><code>{`[attempt 5] execute  notify   -> smtp timeout
 [attempt 6] execute  notify   -> smtp timeout
---- notify attempt 7
 [attempt 7] execute  notify   -> smtp timeout
   gave up after 3 tries: Terminal error [500]: smtp timeout`}</code></pre>
 
-      <h2>The part Mojo made harder, and the part it made easier</h2>
+      <h2>Share state across workers</h2>
 
       <p>
-        Handlers run on a pool of OS threads, and a thread start routine takes
-        a C function pointer and one <code>void *</code>. So a handler has to
-        be <em>thin</em> — non-capturing. Anything it needs beyond the
-        invocation travels through that pointer, which for a while meant this:
+        Handlers run on several threads at once. State they share lives in a
+        struct, and <code>Ctx[T]</code> hands each handler a typed view of it.
       </p>
 
-      <pre class="post__code"><code>{`var live = AtomicCounter.at(Int(ctx) + C_LIVE * 8)`}</code></pre>
+      <pre class="post__code"><code>{`@fieldwise_init
+struct Stats(Copyable, Movable):
+    var live: Int64
 
-      <p>
-        A byte offset into an untyped block, with a <code>C_LIVE</code>
-        constant that had to stay in sync with a layout written down nowhere.
-        Rust developers will recognise the era: before <code>async fn</code>,
-        you hand-wrote the state machine that the compiler now generates for
-        you.
-      </p>
-
-      <p>
-        The fix is a typed view of that pointer. <code>Ctx[T]</code> carries
-        the state's type across the thin boundary, so a handler says what it
-        means and the compiler works out the offsets:
-      </p>
-
-      <pre class="post__code"><code>{`def handle_hold(app: App, inv: Invocation, worker: Int, ctx: Ctx[Stats]) raises:
-    var live = counter(ctx[].live)
-    live.increment()`}</code></pre>
-
-      <p>
-        It types the sharing; it does not synchronise it. Every worker gets the
-        same <code>T</code> concurrently, so shared fields are still atomics.
-        But the byte arithmetic is gone, and — the point — this is the same
-        program the eventual API keeps. When Mojo can carry captures across a
-        thread boundary, the parameter disappears and <code>ctx[].live</code>
-        becomes <code>live</code>. A rename, not a rewrite.
-      </p>
-
-      <h2>Compile-time code earns its keep</h2>
-
-      <p>
-        Mojo's <code>comptime</code> turned out to remove more boilerplate than
-        expected. A service used to declare itself twice — a list of handler
-        names passed to the app, and an <code>if inv.handler == …</code> chain
-        — with nothing keeping the two in step. Adding a handler meant
-        remembering both, and forgetting one failed at runtime on the first
-        request that reached it. I made that exact mistake while writing the
-        example for this post.
-      </p>
-
-      <pre class="post__code"><code>{`def handle_process(app: App, inv: Invocation, worker: Int, ctx: Ctx[Flow]) raises:
-    ...
+def handle_hold(
+    app: App, inv: Invocation, worker: Int, ctx: Ctx[Stats]
+) raises:
+    counter(ctx[].live).increment()
 
 def main() raises:
-    var flow = Flow(...)
-    _ = App.run[Flow, __functions_in_module()]("Orders", flow)`}</code></pre>
+    var stats = Stats(0)
+    _ = App.run[Stats, __functions_in_module()]("Orders", stats)`}</code></pre>
 
       <p>
-        Every <code>handle_*</code> in the module is discovered at compile
-        time; both the registration list and the dispatch are derived from the
-        same functions, so they cannot disagree. There is no list to keep in
-        step because there is no list.
+        <code>Ctx</code> types the sharing; it does not synchronise it. Every
+        worker sees the same struct concurrently, so fields more than one
+        handler touches must be atomics.
       </p>
 
       <p>
-        This is also the honest answer to "should we generate the transitional
-        code with a macro?" — we already do. The adapter that bridges a typed
-        handler to the thin one the thread pool needs is a parameterised
-        function the compiler instantiates per handler. Nobody writes it.
-        <code>comptime</code> shrinks the hand-written layer to nearly nothing;
-        it cannot make a runtime closure cross a thread boundary, which is the
-        one thing still waiting on the language.
+        Handlers are non-capturing, because a thread start routine takes a
+        function pointer and one <code>void *</code> — which is why state
+        arrives as a parameter rather than a closure capture. When Mojo can
+        carry captures across a thread boundary, that parameter disappears and
+        <code>ctx[].live</code> becomes <code>live</code>: a rename, not a
+        rewrite.
       </p>
 
-      <h2>Deleting the API that looked simplest</h2>
+      <h2>Mojo specifics</h2>
 
       <p>
-        The first version of this binding had a single-threaded driver: you
-        wrote the loop yourself, pulled invocations, and handled them. It was
-        the simplest thing that could work and it made a lovely first example.
+        <code>__functions_in_module()</code> is how handlers are found. Both
+        the registration list and the dispatch are derived from the same
+        <code>handle_*</code> functions at compile time, so they cannot
+        disagree — there is no list of handler names to keep in step, and no
+        <code>if inv.handler == …</code> chain to extend.
       </p>
 
       <p>
-        It also deadlocked the moment a handler called another handler served
-        by the same process. There was no second thread to run the callee, and
-        nothing in the API said so — it passed every test that did not happen
+        Should we generate the transitional code with a macro? No — the
+        compiler already does. The adapter bridging a typed handler to the thin
+        one the thread pool needs is a parameterised function instantiated per
+        handler. <code>comptime</code> shrinks the hand-written layer to
+        nothing; what it cannot do is make a runtime closure cross a thread
+        boundary, and that is the one piece still waiting on the language.
+      </p>
+
+      <h2>Getting it</h2>
+
+      <pre class="post__code"><code>{`pixi global install --channel https://mojoshelf.org/channel mojoshelf
+pixi shelf add restate-mojo`}</code></pre>
+
+      <p>
+        <a href="https://github.com/magmalake/restate.mojo" rel="noopener">restate.mojo</a>
+        is Apache-2.0 and built on the official Restate Rust SDK behind a C
+        ABI: Rust owns the HTTP/2 endpoint, the event loop and the journal;
+        your handlers are Mojo. <code>examples/failures.mojo</code> is the
+        program the logs above come from, and runs against a real Restate
+        server in about ten seconds.
+      </p>
+
+      <h2>The journey</h2>
+
+      <p>
+        The API above is the third shape. The first two are worth describing,
+        because the mistakes were not in the happy path — durable execution
+        hands you that — but in the failure paths, and they took a while to
+        see.
+      </p>
+
+      <p>
+        <strong>A run block you could open but not close.</strong> Originally
+        there was no way to fail a journaled step. Raising between
+        <code>run_enter</code> and <code>run_exit</code> left the block open,
+        and the journal kept expecting an exit that never came. Every
+        subsequent attempt died with <code>protocol error: expected
+        rst_run_exit</code>, so the invocation could neither complete nor
+        terminally fail — it retried that error forever. The workaround was to
+        do the fallible call <em>before</em> opening the block, which works and
+        leaves a window where a crash between a successful charge and the
+        journal write charges the card twice. That window is exactly what a run
+        block exists to close, so the workaround was the wrong shape.
+      </p>
+
+      <p>
+        <strong>Byte offsets instead of a type.</strong> Because handlers must
+        be non-capturing, shared state travelled through an untyped pointer,
+        and reading it looked like
+        <code>AtomicCounter.at(Int(ctx) + C_LIVE * 8)</code> — with a constant
+        that had to stay in sync with a layout written down nowhere. Rust
+        developers will recognise the era: before <code>async fn</code>, you
+        hand-wrote the state machine the compiler now generates.
+      </p>
+
+      <p>
+        <strong>A simple API that was a trap.</strong> The first version had a
+        single-threaded driver — you wrote the loop, pulled invocations,
+        handled them. Simplest thing that could work, and it made a lovely
+        first example. It also deadlocked the moment a handler called another
+        handler in the same process: no second thread to run the callee, and
+        nothing in the API saying so. It passed every test that did not happen
         to make that call, and hung the first time someone added one.
       </p>
 
       <p>
-        It survived as long as it did because writing handlers the other way
-        meant reaching state through a raw pointer. Once <code>Ctx[T]</code>
-        removed that cost, the only thing the loop still offered was a trap. It
-        is gone in 0.3.0. Serving on a pool is the only shape, and the default
-        is one worker per core.
+        It survived a release because the alternative meant reaching state
+        through that raw pointer. Once <code>Ctx[T]</code> removed the cost,
+        the loop offered nothing but the trap, and it is gone. There is a
+        version of API design where you keep the simple thing beside the
+        correct thing and document the difference. We tried it. The
+        documentation was accurate and it did not help, because the failure is
+        silent and arrives long after the choice.
       </p>
 
       <p>
-        There is a version of API design where you keep the simple thing
-        alongside the correct thing and document the difference. We tried that
-        for a release. The documentation was accurate and it did not help,
-        because the failure mode is silent and arrives long after the choice.
-      </p>
-
-      <h2>What it adds up to</h2>
-
-      <p>
-        The code at the top of this post is real, and it survives a process
-        dying between any two lines. The work was not in making the happy path
-        elegant — durable execution hands you that. It was in making every
-        failure path say what it means: a step that should be retried, a step
-        that is finished failing, an invocation that is a lost cause, and a
-        pause that is not a failure at all.
-      </p>
-
-      <p>
-        <a href="https://github.com/magmalake/restate.mojo" rel="noopener">restate.mojo</a>
-        is Apache-2.0, built on the official Restate Rust SDK behind a C ABI,
-        and the example above is <code>examples/failures.mojo</code> — it runs
-        against a real Restate server in about ten seconds.
+        <strong>Swallowing a suspension.</strong> Writing the retry example, we
+        caught every exception around a compensating step — including
+        suspension, which meant compensating for work that was merely parked,
+        three times over. It is an easy mistake in any handler that
+        compensates, which is why it has a section of its own above.
       </p>
     </div>
   </article>
