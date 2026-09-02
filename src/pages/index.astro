@@ -164,6 +164,33 @@ const notYet = [
         {perfGroups.map((g) => <PerfTable group={g} />)}
       </div>
 
+      <div class="panel" id="benchmarks" style="margin-bottom: 2.5rem; scroll-margin-top: 5rem;">
+        <h3 class="panel__title">
+          <a class="perf__anchor" href="#benchmarks">Benchmark history</a>
+        </h3>
+        <p>
+          <strong>The table above is hand-measured; these are not.</strong> Those
+          numbers were taken in one sitting on the M4 named at the top, which is why
+          they carry a date rather than a build number. Every merge also runs the same
+          benchmarks on a GitHub runner and appends to a history each repository
+          publishes itself:
+        </p>
+        <ul class="bench-links">
+          {
+            tins.filter((t) => t.benchmarks).map((t) => (
+              <li><a href={t.benchmarks} rel="noopener"><code>{t.name}</code></a></li>
+            ))
+          }
+        </ul>
+        <p>
+          Expect those to be slower and noisier than the table — a shared runner is not
+          a workstation. They are worth reading as <em>trends</em>, not as absolute
+          figures: each history is keyed by machine, so a run on a laptop and a run on
+          CI stay separate series and are never averaged, and a benchmark is only
+          flagged as regressed when it falls further than its own recent variance.
+        </p>
+      </div>
+
       <div class="panel" id="perf-reproduce" style="margin-bottom: 2.5rem; scroll-margin-top: 5rem;">
         <h3 class="panel__title">
           <a class="perf__anchor" href="#perf-reproduce">Reproducing any of this</a>
@@ -184,27 +211,6 @@ pixi run -e bench bench -- --only bench_read_wide</code></pre>
           The <code>bench</code> environment is stable Mojo 1.0.0: a precompiled Mojo
           package is stamped with the compiler version that built it, and every tin
           builds with 1.0.0. The libraries themselves test on stable and nightly.
-        </p>
-        <p>
-          <strong>The table above is hand-measured; the trend lines are not.</strong>
-          Those numbers were taken in one sitting on the M4 named at the top, which is
-          why they carry a date rather than a build number. Every merge also runs the
-          same benchmarks on a GitHub runner and appends to a history that repo
-          publishes itself:
-        </p>
-        <ul class="bench-links">
-          {
-            tins.filter((t) => t.benchmarks).map((t) => (
-              <li><a href={t.benchmarks} rel="noopener"><code>{t.name}</code></a></li>
-            ))
-          }
-        </ul>
-        <p>
-          Expect those to be slower and noisier than the table — a shared runner is not
-          a workstation. They are worth reading as <em>trends</em>, not as absolute
-          figures: each history is keyed by machine, so a run on a laptop and a run on
-          CI are separate series and never averaged, and a benchmark is only flagged as
-          regressed when it falls further than its own recent variance.
         </p>
         <p>
           A few benchmarks need a fixture that is generated rather than committed —
