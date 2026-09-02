@@ -1,14 +1,11 @@
 ---
 title: Writing async-like code in durable execution
-description: >-
-  Write straight-line Mojo. If the process dies halfway through, it resumes
-  without redoing the work that already succeeded. Here is the whole API, and
-  how to handle every way a step can fail.
+description: Write straight-line Mojo. If the process dies halfway through, it resumes without redoing the work that already succeeded. Here is the whole API, and how to handle every way a step can fail.
 eyebrow: Durable execution
 date: 2026-09-02
 sourceUrl: https://github.com/magmalake/restate.mojo
 sourceLabel: restate.mojo
-draft: false
+draft: true
 ---
 
 Write ordinary straight-line code. If the process dies halfway through, it resumes without redoing the parts that already succeeded — no callbacks, no state machine, no reconciliation job. This is what that looks like in Mojo.
@@ -25,7 +22,7 @@ var shipment_id    = ship(app, inv)
 
 A first failure happens and the card declines. Under the hood Restate re-delivers the invocation, the handler runs again from the top, and **reserve does not run a second time** — its result is replayed from the journal.
 
-```
+```plain
 --- attempt 1
 [attempt 1] execute  reserve  -> res-order-1-c4ea8c
 [attempt 1] execute  charge   -> card declined
@@ -119,7 +116,7 @@ For anything that must outlive the invocation — a status another request will 
 "It failed" is three different things, and picking the wrong one is the most common way to misuse a durable execution engine.
 
 | Call | Journaled | Effect |
-|---|---|---|
+| --- | --- | --- |
 | `run_fail(terminal=False)` | no | the step runs again — a blip, a timeout, a 503 |
 | `run_fail(terminal=True)` | as a failure | raised, so you can compensate and finish |
 | `app.fail(inv, msg)` | ends it | the caller gets an error, nothing is retried |
@@ -132,7 +129,7 @@ invocation that is a lost cause.
 
 ## Suspension is not failure
 
-There is a fourth state. Waiting on a durable sleep, an awakeable or a retry delay, an invocation is *suspended* — parked, to be resumed later. It arrives as an exception like any other. Treat it as a failure and you will compensate for work that is merely waiting.
+There is a fourth state. Waiting on a durable sleep, an awakeable or a retry delay, an invocation is _suspended_ — parked, to be resumed later. It arrives as an exception like any other. Treat it as a failure and you will compensate for work that is merely waiting.
 
 ```mojo
 except e:
@@ -151,7 +148,7 @@ return app.step[compute](inv, initial_delay_ms=250, max_attempts=3)
 
 Three attempts a quarter-second apart, then the block fails terminally and the handler carries on. The order still gets placed.
 
-```
+```plain
 [attempt 5] execute  notify   -> smtp timeout
 [attempt 6] execute  notify   -> smtp timeout
 [attempt 7] execute  notify   -> smtp timeout
@@ -200,7 +197,7 @@ pixi shelf add restate-mojo
 
 The API above is the third shape. The first two are worth describing, because the mistakes were not in the happy path — durable execution hands you that — but in the failure paths, and they took a while to see.
 
-**A run block you could open but not close.** Originally there was no way to fail a journaled step. Raising between `run_enter` and `run_exit` left the block open, and the journal kept expecting an exit that never came. Every subsequent attempt died with `protocol error: expected rst_run_exit`, so the invocation could neither complete nor terminally fail — it retried that error forever. The workaround was to do the fallible call *before* opening the block, which works and leaves a window where a crash between a successful charge and the journal write charges the card twice. That window is exactly what a run block exists to close, so the workaround was the wrong shape.
+**A run block you could open but not close.** Originally there was no way to fail a journaled step. Raising between `run_enter` and `run_exit` left the block open, and the journal kept expecting an exit that never came. Every subsequent attempt died with `protocol error: expected rst_run_exit`, so the invocation could neither complete nor terminally fail — it retried that error forever. The workaround was to do the fallible call _before_ opening the block, which works and leaves a window where a crash between a successful charge and the journal write charges the card twice. That window is exactly what a run block exists to close, so the workaround was the wrong shape.
 
 **Byte offsets instead of a type.** Because handlers must be non-capturing, shared state travelled through an untyped pointer, and reading it looked like `AtomicCounter.at(Int(ctx) + C_LIVE * 8)` — with a constant that had to stay in sync with a layout written down nowhere. Rust developers will recognise the era: before `async fn`, you hand-wrote the state machine the compiler now generates.
 
