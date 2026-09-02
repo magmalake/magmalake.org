@@ -50,14 +50,14 @@ var shipped  = ship(app, inv)`}</code></pre>
 
       <p>
         That reservation_id ends in a nanosecond timestamp. A second execution
-        could not have produced the same string, the journal guarantess identical outcomes across
-        attempts.
+        could not have produced the same string, so the value came from the
+        journal rather than from running the step again.
       </p>
 
       <h2>The whole program</h2>
 
       <p>
-        Nothing is elided here. This is a complete, runnable service.
+        The service in full. The three steps are defined below.
       </p>
 
       <pre class="post__code"><code>{`from restate import App, Ctx, Invocation, Unit
@@ -99,13 +99,55 @@ def main() raises:
       <pre class="post__code"><code>{`def reserve(app: App, inv: Invocation) raises -> String:
     var replayed = app.run_enter(inv)
     if replayed:
-        return replayed.value()        # already done
-    return app.run_exit(inv, reserve_stock())`}</code></pre>
+        return replayed.value()          # already done
+    var id = reserve_stock(inv.input_string())
+    return app.run_exit(inv, id)         # journal it`}</code></pre>
 
       <p>
-        Wrap anything whose effect you do not want repeated: a charge, an
-        email, an id from a remote service. Reads that are cheap and idempotent
-        do not need it.
+        <code>inv.input_string()</code> is the request body. Wrap anything
+        whose effect you do not want repeated: a charge, an email, an id from a
+        remote service. Cheap idempotent reads do not need it.
+      </p>
+
+      <h2>Pass values along</h2>
+
+      <p>
+        A reservation id has to reach the charge. It is a function argument —
+        there is no context object to thread through, and nothing to persist
+        by hand.
+      </p>
+
+      <pre class="post__code"><code>{`def charge(app: App, inv: Invocation, reservation: String) raises -> String:
+    var replayed = app.run_enter(inv)
+    if replayed:
+        return replayed.value()
+    return app.run_exit(inv, charge_card(reservation))
+
+def ship(
+    app: App, inv: Invocation, reservation: String, charge_id: String
+) raises -> String:
+    var replayed = app.run_enter(inv)
+    if replayed:
+        return replayed.value()
+    return app.run_exit(inv, dispatch(reservation, charge_id))`}</code></pre>
+
+      <pre class="post__code"><code>{`var reserved = reserve(app, inv)
+var charged  = charge(app, inv, reserved)
+var shipped  = ship(app, inv, reserved, charged)`}</code></pre>
+
+      <p>
+        On a retry the handler runs from the top and every completed step
+        returns its journaled value, so <code>reserved</code> and
+        <code>charged</code> hold what they held the first time. The locals
+        rebuild themselves. That is the difference between this and a workflow
+        engine where each step reads and writes a shared context.
+      </p>
+
+      <p>
+        For anything that must outlive the invocation — a status another
+        request will ask about — use <code>app.set_state(inv, "reservation",
+        reserved)</code>, which is keyed by the object key rather than by the
+        invocation.
       </p>
 
       <h2>Handle failure modes</h2>
