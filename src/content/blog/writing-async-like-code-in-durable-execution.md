@@ -5,7 +5,7 @@ eyebrow: Durable execution
 date: 2026-09-02
 sourceUrl: https://github.com/magmalake/restate.mojo
 sourceLabel: restate.mojo
-draft: true
+draft: false
 ---
 
 Write ordinary straight-line code. If the process dies halfway through, it resumes without redoing the parts that already succeeded — no callbacks, no state machine, no reconciliation job. This is what that looks like in Mojo.
