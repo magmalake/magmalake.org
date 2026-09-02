@@ -5,7 +5,7 @@ eyebrow: Correctness
 date: 2026-09-02
 sourceUrl: https://github.com/magmalake/parquet.mojo
 sourceLabel: parquet.mojo
-draft: true
+draft: false
 ---
 
 Here is the current state of parquet.mojo's validation: what is checked,
