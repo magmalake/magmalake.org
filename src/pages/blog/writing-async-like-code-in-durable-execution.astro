@@ -29,9 +29,9 @@ import Base from "../../layouts/Base.astro";
         nothing can go wrong.
       </p>
 
-      <pre class="post__code"><code>{`var reserved = reserve(app, inv)
-var charged  = charge(app, inv)
-var shipped  = ship(app, inv)`}</code></pre>
+      <pre class="post__code"><code>{`var reservation_id = reserve(app, inv)
+var charge_id      = charge(app, inv)
+var shipment_id    = ship(app, inv)`}</code></pre>
 
       <p>
         A first failure happens and the card declines. Under the hood
@@ -65,10 +65,12 @@ var shipped  = ship(app, inv)`}</code></pre>
 def handle_process(
     app: App, inv: Invocation, worker: Int, ctx: Ctx[Unit]
 ) raises:
-    var reserved = reserve(app, inv)
-    var charged  = charge(app, inv)
-    var shipped  = ship(app, inv)
-    app.complete(inv, String(reserved, " / ", charged, " / ", shipped))
+    var reservation_id = reserve(app, inv)
+    var charge_id      = charge(app, inv, reservation_id)
+    var shipment_id    = ship(app, inv, reservation_id, charge_id)
+    app.complete(
+        inv, String(reservation_id, " / ", charge_id, " / ", shipment_id)
+    )
 
 def main() raises:
     var nothing = Unit()
@@ -133,22 +135,22 @@ def ship(
         return replayed.value()
     return app.run_exit(inv, dispatch(reservation_id, charge_id))`}</code></pre>
 
-      <pre class="post__code"><code>{`var reserved = reserve(app, inv)
-var charged  = charge(app, inv, reserved)
-var shipped  = ship(app, inv, reserved, charged)`}</code></pre>
+      <pre class="post__code"><code>{`var reservation_id = reserve(app, inv)
+var charge_id      = charge(app, inv, reservation_id)
+var shipment_id    = ship(app, inv, reservation_id, charge_id)`}</code></pre>
 
       <p>
         On a retry the handler runs from the top and every completed step
-        returns its journaled value, so <code>reserved</code> and
-        <code>charged</code> hold what they held the first time. The locals
+        returns its journaled value, so <code>reservation_id</code>
+        and <code>charge_id</code> hold what they held the first time. The locals
         rebuild themselves. That is the difference between this and a workflow
         engine where each step reads and writes a shared context.
       </p>
 
       <p>
         For anything that must outlive the invocation — a status another
-        request will ask about — use <code>app.set_state(inv, "reservation",
-        reserved)</code>, which is keyed by the object key rather than by the
+        request will ask about — use <code>app.set_state(inv,
+        "reservation", reservation_id)</code>, which is keyed by the object key rather than by the
         invocation.
       </p>
 
