@@ -65,18 +65,20 @@ def main() raises:
 
 ## Journal a step
 
-A step becomes replayable by asking the journal whether it already happened, then recording the result if not.
+A step becomes replayable by wrapping it. `step` either replays the recorded value or runs the closure once and journals what it returned.
 
 ```mojo
 def reserve(app: App, inv: Invocation) raises -> String:
-    var replayed = app.run_enter(inv)
-    if replayed:
-        return replayed.value()          # already done
-    var id = reserve_stock(inv.input_string())
-    return app.run_exit(inv, id)         # journal it
+    @parameter
+    def compute() raises -> String:
+        return reserve_stock(inv.input_string())
+
+    return app.step[compute](inv)
 ```
 
 `inv.input_string()` is the request body. Wrap anything whose effect you do not want repeated: a charge, an email, an id from a remote service. Cheap idempotent reads do not need it.
+
+If the closure raises, the step is closed as a failure and Restate runs it again. That matters more than the brevity: a journaled block that is opened and never closed leaves the invocation unable to replay at all.
 
 ## Pass values along
 
@@ -86,18 +88,20 @@ A reservation id has to reach the charge. It is a function argument — there is
 def charge(
     app: App, inv: Invocation, reservation_id: String
 ) raises -> String:
-    var replayed = app.run_enter(inv)
-    if replayed:
-        return replayed.value()
-    return app.run_exit(inv, charge_card(reservation_id))
+    @parameter
+    def compute() raises -> String:
+        return charge_card(reservation_id)
+
+    return app.step[compute](inv)
 
 def ship(
     app: App, inv: Invocation, reservation_id: String, charge_id: String
 ) raises -> String:
-    var replayed = app.run_enter(inv)
-    if replayed:
-        return replayed.value()
-    return app.run_exit(inv, dispatch(reservation_id, charge_id))
+    @parameter
+    def compute() raises -> String:
+        return dispatch(reservation_id, charge_id)
+
+    return app.step[compute](inv)
 ```
 
 ```mojo
@@ -122,16 +126,9 @@ For anything that must outlive the invocation — a status another request will 
 
 A malformed order will not become well-formed by being tried again. A card network having a bad minute will. Retry the second, fail the first.
 
-```mojo
-var slot = app.run_enter(inv)
-while True:
-    if slot:
-        return slot.value()
-    try:
-        return app.run_exit(inv, charge_the_card())
-    except e:
-        slot = app.run_fail(inv, String(e), terminal=False)
-```
+`step` takes the first of these for you — a closure that raises is retried.
+The other two are explicit, for a step that is finished failing and an
+invocation that is a lost cause.
 
 ## Suspension is not failure
 
@@ -149,7 +146,7 @@ except e:
 Retries are unbounded unless you say otherwise. That is right for a payment and wrong for a courtesy email nobody is waiting on.
 
 ```mojo
-var slot = app.run_enter_policy(inv, initial_delay_ms=250, max_attempts=3)
+return app.step[compute](inv, initial_delay_ms=250, max_attempts=3)
 ```
 
 Three attempts a quarter-second apart, then the block fails terminally and the handler carries on. The order still gets placed.
@@ -210,5 +207,14 @@ The API above is the third shape. The first two are worth describing, because th
 **A simple API that was a trap.** The first version had a single-threaded driver — you wrote the loop, pulled invocations, handled them. Simplest thing that could work, and it made a lovely first example. It also deadlocked the moment a handler called another handler in the same process: no second thread to run the callee, and nothing in the API saying so. It passed every test that did not happen to make that call, and hung the first time someone added one.
 
 It survived a release because the alternative meant reaching state through that raw pointer. Once `Ctx[T]` removed the cost, the loop offered nothing but the trap, and it is gone. There is a version of API design where you keep the simple thing beside the correct thing and document the difference. We tried it. The documentation was accurate and it did not help, because the failure is silent and arrives long after the choice.
+
+**A protocol written out five times.** Journaling a step began as
+`run_enter`, a branch on the `Optional`, the work, then `run_exit` — four
+lines at every call site, five times in the example alone. Repetition is the
+mild version of the problem: the real one is that closing the block correctly
+was the caller's job on every occasion, and the failure mode for getting it
+wrong was an invocation that could never replay again. `step` takes a closure
+and does it, which is possible because a step never crosses a thread boundary
+— unlike the handler, it is an ordinary local call and can capture.
 
 **Swallowing a suspension.** Writing the retry example, we caught every exception around a compensating step — including suspension, which meant compensating for work that was merely parked, three times over. It is an easy mistake in any handler that compensates, which is why it has a section of its own above.
