@@ -68,11 +68,17 @@ the OAuth app's callback URL both have to move with it.
 
 ## 3. Use it
 
-Go to <https://magmalake.org/admin>, sign in with GitHub, write. Saving
-commits straight to `main`, and Cloudflare rebuilds the site.
+Go to <https://magmalake.org/admin>, sign in with GitHub, write.
 
-To review changes before they go live instead, set `publish_mode: editorial_workflow`
-in the config; each save then opens a pull request rather than committing.
+`publish_mode: editorial_workflow` means a save does **not** go live. It
+commits to a branch — `cms/blog/<slug>` — and opens a pull request; the post
+moves through Draft, In review and Ready in the CMS, and only **Publish**
+merges it. Cloudflare rebuilds on the merge.
+
+The practical consequence on a phone: writing and publishing are two separate
+acts, and closing the tab after writing leaves a PR open rather than losing
+the work. To go back to committing straight to `main`, set
+`publish_mode: simple`.
 
 ## Keeping the schema in step
 

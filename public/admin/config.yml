@@ -14,9 +14,10 @@ backend:
   # authenticator. See README-CMS.md for deploying it.
   base_url: https://sveltia-cms-auth.marius-248.workers.dev
 
-# Editing straight on main. Set to a branch name to open a PR per change
-# instead, once more than one person is writing.
-publish_mode: simple
+# Each save commits to a branch and opens a pull request rather than landing
+# on main. "Publish" in the CMS merges it. Costs a click per post and means
+# nothing reaches the site without passing through a diff you can read.
+publish_mode: editorial_workflow
 
 media_folder: public/media
 public_folder: /media
