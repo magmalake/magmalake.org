@@ -117,19 +117,21 @@ def main() raises:
         by hand.
       </p>
 
-      <pre class="post__code"><code>{`def charge(app: App, inv: Invocation, reservation: String) raises -> String:
-    var replayed = app.run_enter(inv)
-    if replayed:
-        return replayed.value()
-    return app.run_exit(inv, charge_card(reservation))
-
-def ship(
-    app: App, inv: Invocation, reservation: String, charge_id: String
+      <pre class="post__code"><code>{`def charge(
+    app: App, inv: Invocation, reservation_id: String
 ) raises -> String:
     var replayed = app.run_enter(inv)
     if replayed:
         return replayed.value()
-    return app.run_exit(inv, dispatch(reservation, charge_id))`}</code></pre>
+    return app.run_exit(inv, charge_card(reservation_id))
+
+def ship(
+    app: App, inv: Invocation, reservation_id: String, charge_id: String
+) raises -> String:
+    var replayed = app.run_enter(inv)
+    if replayed:
+        return replayed.value()
+    return app.run_exit(inv, dispatch(reservation_id, charge_id))`}</code></pre>
 
       <pre class="post__code"><code>{`var reserved = reserve(app, inv)
 var charged  = charge(app, inv, reserved)
