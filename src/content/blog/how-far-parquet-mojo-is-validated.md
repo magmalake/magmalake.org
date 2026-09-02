@@ -1,5 +1,5 @@
 ---
-title: How far I trust parquet.mojo, and why
+title: The parquet.mojo correctness bar
 description: Our native Parquet reader now reads 66 of the 69 files in Apache's own corpus.
 eyebrow: Correctness
 date: 2026-09-02
@@ -8,8 +8,8 @@ sourceLabel: parquet.mojo
 draft: true
 ---
 
-Here is the current state of parquet.mojo's validation, what
-each layer of it is actually worth, and the three files it still cannot read.
+Here is the current state of parquet.mojo's validation: what is checked,
+what it is checked against, and the three files it still cannot read.
 
 The scoreboard first:
 
@@ -22,10 +22,7 @@ The scoreboard first:
 | Write path | every fixture written back out and read by pyarrow |
 | apache/parquet-testing | **66 of 69** `data/` files read; **7 of 8** `bad_data/` files rejected |
 
-That last row is the one that looks like the headline. It is not, and I want
-to explain why before I lean on it.
-
-## The oracles we use
+## The oracles
 
 pyarrow is the primary oracle, and it is used more aggressively than "we compared
 the output." `tools/oracle_pyarrow.py` reads each fixture and dumps **every**
@@ -60,7 +57,7 @@ file, a flipped byte inside a checksummed page, eleven single-byte corruptions
 of a page header, a dictionary index out of range, a level above the column
 maximum. Each must raise. None may crash or read out of bounds.
 
-## What the corpus adds
+## The Apache corpus
 
 Fixtures are files I chose. The corpus at apache/parquet-testing is files other people chose,
 including several nobody would write on purpose.
@@ -77,33 +74,29 @@ holds eight files every implementation should refuse, and we refuse seven.
 answer, and they are counted as unreadable only because the runner's job is to
 make a _new_ failure stand out instead of blending into a known-bad list.
 
-**The third is `large_string_map.brotli.parquet`, and it is not what it looks**
-**like.** Until this week it was listed as "BROTLI codec not implemented", which
-was true and which was also hiding the real problem. Brotli now works — I bound
-libbrotli rather than implementing RFC 7932, whose static dictionary alone is
-122 KB of data that is _part of the format_ — and the file decodes its Brotli
-pages perfectly. All 2,147,483,648 bytes of them. Then the offsets wrap.
+**The third is `large_string_map.brotli.parquet`, and it is not a codec gap.**
+Brotli reads — bound to libbrotli rather than implemented, since RFC 7932's
+static dictionary alone is 122 KB of data that is _part of the format_ — and
+this file decodes its Brotli pages perfectly, all 2,147,483,648 bytes of them.
+Then the offsets wrap.
 
 Arrow's `binary`/`string` layout addresses value bytes with 32-bit offsets, and
 that column chunk holds exactly 2 GiB. Reading it needs 64-bit offsets
 (`large_binary`) or the column split across several record batches, and
-parquet.mojo does neither yet. Worse, the wrap used to surface far from its
-cause: an out-of-bounds slice during assembly, which trips a bounds assert and
-takes the process down rather than raising — running the corpus killed the
-runner mid-directory. The four places that grow a variable-length buffer now
-check, so it is a reported failure with a message that says what is actually
-wrong.
+parquet.mojo does neither yet. What it does guarantee is the failure mode: a
+chunk past that limit raises a named error naming the limit, rather than
+crashing or handing back wrapped offsets.
 
 One file also goes the other way: we **accept** `ARROW-GH-43605.parquet`, which
 Arrow rejects. Its dictionary indices use an RLE bit width of 0. The obvious
 check — the width must be wide enough to address the whole dictionary — is
-wrong, and I know it is wrong because I wrote it, and it rejected
-`alltypes_tiny_pages.parquet`, a perfectly valid file. A page may legitimately
-use width 0 when its own indices happen to be all zero, and nothing in the
-format distinguishes that from the corrupt case. So we are more permissive than
-Arrow here, deliberately, and it is in the report rather than hidden in a pass.
+unsound: a page may legitimately use width 0 when its own indices are all zero,
+and `alltypes_tiny_pages.parquet` in the same corpus does exactly that. Nothing
+in the format distinguishes the valid case from the corrupt one, so we are more
+permissive than Arrow here, deliberately, and the conformance report says so
+rather than hiding it in a pass.
 
-## When the oracle is the one that is wrong
+## Bugs in the oracle
 
 Holding implementations against each other cuts both ways. One disagreement
 turned out to be pyarrow's: the Parquet writer undercounts nulls for a
@@ -114,7 +107,7 @@ in the file, not in pyarrow's reader — DuckDB agrees with us. That is
 [apache/arrow#51097](https://github.com/apache/arrow/issues/51097), reduced to
 a standalone repro with no magmalake code in it before it was filed.
 
-## Summary
+## Guarantees and limits
 
 Every codec the Parquet spec defines now reads, and every encoding including
 ALP. That is coverage, not proof. There is no fuzzing here, no property-based
@@ -123,6 +116,6 @@ modular encryption is unimplemented and a `PARE` footer raises. Nested
 predicates inside list and map elements do not prune. And a column chunk with
 more than 2 GiB of string data raises rather than reads.
 
-What I will claim is narrower and, I think, more useful: for the files in the
-corpus and the fixtures, this reader agrees with pyarrow value for value, and
-where it disagrees I can tell you which one of us is wrong and why.
+The narrow claim: across the corpus and the fixtures, this reader agrees with
+pyarrow value for value, and every disagreement is accounted for — named in the
+conformance report, with the reason it goes the way it does.
