@@ -1,0 +1,363 @@
+---
+import Base from "../../layouts/Base.astro";
+---
+
+<Base
+  title="Writing async-like code in durable execution"
+  description="Durable execution gives you retries and replay without callbacks. Getting there in Mojo meant closing a hole in the run block, bounding its retries, and deleting an API that deadlocked."
+>
+  <article class="section post">
+    <div class="wrap">
+      <p class="eyebrow">Durable execution</p>
+      <h1 class="post__title">Writing async-like code in durable execution</h1>
+      <p class="post__meta">
+        <time datetime="2026-09-02">2 September 2026</time> ·
+        <a href="https://github.com/magmalake/restate.mojo" rel="noopener">restate.mojo</a>
+      </p>
+
+      <p class="lede">
+        A durable execution engine promises something that sounds impossible:
+        write ordinary straight-line code, and if the process dies halfway
+        through, it resumes without redoing the parts that already succeeded.
+        No callbacks, no state machine, no reconciliation job. This is what
+        that looks like in Mojo, and what it took to make the failure paths
+        honest.
+      </p>
+
+      <h2>The shape of the promise</h2>
+
+      <p>
+        Here is an order flow. It reserves stock, charges a card, and ships.
+        Read it as if nothing can go wrong:
+      </p>
+
+      <pre class="post__code"><code>{`var reserved = reserve(app, inv)
+var charged  = charge(app, inv)
+var shipped  = ship(app, inv)
+app.complete(inv, String(reserved, " / ", charged, " / ", shipped))`}</code></pre>
+
+      <p>
+        Now let the card decline. The invocation fails, Restate re-delivers it,
+        and the handler runs again from the top — but <em>reserve does not run
+        a second time</em>. Its result was journaled the first time through and
+        is replayed from the log:
+      </p>
+
+      <pre class="post__code"><code>{`--- attempt 1 at t+0s
+[attempt 1] execute  reserve  -> res-order-1-c4ea8c
+[attempt 1] execute  charge   -> boom: card declined (retrying in-place)
+--- attempt 2 at t+0s
+[attempt 2] REPLAY   reserve  -> res-order-1-c4ea8c
+[attempt 2] execute  charge   -> boom: card declined (retrying in-place)
+--- attempt 3 at t+2s
+[attempt 3] REPLAY   reserve  -> res-order-1-c4ea8c
+[attempt 3] execute  charge   -> chg-order-1-b40aa
+[attempt 3] execute  ship     -> shipped
+[attempt 3] done`}</code></pre>
+
+      <p>
+        The reservation id ends in a nanosecond timestamp, so a second
+        execution could not have produced the same string. That it is identical
+        across three attempts is the journal doing its job, not luck. This is
+        the whole pitch: retry semantics you would otherwise hand-roll with a
+        state table and an idempotency key, expressed as a function that reads
+        top to bottom.
+      </p>
+
+      <h2>Where the journal boundary goes</h2>
+
+      <p>
+        The mechanism is a <code>run</code> block. You ask the journal whether
+        this step already happened; if not, you do the work and record the
+        result:
+      </p>
+
+      <pre class="post__code"><code>{`var replayed = app.run_enter(inv)
+if replayed:
+    return replayed.value()          # already done, here is what it returned
+var value = charge_the_card()
+return app.run_exit(inv, value)      # journal it`}</code></pre>
+
+      <p>
+        Which raises the question this post is really about: what happens when
+        <code>charge_the_card()</code> throws?
+      </p>
+
+      <p>
+        In our first version, nothing good. There was no way to close a run
+        block that had failed. Raising between <code>run_enter</code> and
+        <code>run_exit</code> left the block open, and the journal kept
+        expecting an exit that never came. Every later attempt died the same
+        way:
+      </p>
+
+      <pre class="post__code"><code>{`restate.mojo protocol error: expected rst_run_exit`}</code></pre>
+
+      <p>
+        The invocation could then neither complete nor terminally fail. It
+        retried that protocol error forever. The workaround was to do the
+        fallible call <em>before</em> opening the block and journal the result
+        only once you had one — which works, and leaves a window where a crash
+        after a successful charge but before the journal write charges the card
+        twice on retry.
+      </p>
+
+      <p>
+        That window is exactly what a run block exists to close, so the
+        workaround was the wrong shape. The fix was to expose what the
+        underlying SDK already had: a way to fail the block.
+      </p>
+
+      <h2>Three ways to fail, and they are not interchangeable</h2>
+
+      <p>
+        The interesting part is that "it failed" is not one thing. There are
+        three, and choosing wrong is the most common way to misuse a durable
+        execution engine:
+      </p>
+
+      <table class="post__table">
+        <thead>
+          <tr><th>Call</th><th>Journaled?</th><th>What happens</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>run_fail(terminal=False)</code></td>
+            <td>no</td>
+            <td>the step runs again — a blip, a timeout, a 503</td>
+          </tr>
+          <tr>
+            <td><code>run_fail(terminal=True)</code></td>
+            <td>yes, as a failure</td>
+            <td>raised so you can compensate and finish</td>
+          </tr>
+          <tr>
+            <td><code>app.fail(inv, msg)</code></td>
+            <td>ends the invocation</td>
+            <td>the caller gets an error, nothing is retried</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        Abandoning a permanently broken invocation retries it forever. Failing
+        a transient one throws away work that would have succeeded on the next
+        attempt. A malformed order will not become well-formed by being tried
+        again; a card network having a bad minute will.
+      </p>
+
+      <p>
+        There is a fourth state that is not a failure at all, and it is the one
+        that bit us while writing the example. Between retries an invocation
+        can be <em>suspended</em> — parked on a durable timer, to be resumed
+        later. That arrives as an exception like any other. Catch it as if the
+        step had failed and you will compensate for work that was merely
+        waiting:
+      </p>
+
+      <pre class="post__code"><code>{`except e:
+    if is_suspended(e):
+        raise e          # not a failure — let the driver park it
+    compensate()`}</code></pre>
+
+      <h2>Retries need a budget</h2>
+
+      <p>
+        Once a step can fail transiently, something has to decide how long to
+        keep trying. Our first version left that to Restate's server-side
+        policy, which retries indefinitely. That is right for a payment and
+        wrong for a courtesy email nobody is waiting on, and there was no way
+        to say which one you had.
+      </p>
+
+      <pre class="post__code"><code>{`var slot = app.run_enter_policy(inv, initial_delay_ms=250, max_attempts=3)`}</code></pre>
+
+      <p>
+        Three attempts a quarter-second apart, then the block fails terminally
+        and the handler carries on without the notification. The order still
+        gets placed:
+      </p>
+
+      <pre class="post__code"><code>{`--- notify attempt 5
+[attempt 5] execute  notify   -> smtp timeout
+--- notify attempt 6
+[attempt 6] execute  notify   -> smtp timeout
+--- notify attempt 7
+[attempt 7] execute  notify   -> smtp timeout
+  gave up after 3 tries: Terminal error [500]: smtp timeout`}</code></pre>
+
+      <h2>The part Mojo made harder, and the part it made easier</h2>
+
+      <p>
+        Handlers run on a pool of OS threads, and a thread start routine takes
+        a C function pointer and one <code>void *</code>. So a handler has to
+        be <em>thin</em> — non-capturing. Anything it needs beyond the
+        invocation travels through that pointer, which for a while meant this:
+      </p>
+
+      <pre class="post__code"><code>{`var live = AtomicCounter.at(Int(ctx) + C_LIVE * 8)`}</code></pre>
+
+      <p>
+        A byte offset into an untyped block, with a <code>C_LIVE</code>
+        constant that had to stay in sync with a layout written down nowhere.
+        Rust developers will recognise the era: before <code>async fn</code>,
+        you hand-wrote the state machine that the compiler now generates for
+        you.
+      </p>
+
+      <p>
+        The fix is a typed view of that pointer. <code>Ctx[T]</code> carries
+        the state's type across the thin boundary, so a handler says what it
+        means and the compiler works out the offsets:
+      </p>
+
+      <pre class="post__code"><code>{`def handle_hold(app: App, inv: Invocation, worker: Int, ctx: Ctx[Stats]) raises:
+    var live = counter(ctx[].live)
+    live.increment()`}</code></pre>
+
+      <p>
+        It types the sharing; it does not synchronise it. Every worker gets the
+        same <code>T</code> concurrently, so shared fields are still atomics.
+        But the byte arithmetic is gone, and — the point — this is the same
+        program the eventual API keeps. When Mojo can carry captures across a
+        thread boundary, the parameter disappears and <code>ctx[].live</code>
+        becomes <code>live</code>. A rename, not a rewrite.
+      </p>
+
+      <h2>Compile-time code earns its keep</h2>
+
+      <p>
+        Mojo's <code>comptime</code> turned out to remove more boilerplate than
+        expected. A service used to declare itself twice — a list of handler
+        names passed to the app, and an <code>if inv.handler == …</code> chain
+        — with nothing keeping the two in step. Adding a handler meant
+        remembering both, and forgetting one failed at runtime on the first
+        request that reached it. I made that exact mistake while writing the
+        example for this post.
+      </p>
+
+      <pre class="post__code"><code>{`def handle_process(app: App, inv: Invocation, worker: Int, ctx: Ctx[Flow]) raises:
+    ...
+
+def main() raises:
+    var flow = Flow(...)
+    _ = App.run[Flow, __functions_in_module()]("Orders", flow)`}</code></pre>
+
+      <p>
+        Every <code>handle_*</code> in the module is discovered at compile
+        time; both the registration list and the dispatch are derived from the
+        same functions, so they cannot disagree. There is no list to keep in
+        step because there is no list.
+      </p>
+
+      <p>
+        This is also the honest answer to "should we generate the transitional
+        code with a macro?" — we already do. The adapter that bridges a typed
+        handler to the thin one the thread pool needs is a parameterised
+        function the compiler instantiates per handler. Nobody writes it.
+        <code>comptime</code> shrinks the hand-written layer to nearly nothing;
+        it cannot make a runtime closure cross a thread boundary, which is the
+        one thing still waiting on the language.
+      </p>
+
+      <h2>Deleting the API that looked simplest</h2>
+
+      <p>
+        The first version of this binding had a single-threaded driver: you
+        wrote the loop yourself, pulled invocations, and handled them. It was
+        the simplest thing that could work and it made a lovely first example.
+      </p>
+
+      <p>
+        It also deadlocked the moment a handler called another handler served
+        by the same process. There was no second thread to run the callee, and
+        nothing in the API said so — it passed every test that did not happen
+        to make that call, and hung the first time someone added one.
+      </p>
+
+      <p>
+        It survived as long as it did because writing handlers the other way
+        meant reaching state through a raw pointer. Once <code>Ctx[T]</code>
+        removed that cost, the only thing the loop still offered was a trap. It
+        is gone in 0.3.0. Serving on a pool is the only shape, and the default
+        is one worker per core.
+      </p>
+
+      <p>
+        There is a version of API design where you keep the simple thing
+        alongside the correct thing and document the difference. We tried that
+        for a release. The documentation was accurate and it did not help,
+        because the failure mode is silent and arrives long after the choice.
+      </p>
+
+      <h2>What it adds up to</h2>
+
+      <p>
+        The code at the top of this post is real, and it survives a process
+        dying between any two lines. The work was not in making the happy path
+        elegant — durable execution hands you that. It was in making every
+        failure path say what it means: a step that should be retried, a step
+        that is finished failing, an invocation that is a lost cause, and a
+        pause that is not a failure at all.
+      </p>
+
+      <p>
+        <a href="https://github.com/magmalake/restate.mojo" rel="noopener">restate.mojo</a>
+        is Apache-2.0, built on the official Restate Rust SDK behind a C ABI,
+        and the example above is <code>examples/failures.mojo</code> — it runs
+        against a real Restate server in about ten seconds.
+      </p>
+    </div>
+  </article>
+</Base>
+
+<style>
+  .post { padding-block: clamp(3rem, 10vh, 5rem); }
+  .post .wrap { max-width: 46rem; }
+  .post__title {
+    font-size: clamp(1.85rem, 5vw, 2.75rem);
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    margin: 0 0 0.75rem;
+  }
+  .post__meta {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    margin-bottom: 2rem;
+  }
+  .post h2 {
+    font-size: 1.3rem;
+    letter-spacing: -0.015em;
+    margin: 2.75rem 0 0.85rem;
+  }
+  .post p { margin: 0 0 1.15rem; line-height: 1.7; }
+  .post__code {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    margin: 0 0 1.4rem;
+  }
+  .post__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin: 0 0 1.4rem;
+  }
+  .post__table th,
+  .post__table td {
+    text-align: left;
+    padding: 0.5rem 0.7rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .post__table th {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+</style>
