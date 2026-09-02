@@ -12,7 +12,7 @@ backend:
   branch: main
   # Sveltia runs no hosted OAuth service, so this points at our own
   # authenticator. See README-CMS.md for deploying it.
-  base_url: https://magmalake-cms-auth.mseritan.workers.dev
+  base_url: https://sveltia-cms-auth.marius-248.workers.dev
 
 # Editing straight on main. Set to a branch name to open a PR per change
 # instead, once more than one person is writing.

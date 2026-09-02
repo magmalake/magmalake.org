@@ -56,15 +56,15 @@ npx wrangler secret put ALLOWED_DOMAINS   # magmalake.org
 
 ## 3. Point the CMS at the worker
 
-Set `base_url` in `public/admin/config.yml` to the step 1 URL, no trailing
-slash and no `/callback`. It currently reads:
+`base_url` in `public/admin/config.yml` points at the deployed worker, no
+trailing slash and no `/callback`:
 
 ```yaml
-base_url: https://magmalake-cms-auth.mseritan.workers.dev
+base_url: https://sveltia-cms-auth.marius-248.workers.dev
 ```
 
-which is a **guess** at both the worker name and the subdomain. Replace it
-with what `wrangler deploy` actually printed, then commit and push.
+If the worker is ever redeployed under a different name or account, this and
+the OAuth app's callback URL both have to move with it.
 
 ## 3. Use it
 
