@@ -7,9 +7,13 @@ interface Props {
 const { group } = Astro.props;
 ---
 
-<div class="perf">
+<div class="perf" id={`perf-${group.id}`}>
   <div class="perf__head">
-    <h3 class="perf__title">{group.title}</h3>
+    <h3 class="perf__title">
+      <a class="perf__anchor" href={`#perf-${group.id}`}>
+        {group.title}<span class="perf__hash" aria-hidden="true">#</span>
+      </a>
+    </h3>
     <p class="perf__blurb">{group.blurb}</p>
   </div>
 
@@ -74,4 +78,20 @@ const { group } = Astro.props;
   }
 
   .ref { font-size: 0.8125rem; }
+  /* Each group is linkable: the id was already in the data, it just never
+     reached the markup. */
+  .perf__anchor {
+    color: inherit;
+    text-decoration: none;
+  }
+  .perf__hash {
+    margin-left: 0.35rem;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+  .perf__anchor:hover .perf__hash,
+  .perf__anchor:focus-visible .perf__hash { opacity: 1; }
+  /* Clear the sticky nav when jumped to. */
+  .perf { scroll-margin-top: 5rem; }
 </style>

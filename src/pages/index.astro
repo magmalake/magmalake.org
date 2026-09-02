@@ -164,8 +164,10 @@ const notYet = [
         {perfGroups.map((g) => <PerfTable group={g} />)}
       </div>
 
-      <div class="panel" style="margin-bottom: 2.5rem;">
-        <h3 class="panel__title">Reproducing any of this</h3>
+      <div class="panel" id="perf-reproduce" style="margin-bottom: 2.5rem; scroll-margin-top: 5rem;">
+        <h3 class="panel__title">
+          <a class="perf__anchor" href="#perf-reproduce">Reproducing any of this</a>
+        </h3>
         <p>
           Every tin carries its own benchmarks and runs them through the same harness,
           <a href="https://github.com/magmalake/bench.mojo" rel="noopener">bench.mojo</a>.
@@ -767,6 +769,8 @@ pixi run -e bench bench -- --only bench_read_wide</code></pre>
     background: var(--ember-soft);
     border-color: var(--ember-soft);
   }
+  .panel__title .perf__anchor { color: inherit; text-decoration: none; }
+
   .bench-links {
     display: flex;
     flex-wrap: wrap;
