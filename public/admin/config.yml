@@ -14,10 +14,12 @@ backend:
   # authenticator. See README-CMS.md for deploying it.
   base_url: https://sveltia-cms-auth.marius-248.workers.dev
 
-# Each save commits to a branch and opens a pull request rather than landing
-# on main. "Publish" in the CMS merges it. Costs a click per post and means
-# nothing reaches the site without passing through a diff you can read.
-publish_mode: editorial_workflow
+# Save commits straight to `branch` above and the site rebuilds — no pull
+# request, no review step. The trade: a save is live immediately, including
+# from a phone, so nothing catches a mistake before readers see it. The
+# `draft` field below is the remaining brake; a post with draft: true is
+# excluded from the build no matter how it was saved.
+publish_mode: simple
 
 media_folder: public/media
 public_folder: /media

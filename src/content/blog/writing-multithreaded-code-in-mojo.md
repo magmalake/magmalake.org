@@ -5,7 +5,7 @@ eyebrow: Concurrency
 date: 2026-09-02
 sourceUrl: https://github.com/magmalake/threads.mojo
 sourceLabel: threads.mojo
-draft: true
+draft: false
 ---
 
 Mojo compiles to native code and your machine has ten cores. Using them is

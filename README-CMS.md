@@ -70,15 +70,23 @@ the OAuth app's callback URL both have to move with it.
 
 Go to <https://magmalake.org/admin>, sign in with GitHub, write.
 
-`publish_mode: editorial_workflow` means a save does **not** go live. It
-commits to a branch — `cms/blog/<slug>` — and opens a pull request; the post
-moves through Draft, In review and Ready in the CMS, and only **Publish**
-merges it. Cloudflare rebuilds on the merge.
+`publish_mode: simple` means a save commits straight to `main` and Cloudflare
+rebuilds. There is no review step and no second click.
 
-The practical consequence on a phone: writing and publishing are two separate
-acts, and closing the tab after writing leaves a PR open rather than losing
-the work. To go back to committing straight to `main`, set
-`publish_mode: simple`.
+The brake is the **Draft** toggle in the post form. `draft: true` keeps a post
+out of the build however it was saved, so it is the way to work on something
+over several sessions without publishing it. Two things follow from that:
+
+- Turning Draft off is what publishes a post. Nothing else does.
+- Check which post you have open before touching that toggle. Turning it *on*
+  for a post that is already live unpublishes it.
+
+To go back to review-before-publish, set `publish_mode: editorial_workflow`.
+Saves then commit to a `cms/blog/<slug>` branch and open a pull request
+labelled `sveltia-cms/draft`, and the post moves through Draft, In review and
+Ready in the CMS, with **Publish** merging it. That branch naming and the
+label are how Sveltia finds its own work in progress — a branch you create by
+hand will not appear in the CMS.
 
 ## Keeping the schema in step
 
