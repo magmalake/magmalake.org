@@ -9,7 +9,28 @@ authenticator below exists**. Two one-time steps, both yours to do: they need
 a GitHub OAuth app and a Cloudflare account, and the client secret must not
 pass through anyone else's hands.
 
-## 1. Register a GitHub OAuth app
+## 1. Deploy the authenticator first
+
+Sveltia runs no hosted OAuth service on purpose — the secret stays yours.
+[`sveltia/sveltia-cms-auth`](https://github.com/sveltia/sveltia-cms-auth) is a
+Cloudflare Worker that does the token exchange and nothing else.
+
+Deploy before registering the OAuth app: the app needs a callback URL, and you
+do not know the worker's URL until it exists.
+
+```sh
+git clone https://github.com/sveltia/sveltia-cms-auth
+cd sveltia-cms-auth
+npx wrangler deploy
+```
+
+`wrangler deploy` prints the URL, of the form
+`https://sveltia-cms-auth.<subdomain>.workers.dev`. That `<subdomain>` is your
+account's workers.dev subdomain — the same for every worker you deploy, and
+visible in the Cloudflare dashboard under Workers & Pages. Write the URL down;
+the next two steps both need it.
+
+## 2. Register a GitHub OAuth app
 
 <https://github.com/settings/developers> → **New OAuth App**
 
@@ -17,38 +38,33 @@ pass through anyone else's hands.
 |---|---|
 | Application name | `magmalake CMS` |
 | Homepage URL | `https://magmalake.org` |
-| Authorization callback URL | `https://magmalake-cms-auth.<your-subdomain>.workers.dev/callback` |
+| Authorization callback URL | the URL from step 1, plus `/callback` |
 
-Keep the **Client ID** and generate a **Client secret**. The callback host must
-match the worker you deploy next, so pick the worker name first if you want
-something other than `magmalake-cms-auth`.
+So if step 1 printed `https://sveltia-cms-auth.example.workers.dev`, the
+callback is `https://sveltia-cms-auth.example.workers.dev/callback` — a real
+host, not a placeholder.
 
-## 2. Deploy the authenticator
-
-Sveltia runs no hosted OAuth service on purpose — the secret stays yours.
-[`sveltia/sveltia-cms-auth`](https://github.com/sveltia/sveltia-cms-auth) is a
-Cloudflare Worker that does the token exchange and nothing else.
+Keep the **Client ID** and generate a **Client secret**, then give them to the
+worker:
 
 ```sh
-git clone https://github.com/sveltia/sveltia-cms-auth
-cd sveltia-cms-auth
-npx wrangler deploy
-
 npx wrangler secret put GITHUB_CLIENT_ID
 npx wrangler secret put GITHUB_CLIENT_SECRET
-# Restrict which sites may use this authenticator:
+# Stops anyone else's site using your authenticator:
 npx wrangler secret put ALLOWED_DOMAINS   # magmalake.org
 ```
 
-Then set `base_url` in `public/admin/config.yml` to the deployed worker's URL,
-without a trailing slash. It is currently:
+## 3. Point the CMS at the worker
+
+Set `base_url` in `public/admin/config.yml` to the step 1 URL, no trailing
+slash and no `/callback`. It currently reads:
 
 ```yaml
 base_url: https://magmalake-cms-auth.mseritan.workers.dev
 ```
 
-which is a guess at the subdomain — correct it to whatever `wrangler deploy`
-prints.
+which is a **guess** at both the worker name and the subdomain. Replace it
+with what `wrangler deploy` actually printed, then commit and push.
 
 ## 3. Use it
 
