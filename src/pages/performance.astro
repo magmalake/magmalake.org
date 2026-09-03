@@ -1,0 +1,195 @@
+---
+import Base from "../layouts/Base.astro";
+import PerfTable from "../components/PerfTable.astro";
+import { tins } from "../data/tins";
+import { perfGroups, passes } from "../data/perf";
+
+const description =
+  "Measured benchmarks for the magmalake stack against pyarrow and other references, including where it loses, and how to reproduce every number.";
+---
+
+<Base title="Performance" description={description}>
+  <section class="section">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">Performance</p>
+      <h1 class="section-title">Measured, including where it loses</h1>
+      <p class="lede">
+        I measured all of this on 1 September 2026, on an Apple M4, single core unless a
+        row says otherwise — same machine, same files, and every row reproducible from
+        its own repository.
+        magmalake beats pyarrow on single-core Parquet reads. It loses on writes and on
+        multi-threaded scans, where what is left of the Iceberg gap is mostly libzstd
+        itself.
+      </p>
+      <p class="lede">
+        Every number here is a <em>mean over calibrated repetitions</em>, not a
+        best-of-N, and each benchmark reports its own spread. That change alone moved
+        several published figures — one benchmark had its random-number generator inside
+        the timed loop, and most of the fast operations had been timing a cold pass over
+        a buffer they had just built. Where a row measures a C library rather than Mojo,
+        it says so.
+      </p>
+
+      <div class="perf-groups">
+        {perfGroups.map((g) => <PerfTable group={g} />)}
+      </div>
+
+      <div class="panel" id="benchmarks" style="margin-bottom: 2.5rem; scroll-margin-top: 5rem;">
+        <h3 class="panel__title">
+          <a class="perf__anchor" href="#benchmarks">Benchmark history</a>
+        </h3>
+        <p>
+          <strong>The table above is hand-measured; these are not.</strong> Those
+          numbers were taken in one sitting on the M4 named at the top, which is why
+          they carry a date rather than a build number. Every merge also runs the same
+          benchmarks on a GitHub runner and appends to a history each repository
+          publishes itself:
+        </p>
+        <ul class="bench-links">
+          {
+            tins.filter((t) => t.benchmarks).map((t) => (
+              <li><a href={t.benchmarks} rel="noopener"><code>{t.name}</code></a></li>
+            ))
+          }
+        </ul>
+        <p>
+          Expect those to be slower and noisier than the table — a shared runner is not
+          a workstation. They are worth reading as <em>trends</em>, not as absolute
+          figures: each history is keyed by machine, so a run on a laptop and a run on
+          CI stay separate series and are never averaged, and a benchmark is only
+          flagged as regressed when it falls further than its own recent variance.
+        </p>
+      </div>
+
+      <div class="panel" id="perf-reproduce" style="margin-bottom: 2.5rem; scroll-margin-top: 5rem;">
+        <h3 class="panel__title">
+          <a class="perf__anchor" href="#perf-reproduce">Reproducing any of this</a>
+        </h3>
+        <p>
+          Every tin carries its own benchmarks and runs them through the same harness,
+          <a href="https://github.com/magmalake/bench.mojo" rel="noopener">bench.mojo</a>.
+          Clone the repo a row belongs to and run:
+        </p>
+        <pre class="callout__code"><code>git clone https://github.com/magmalake/parquet.mojo
+cd parquet.mojo
+
+pixi run -e bench bench                    # the table, with spread
+pixi run -e bench bench -- --json          # every repetition, machine-readable
+pixi run -e bench bench -- --list          # what this repo measures
+pixi run -e bench bench -- --only bench_read_wide</code></pre>
+        <p>
+          The <code>bench</code> environment is stable Mojo 1.0.0: a precompiled Mojo
+          package is stamped with the compiler version that built it, and every tin
+          builds with 1.0.0. The libraries themselves test on stable and nightly.
+        </p>
+        <p>
+          A few benchmarks need a fixture that is generated rather than committed —
+          parquet wants <code>python tools/bench_pyarrow.py --make</code> first, iceberg
+          builds a warehouse, objectstore needs MinIO. Each repo's README says which, and
+          the bench stops with instructions rather than measuring the wrong thing. Expect
+          your absolute numbers to differ from an M4; the ratios are what travel.
+        </p>
+      </div>
+
+      <div class="two-col two-col--wide">
+        <div class="panel">
+          <h3 class="panel__title">Threads, for now, come from a tin</h3>
+          <p>
+            Mojo's standard library currently has no threading. <code>parallelize</code> was
+            removed and there is no thread pool reachable from user code, so every number
+            above that mentions more than one core goes through
+            <a href="https://github.com/magmalake/threads.mojo" rel="noopener">magmalake/threads</a>,
+            which wraps pthreads directly via <code>external_call</code>.
+          </p>
+          <p>
+            That tin is <strong>inspired by and distilled from
+            <a href="https://github.com/ehsanmok/flare" rel="noopener">flare</a></strong>
+            — Ehsan Mokhtarian's project, MIT-licensed — which worked out how to get real OS
+            threads out of Mojo in the first place. threads.mojo keeps the parts a data stack
+            needs and drops the rest.
+          </p>
+          <p class="panel__fine">
+            It is explicitly a stopgap. When the language ships its own threading, this tin
+            should stop existing.
+          </p>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel__title">How these numbers were found</h3>
+          <p class="panel__fine" style="margin-bottom: 1rem;">
+            Four optimisation passes. I profiled before each one instead of guessing, which
+            was just as well — not one of the bottlenecks was where I would have looked first.
+          </p>
+          <ol class="passes">
+            {
+              passes.map((p) => (
+                <li>
+                  <span class="passes__found">{p.found}</span>
+                  <span class="passes__fix">{p.fix}</span>
+                </li>
+              ))
+            }
+          </ol>
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .perf-groups { margin-top: 2.5rem; }
+
+  .passes {
+    list-style: none;
+    counter-reset: pass;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.95rem;
+  }
+  .passes li {
+    counter-increment: pass;
+    position: relative;
+    padding-left: 2rem;
+  }
+  .passes li::before {
+    content: counter(pass);
+    position: absolute;
+    left: 0;
+    top: 0.05em;
+    width: 1.35rem;
+    height: 1.35rem;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--ember-wash);
+    color: var(--ember);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 600;
+  }
+  .passes__found {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.45;
+  }
+  .passes__fix {
+    display: block;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-top: 0.15rem;
+  }
+
+  .bench-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem;
+  }
+  .bench-links code { font-size: 0.85rem; }
+</style>

@@ -1,6 +1,10 @@
 ---
+import { tins } from "../data/tins";
+
+const tinCount = tins.filter((t) => t.tier !== "oracle").length;
+
 const highlights = [
-  { value: "12", label: "tins on mojoshelf" },
+  { value: String(tinCount), label: "tins on mojoshelf" },
   { value: "v1–v3", label: "Iceberg formats read" },
   { value: "232M", label: "Parquet rows/s, one core" },
   { value: "0", label: "JVM or Python in the path" },
@@ -10,7 +14,7 @@ const highlights = [
 <section class="hero">
   <div class="hero__glow" aria-hidden="true"></div>
   <div class="wrap wrap--wide hero__inner">
-    <p class="hero__kicker">An exploration of running data workflows on Mojo</p>
+    <p class="hero__kicker">Data infrastructure for Mojo, version 0.x</p>
 
     <h1 class="hero__title">
       A data lake that lives<br />
@@ -18,11 +22,11 @@ const highlights = [
     </h1>
 
     <p class="hero__lede">
-      An experiment: can a modern data stack — Apache Iceberg and everything
-      underneath it — exist in Mojo without reaching back through Python or the JVM?
-      I built a set of small tins to find out. Each is independently usable, and each
-      is checked against the reference implementation of the format it claims to
-      speak.
+      Mojo can open an Apache Iceberg table today without reaching back through Python
+      or the JVM. magmalake is the set of tins that makes that true — Iceberg and
+      everything underneath it, each independently usable and each checked against the
+      reference implementation of the format it speaks. It is early, and it is meant to
+      grow into the data layer the language does not have yet.
     </p>
 
     <div class="hero__code">
@@ -40,7 +44,7 @@ const highlights = [
       <a class="btn btn--primary" href="https://github.com/magmalake" rel="noopener">
         Browse the org on GitHub
       </a>
-      <a class="btn" href="#tins">See the tins</a>
+      <a class="btn" href="/tins">See the tins</a>
     </div>
 
     <dl class="hero__stats">
@@ -147,36 +151,8 @@ const highlights = [
     margin-bottom: 3rem;
   }
 
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.65rem 1.25rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-strong);
-    background: var(--surface);
-    color: var(--text);
-    font-size: 0.9375rem;
-    font-weight: 500;
-    text-decoration: none;
-    transition: all 0.15s ease;
-  }
-  .btn:hover {
-    border-color: var(--text-muted);
-    box-shadow: var(--shadow);
-  }
-  .btn--primary {
-    background: var(--ember);
-    border-color: var(--ember);
-    color: #fff;
-  }
-  :root[data-theme="dark"] .btn--primary { color: #1a0d06; }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .btn--primary { color: #1a0d06; }
-  }
-  .btn--primary:hover {
-    background: var(--ember-soft);
-    border-color: var(--ember-soft);
-  }
+  /* .btn / .btn--primary live in src/styles/sections.css — shared with the
+     closing CTA on the home and status pages. */
 
   .hero__stats {
     display: grid;

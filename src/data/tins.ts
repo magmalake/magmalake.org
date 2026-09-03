@@ -12,7 +12,7 @@ export interface Tin {
   what: string;
   /** The correctness oracle — what gates it in CI. */
   oracle: string;
-  /** Up to four short capability bullets. */
+  /** Short capability bullets. */
   bullets: string[];
   /** Published benchmark history, for the tins that run one in CI. */
   benchmarks?: string;
@@ -248,7 +248,7 @@ export const tins: Tin[] = [
     name: "restate",
     pkg: "restate-mojo",
     repo: "https://github.com/magmalake/restate.mojo",
-    version: "0.3.1",
+    version: "0.3.2",
     tier: "primitive",
     what:
       "Durable execution in Mojo, via Restate. A Rust shim embeds the official Restate SDK — Rust owns the HTTP/2 endpoint, the event loop and the journal — while your handlers are Mojo, driven by a synchronous loop where every durable operation crosses one C-ABI call.",
@@ -265,7 +265,7 @@ export const tins: Tin[] = [
     name: "threads",
     pkg: "threads-mojo",
     repo: "https://github.com/magmalake/threads.mojo",
-    version: "0.2.0",
+    version: "0.4.0",
     tier: "primitive",
     what:
       "Minimal OS threads for Mojo: spawn and join pthreads, share state through atomics and a mutex, and fan a loop out over cores with parallel_for. A stopgap, distilled from flare, until the language ships its own.",
@@ -275,6 +275,7 @@ export const tins: Tin[] = [
       "Atomics that bridge the stable/nightly std.atomic split",
       "Mutex, spawn, join and thread pinning",
       "Spawn and join in 14 µs; parallel_for scales ~4×",
+      "Typed parallel_for and TypedPool: shared state held alive by origin, the void* erasure inside the library",
     ],
   },
   {

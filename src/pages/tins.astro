@@ -1,0 +1,35 @@
+---
+import Base from "../layouts/Base.astro";
+import TinCard from "../components/TinCard.astro";
+import { tinsByTier, TIER_LABEL } from "../data/tins";
+
+const description =
+  "Every magmalake tin — table format, file formats and storage, primitives, and the cross-implementation oracle — with what each one is and what proves it.";
+---
+
+<Base title="Tins" description={description}>
+  <section class="section section--alt">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">The tins</p>
+      <h1 class="section-title">What each one is, and what proves it</h1>
+      <p class="lede">
+        Every tin is Apache-2.0, published on mojoshelf, and CI-tested on stable Mojo 1.0.0
+        and the current nightly, across macOS and Linux. Each carries its own correctness
+        oracle — an outside implementation I made it agree with.
+      </p>
+
+      {
+        (["table", "format", "primitive", "oracle"] as const).map((tier) => (
+          <div class="tier">
+            <h3 class="tier__label">{TIER_LABEL[tier]}</h3>
+            <div class:list={["tin-grid", tier === "table" && "tin-grid--lead"]}>
+              {tinsByTier(tier).map((t) => (
+                <TinCard tin={t} featured={tier === "table"} />
+              ))}
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </section>
+</Base>

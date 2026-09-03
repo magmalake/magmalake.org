@@ -1,0 +1,174 @@
+/*
+ * Section furniture shared by more than one page (moved out of the old
+ * single-page index.astro scoped style so it stops being duplicated as the
+ * site splits into /tins, /performance, /correctness and /status). Anything
+ * used by exactly one page stays scoped in that page's own <style> block.
+ */
+
+/* ---- two-column layout ---- */
+.two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 3rem;
+  align-items: start;
+}
+.two-col--wide {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 3rem;
+}
+
+@media (max-width: 900px) {
+  .two-col,
+  .two-col--wide {
+    grid-template-columns: 1fr;
+    gap: 2.25rem;
+  }
+}
+
+/* ---- callout aside (mojoshelf install, reproduce commands) ---- */
+.callout {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--lake);
+  border-radius: var(--radius);
+  padding: 1.5rem 1.6rem;
+  box-shadow: var(--shadow);
+}
+.callout__title {
+  font-size: 1.0625rem;
+  margin-bottom: 0.7rem;
+}
+.callout p {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.callout__code {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.9rem;
+  margin: 1rem 0;
+}
+.callout__code code {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--lake);
+  font-size: 0.8125rem;
+}
+.callout__fine {
+  font-size: 0.8125rem !important;
+  color: var(--text-faint) !important;
+}
+.callout__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.callout__link:hover { text-decoration: underline; }
+
+/* ---- tin tier grouping (tins page, home's compact glance) ---- */
+.tier { margin-top: 2.75rem; }
+
+.tier__label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 1rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.tin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 310px), 1fr));
+  gap: 1rem;
+}
+/* iceberg is the only tin in its tier; give it the full width. */
+.tin-grid--lead { grid-template-columns: minmax(0, 1fr); }
+
+/* ---- info panel (performance page) ---- */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.6rem 1.7rem;
+}
+.panel__title {
+  font-size: 1.0625rem;
+  margin-bottom: 0.8rem;
+}
+.panel p {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.62;
+  margin-bottom: 0.85rem;
+}
+.panel__fine {
+  font-size: 0.8125rem !important;
+  color: var(--text-faint) !important;
+}
+.panel__title .perf__anchor { color: inherit; text-decoration: none; }
+
+/* ---- buttons (hero + closing CTA) ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.65rem 1.25rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+.btn:hover { border-color: var(--text-muted); box-shadow: var(--shadow); }
+.btn--primary {
+  background: var(--ember);
+  border-color: var(--ember);
+  color: #fff;
+}
+:root[data-theme="dark"] .btn--primary { color: #1a0d06; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .btn--primary { color: #1a0d06; }
+}
+.btn--primary:hover {
+  background: var(--ember-soft);
+  border-color: var(--ember-soft);
+}
+
+/* ---- closing "take a tin" CTA (home + status) ---- */
+.cta {
+  margin-top: 3rem;
+  padding: 2rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--ember) 7%, var(--surface)),
+    color-mix(in srgb, var(--lake) 7%, var(--surface))
+  );
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+.cta__title { font-size: 1.25rem; margin-bottom: 0.4rem; }
+.cta__text {
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 48ch;
+}
+.cta__actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
