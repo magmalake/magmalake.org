@@ -5,7 +5,7 @@ eyebrow: Concurrency
 date: 2026-09-03
 sourceUrl: https://github.com/magmalake/threads.example
 sourceLabel: threads.example
-draft: true
+draft: false
 ---
 
 The [previous post](/blog/writing-multithreaded-code-in-mojo/) shared a struct
