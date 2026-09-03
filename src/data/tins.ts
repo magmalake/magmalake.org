@@ -30,7 +30,7 @@ export const tins: Tin[] = [
     name: "iceberg",
     pkg: "iceberg-mojo",
     repo: "https://github.com/magmalake/iceberg.mojo",
-    version: "0.5.0",
+    version: "0.6.0",
     tier: "table",
     what:
       "Native Apache Iceberg. Read a table's metadata.json, pick a snapshot, decode its manifests, plan a scan and read the rows — then create, append, delete, overwrite and expire. No JVM, no Python, no Rust in the path.",
@@ -38,7 +38,7 @@ export const tins: Tin[] = [
     bullets: [
       "Format v1–v3 reads: position and equality deletes, v3 deletion vectors, schema evolution, nested types",
       "Writes: create, fast-append, delete (copy-on-write and merge-on-read), overwrite, dynamic partition overwrite, expire_snapshots",
-      "REST and filesystem catalogs; local, HTTP, S3, GCS and Azure IO",
+      "REST, filesystem and SQL catalogs — the SQL one on SQLite or PostgreSQL, PyIceberg's schema; local, HTTP, S3, GCS and Azure IO",
       "Scans 1M rows in 35.8 ms single-core, 12.1 ms across four workers",
     ],
   },

@@ -17,7 +17,7 @@ const worksToday = [
   "Fast-append, row-level delete both copy-on-write and merge-on-read",
   "Overwrite and dynamic partition overwrite",
   "expire_snapshots",
-  "Filesystem and REST catalogs",
+  "Filesystem, REST and SQL catalogs — the SQL catalog on SQLite for development, or on PostgreSQL",
   "Local, HTTP, S3, GCS and Azure IO",
 ];
 
@@ -380,10 +380,9 @@ pixi run -e bench bench -- --only bench_read_wide</code></pre>
             The spec's v4 drafts — relative paths and <code>content_stats</code> — are tracked
             but not implemented. What is proposed but unbuilt lives in
             <a href="https://github.com/magmalake/.github/issues" rel="noopener">the issue
-            tracker</a> — currently
-            <a href="https://github.com/magmalake/.github/issues/1" rel="noopener">a spec for a
-            PostgreSQL tin</a>, which would let the SQL catalog run on something other than a
-            local file.
+            tracker</a>. The last spec there,
+            <a href="https://github.com/magmalake/.github/issues/1" rel="noopener">a PostgreSQL
+            tin</a>, shipped as postgres.mojo and put the SQL catalog on a server.
           </p>
         </div>
       </div>
