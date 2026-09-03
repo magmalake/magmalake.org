@@ -9,11 +9,10 @@ draft: true
 ---
 
 The [previous post](/blog/writing-multithreaded-code-in-mojo/) shared a struct
-across ten cores through a twenty-line `Ctx[T]`. That struct was destroyed
+across ten cores through a twenty-line `Ctx[T]`. That approach was unfortunately flawed as the struct was destroyed
 before the first thread started. The program still printed `499500`, which is
 why I did not notice, and this post is about why it printed the right number,
-what the honest version looks like, and how I now keep the compiler honest
-about it.
+what is the right approach, and how to avoid it next time. 
 
 ## The destruction point
 
@@ -33,7 +32,7 @@ before parallel_for
 after parallel_for: 499499
 ```
 
-The tasks added their thousand indices into a cell the destructor had already
+The total is off by one because the tasks added their thousand indices into a cell the destructor had already
 poisoned to `-1`. Nothing in the language was wrong. `MutUntrackedOrigin` is
 the contract: I told the compiler I would track this myself, and then I did
 not.
@@ -71,9 +70,8 @@ def main() raises:
     print("cores:", num_cpus(), " sum:", totals.sum)
 ```
 
-`Ctx[T]` is gone. The task receives `mut Totals` instead of a `void*` it has to
-reinterpret, and the erasure still happens — a pthread carries exactly one
-pointer — but once, inside the library, in the worker that rebuilds the `T`
+`Thw Ctx[T]` from the first blog is gone. The task receives `mut Totals` instead of a `void*` it has to
+reinterpret, and the pthread related erasure happens inside the library, in the worker that rebuilds the `T`
 from the address. User code never spells `MutUntrackedOrigin`.
 
 The compiler now also refuses two calls it used to accept. A `read` argument
@@ -130,7 +128,7 @@ The uncaught set sorts into two kinds.
 
 The first three are lifetimes, and each has a fix today. The two `drops_early`
 files are the same bug at two spellings, and `parallel_for[task](n, totals)` is
-the fix for both; `Int(Pointer(to=totals))` is exactly where an origin stops,
+the fix for both; `Int(Pointer(to=totals))` is  where an origin stops,
 and the typed overload exists so that line never appears in user code. The
 `field_deref` case has nothing to do with threads: `totals.cell[]` copies an
 untracked pointer out of the struct, that copy is the struct's last use, and
@@ -145,7 +143,7 @@ threads enter it — aliased `&mut` is an exclusivity error, and the atomic
 works through `&AtomicI64` because that type is `Sync`. Mojo has no `Sync`
 and no interior-mutability marker, so there is nothing `parallel_for` could
 demand of `T`. An origin says how long `totals` lives. It does not say whether
-`totals` is safe to share, and that is the gap that stays open.
+`totals` is safe to share, and that is a gap.
 
 ## A lint for the uncaught set
 
@@ -158,14 +156,18 @@ ships `mojolint`, three rules over Mojo source, one per row:
 | `L002` owning-untracked-field | `local.field[]` through an untracked pointer field of a struct with `__deinit__`, when that is `local`'s last use | `field_deref_after_last_use` |
 | `L003` plain-store-in-task | a plain `=` or `+=` into shared state inside a function shaped like a task, `(i: Int, mut t: T)` | `plain_store_races` |
 
-Silent on the correct programs next to them, and silent on every file in the
-magmalake tins except two — the same bug as `field_deref`, in a benchmark and
+We tested this  on every file in the
+magmalake tins and it reported two real problems — the same bug as `field_deref`, in a benchmark and
 a test, where an `OwnedDLHandle` was destroyed at its last mention and a
 function pointer taken from it was called afterwards. Both are fixed.
 
-There are two modes. As text, it reads logical lines and matches idioms:
+The linter has two modes text and lsp.
+
+As text, it reads logical lines and matches idioms:
 milliseconds per file, and "last use" means the last time the name is
-spelled. With `--lsp` it runs `mojo-lsp-server` — the compiler's own frontend,
+spelled. 
+
+With `--lsp` it runs `mojo-lsp-server` — the compiler's own frontend,
 in the same conda package as `mojo` — once per file and takes resolved types
 and name-resolved references from it. That is what lets it report
 `var ctx = Ctx[Totals].to(totals).opaque()` at the call site rather than
