@@ -147,6 +147,45 @@ and no interior-mutability marker, so there is nothing `parallel_for` could
 demand of `T`. An origin says how long `totals` lives. It does not say whether
 `totals` is safe to share, and that is the gap that stays open.
 
+## A lint for the uncaught set
+
+The second table is now a linter. [lint.mojo](https://github.com/magmalake/lint.mojo)
+ships `mojolint`, three rules over Mojo source, one per row:
+
+| rule | fires on | uncaught file |
+| --- | --- | --- |
+| `L001` untracked-pointer-from-dying-local | a `var` whose origin is erased — `Int(Pointer(to=x))`, `MutUntrackedOrigin`, `opaque_ptr` — on the line of its last use, or an erased address that is returned | `untracked_ctx_drops_early`, `opaque_escapes_origin` |
+| `L002` owning-untracked-field | `local.field[]` through an untracked pointer field of a struct with `__deinit__`, when that is `local`'s last use | `field_deref_after_last_use` |
+| `L003` plain-store-in-task | a plain `=` or `+=` into shared state inside a function shaped like a task, `(i: Int, mut t: T)` | `plain_store_races` |
+
+Silent on the correct programs next to them, and silent on every file in the
+magmalake tins except two — the same bug as `field_deref`, in a benchmark and
+a test, where an `OwnedDLHandle` was destroyed at its last mention and a
+function pointer taken from it was called afterwards. Both are fixed.
+
+There are two modes. As text, it reads logical lines and matches idioms:
+milliseconds per file, and "last use" means the last time the name is
+spelled. With `--lsp` it runs `mojo-lsp-server` — the compiler's own frontend,
+in the same conda package as `mojo` — once per file and takes resolved types
+and name-resolved references from it. That is what lets it report
+`var ctx = Ctx[Totals].to(totals).opaque()` at the call site rather than
+inside the helper, tell a `for` variable from the local it shadows, and read a
+task's shape from the resolved signature instead of the header text. Half a
+second per file.
+
+```sh
+pixi shelf add lint-mojo
+pixi shelf lint --lsp        # src/ and tests/; exit 1 on findings
+```
+
+What the LSP does not expose is the destruction point. "Last use" is the last
+textual position the compiler resolves to the name, which is the ASAP rule in
+straight-line code and not across loops or branches. That, and the diagnostic
+itself, belongs in the compiler's lifetime checker, and
+[modular/modular#7076](https://github.com/modular/modular/issues/7076) asks
+for it there. `L003` will stay a lint whatever happens to `L001`: deciding
+which stores race needs the `Sync` the language does not have.
+
 ## Learnings
 
 - A test for undefined behaviour must not itself be undefined. The destructor
@@ -161,6 +200,6 @@ demand of `T`. An origin says how long `totals` lives. It does not say whether
 - `MutUntrackedOrigin` is the contract, not a bug. I checked whether any of
   this deserved a compiler issue and none did — every wrong answer followed a
   line where I told the compiler to stop tracking.
-- The remaining gap is `Sync`-shaped. A lint can flag a plain store in a task
-  body, and I am trying one; what it cannot see is provenance, and what the
-  language cannot yet say is that a type is safe to share.
+- The remaining gap is `Sync`-shaped. A lint flags a plain store in a task
+  body; what it cannot see is provenance, and what the language cannot yet
+  say is that a type is safe to share.
