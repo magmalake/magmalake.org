@@ -198,7 +198,11 @@ which stores race needs the `Sync` the language does not have.
   shrinks.
 - Erasure belongs in the library. There is exactly one place a pointer has to
   become `void*`; put it behind the API that needs it, and user code keeps its
-  origins.
+  origins. Applied a second time, the rule gave threads-mojo 0.4.0 a
+  `TypedPool[T, origin]`: a pool outlives the call that starts it, so the
+  origin rides on the pool's type rather than on an argument, and
+  [restate.mojo](https://github.com/magmalake/restate.mojo)'s `serve` traded a
+  hand-packed cell block for a plain local.
 - `MutUntrackedOrigin` is the contract, not a bug. I checked whether any of
   this deserved a compiler issue and none did — every wrong answer followed a
   line where I told the compiler to stop tracking.
