@@ -110,6 +110,22 @@ export const tins: Tin[] = [
     ],
   },
   {
+    name: "postgres",
+    pkg: "postgres-mojo",
+    repo: "https://github.com/magmalake/postgres.mojo",
+    version: "0.2.0",
+    tier: "format",
+    what:
+      "A PostgreSQL client over libpq: parameterized statements, typed text-format results, transactions with savepoints and COPY, every error carrying its SQLSTATE. A fork of dvirarad/mojo-postgres, rewritten for the 1.x toolchain.",
+    oracle: "psycopg 3 and psql — cell-exact, both directions",
+    bullets: [
+      "Every §5 type, with NULL distinct from empty and numeric kept as text",
+      "PQexecParams and prepared statements — no values escaped into SQL",
+      "COPY in and out at 5 M rows/s; handles co-own the connection",
+      "Tested against a throwaway cluster on every CI leg — no Docker",
+    ],
+  },
+  {
     name: "roaring",
     pkg: "roaring-mojo",
     repo: "https://github.com/magmalake/roaring.mojo",
