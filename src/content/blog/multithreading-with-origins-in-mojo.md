@@ -70,7 +70,7 @@ def main() raises:
     print("cores:", num_cpus(), " sum:", totals.sum)
 ```
 
-`Thw Ctx[T]` from the first blog is gone. The task receives `mut Totals` instead of a `void*` it has to
+The `Ctx[T]` from the first post is gone. The task receives `mut Totals` instead of a `void*` it has to
 reinterpret, and the pthread related erasure happens inside the library, in the worker that rebuilds the `T`
 from the address. User code never spells `MutUntrackedOrigin`.
 
@@ -128,7 +128,7 @@ The uncaught set sorts into two kinds.
 
 The first three are lifetimes, and each has a fix today. The two `drops_early`
 files are the same bug at two spellings, and `parallel_for[task](n, totals)` is
-the fix for both; `Int(Pointer(to=totals))` is  where an origin stops,
+the fix for both; `Int(Pointer(to=totals))` is where an origin stops,
 and the typed overload exists so that line never appears in user code. The
 `field_deref` case has nothing to do with threads: `totals.cell[]` copies an
 untracked pointer out of the struct, that copy is the struct's last use, and
@@ -156,12 +156,12 @@ ships `mojolint`, three rules over Mojo source, one per row:
 | `L002` owning-untracked-field | `local.field[]` through an untracked pointer field of a struct with `__deinit__`, when that is `local`'s last use | `field_deref_after_last_use` |
 | `L003` plain-store-in-task | a plain `=` or `+=` into shared state inside a function shaped like a task, `(i: Int, mut t: T)` | `plain_store_races` |
 
-We tested this  on every file in the
+I ran it on every file in the
 magmalake tins and it reported two real problems — the same bug as `field_deref`, in a benchmark and
 a test, where an `OwnedDLHandle` was destroyed at its last mention and a
 function pointer taken from it was called afterwards. Both are fixed.
 
-The linter has two modes text and lsp.
+The linter has two modes, text and LSP.
 
 As text, it reads logical lines and matches idioms:
 milliseconds per file, and "last use" means the last time the name is
