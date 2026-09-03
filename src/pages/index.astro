@@ -6,7 +6,7 @@ import TakeATinCta from "../components/TakeATinCta.astro";
 import { tins, tinsByTier, TIER_LABEL } from "../data/tins";
 
 const description =
-  "An exploration of running data workflows on Mojo: a native Apache Iceberg stack — Parquet, Avro, Thrift, codecs, Roaring bitmaps, object storage and threads — published as tins on mojoshelf and gated against the reference implementation of every format.";
+  "Data infrastructure for Mojo: a native Apache Iceberg stack — Parquet, Avro, Thrift, codecs, Roaring bitmaps, object storage, SQL catalogs and threads — published as tins on mojoshelf and gated against the reference implementation of every format.";
 
 const tinTiers = ["table", "format", "primitive", "oracle"] as const;
 ---
@@ -18,30 +18,29 @@ const tinTiers = ["table", "format", "primitive", "oracle"] as const;
   <section class="section section--alt" id="what">
     <div class="wrap wrap--wide">
       <p class="eyebrow">What this is</p>
-      <h2 class="section-title">An experiment, not a product</h2>
+      <h2 class="section-title">The start of a data ecosystem for Mojo</h2>
 
       <div class="two-col">
         <div class="prose">
           <p>
-            Now that Mojo has reached 1.0 I used Claude to see if one can implement
-            a meaningfully large data library in Mojo. I set my sights on
-            <a href="https://iceberg.apache.org" rel="noopener">Apache Iceberg</a>.
-            The following formats are implemented rather than wrapped: Parquet, Avro, Thrift,
-            Iceberg itself, Roaring bitmaps, Snappy and the hashes all decode bytes in
-            Mojo instead of delegating. Some very mature C libraries are currently
-            linked, not reimplemented — <strong>libzstd</strong>,
-            <strong>liblz4</strong> and <strong>libbrotli</strong> for those three codecs,
-            <strong>libcurl</strong> for HTTP
-            and TLS, and <strong>pthreads</strong> for the threads the language does not yet
-            provide. What is gone is the Python and JVM layer that every other route from
+            magmalake began as a question — now that Mojo has reached 1.0, can one implement
+            a meaningfully large data library in it? — and I picked
+            <a href="https://iceberg.apache.org" rel="noopener">Apache Iceberg</a> as the
+            target. The answer was yes, and what came out is a stack rather than a demo.
+            Parquet, Avro, Thrift, Iceberg itself, Roaring bitmaps, Snappy and the hashes are
+            implemented in Mojo, not wrapped. A few very mature C libraries are linked rather
+            than reimplemented — <strong>libzstd</strong>, <strong>liblz4</strong> and
+            <strong>libbrotli</strong> for those three codecs, <strong>libcurl</strong> for
+            HTTP and TLS, and <strong>pthreads</strong> for the threads the language does not
+            yet provide. What is gone is the Python and JVM layer that every other route from
             Mojo to Iceberg has to go through.
           </p>
           <p>
-            What came out is the stack below. Some of the answers are encouraging — native
-            Parquet decode is <em>faster</em> than pyarrow on a single core. Some are not:
-            writes are slower, thread-pooled scans lose, and the language is still missing
-            pieces a data stack assumes. I don't think the misses are limitations of the
-            approach or the tech stack, it is a matter of putting in more time and tokens.
+            Where it stands today: native Parquet decode is <em>faster</em> than pyarrow on a
+            single core; writes and thread-pooled scans still lose, and the language is still
+            missing pieces a data stack assumes. I don't read the misses as limits of the
+            approach — they are the current position on a roadmap, and the measurements say
+            exactly where the line is.
           </p>
         </div>
 
