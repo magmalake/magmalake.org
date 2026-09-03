@@ -2,6 +2,7 @@
 import "../styles/global.css";
 import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
+import { POSTHOG_KEY } from "../data/site";
 
 interface Props {
   title: string;
@@ -13,6 +14,7 @@ interface Props {
 const { title, description, bare = false } = Astro.props;
 const fullTitle = bare ? title : `${title} — magmalake`;
 const canonical = new URL(Astro.url.pathname, Astro.site ?? "https://magmalake.org");
+const posthogEnabled = POSTHOG_KEY.startsWith("phc_");
 ---
 
 <!doctype html>
@@ -56,6 +58,31 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? "https://magmalake.o
         }
       })();
     </script>
+
+    {/*
+      PostHog product analytics, proxied first-party through /ph (see
+      worker/posthog-proxy.js) so ad-blockers don't drop it. `persistence:
+      'memory'` means no cookies and no localStorage, so there is nothing to
+      disclose and no consent banner is needed. `api_host` is derived from
+      `location.origin` at runtime rather than hardcoded so this works the
+      same on the apex domain, on www., and under `wrangler dev`.
+    */}
+    {posthogEnabled && (
+      <>
+        <script defer src="/ph/static/array.js"></script>
+        <script is:inline define:vars={{ POSTHOG_KEY }}>
+          window.addEventListener("DOMContentLoaded", function () {
+            if (window.posthog) posthog.init(POSTHOG_KEY, {
+              api_host: location.origin + '/ph',
+              ui_host: 'https://us.posthog.com',
+              defaults: '2025-05-24',
+              persistence: 'memory',
+              capture_exceptions: true
+            });
+          });
+        </script>
+      </>
+    )}
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>

@@ -1,14 +1,16 @@
 {
-  // Cloudflare Workers static assets: an assets-only Worker (no `main`), so
-  // every request is served straight from the uploaded `dist/` with no Worker
-  // invocation and no per-request cost.
+  // Cloudflare Workers static assets, plus one small Worker for `/ph/*`.
+  // `assets.run_worker_first` routes only that path to `main`; every other
+  // request is still served straight from the uploaded `dist/` with no
+  // Worker invocation and no per-request cost.
   //
   //   npm run build          -> produces ./dist
-  //   npx wrangler deploy    -> uploads ./dist to the Worker
+  //   npx wrangler deploy    -> uploads ./dist and worker/posthog-proxy.js
   //
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "magmalake-org",
   "compatibility_date": "2026-08-31",
+  "main": "worker/posthog-proxy.js",
   // The apex domain magmalake.org is registered in this Cloudflare account;
   // wrangler creates and manages the DNS record for a custom domain itself.
   "routes": [
@@ -20,7 +22,10 @@
     // Astro emits directory-style pages; serve /path and /path/ alike.
     "html_handling": "auto-trailing-slash",
     // Static site with a real 404 page, not an SPA.
-    "not_found_handling": "404-page"
+    "not_found_handling": "404-page",
+    // Only the PostHog proxy path invokes the Worker; everything else is
+    // served straight from assets (see worker/posthog-proxy.js).
+    "run_worker_first": ["/ph/*"]
   },
   "observability": {
     "enabled": true
