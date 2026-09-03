@@ -3,8 +3,8 @@ title: Writing ergonomic multithreaded code in Mojo 1.0, 1.0, 1.0, …
 description: First-class async is explicitly post-1.0, and the concurrency library Mojo 1.0 does ship is one its own team tells you to avoid. Here is what you can use today — a thin function, a typed context, and about twenty lines you write once.
 eyebrow: Concurrency
 date: 2026-09-02
-sourceUrl: https://github.com/magmalake/threads.mojo
-sourceLabel: threads.mojo
+sourceUrl: https://github.com/magmalake/threads.example
+sourceLabel: threads.example
 draft: false
 ---
 
@@ -52,6 +52,11 @@ def main() raises:
 ```
 
 That prints `cores: 10  sum: 499500` — every index counted exactly once.
+
+The listing is a repository of its own,
+[threads.example](https://github.com/magmalake/threads.example): `pixi run run`
+builds it against the tin from mojoshelf and prints that line, on Linux and
+macOS in its CI. Comments and pull requests on the code go there.
 
 `parallel_for` starts one thread per core, hands each of them indices from a
 shared atomic counter until the 1000 tasks are gone, and joins every thread
@@ -336,7 +341,7 @@ So treat `threads.mojo` as scaffolding with a known expiry. When `Send`,
 language and most of this post should stop being true. We would rather have
 ten cores in the meantime.
 
-The one deviation worth flagging for anyone reading the source: `Pointer` is
-now the current spelling, and `UnsafePointer` compiles with a deprecation
-warning on 1.0.0. Older examples, including some of ours, still say
-`UnsafePointer`.
+One spelling note for anyone reading the source: `Pointer` is the current
+name, `UnsafePointer` is the deprecated one, and since 0.2.2 the tin compiles
+with no deprecation warnings on either 1.0.0 or nightly — `Pointer`,
+`unsafe_alloc` and `ptr[unsafe_offset=i]` are the forms it uses.
