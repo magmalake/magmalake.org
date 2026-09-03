@@ -2,32 +2,13 @@
 import Base from "../layouts/Base.astro";
 import Hero from "../components/Hero.astro";
 import StackDiagram from "../components/StackDiagram.astro";
-import TinCard from "../components/TinCard.astro";
-import PerfTable from "../components/PerfTable.astro";
+import TakeATinCta from "../components/TakeATinCta.astro";
 import { tins, tinsByTier, TIER_LABEL } from "../data/tins";
-import { perfGroups, passes } from "../data/perf";
-import { upstreamIssues, STATUS_LABEL } from "../data/upstream";
 
 const description =
   "An exploration of running data workflows on Mojo: a native Apache Iceberg stack — Parquet, Avro, Thrift, codecs, Roaring bitmaps, object storage and threads — published as tins on mojoshelf and gated against the reference implementation of every format.";
 
-const worksToday = [
-  "Iceberg format v1–v3 reads, with position deletes, equality deletes and v3 deletion vectors",
-  "Schema evolution and nested types through the read path",
-  "Fast-append, row-level delete both copy-on-write and merge-on-read",
-  "Overwrite and dynamic partition overwrite",
-  "expire_snapshots",
-  "Filesystem, REST and SQL catalogs — the SQL catalog on SQLite for development, or on PostgreSQL",
-  "Local, HTTP, S3, GCS and Azure IO",
-];
-
-const notYet = [
-  "Compaction — rewrite_manifests",
-  "Encryption",
-  "More than 2 GiB of string data in one Parquet column chunk",
-  "Predicates inside list and map elements",
-];
-
+const tinTiers = ["table", "format", "primitive", "oracle"] as const;
 ---
 
 <Base title="Data lake building blocks in Mojo" description={description} bare={false}>
@@ -113,678 +94,80 @@ const notYet = [
     </div>
   </section>
 
-  <!-- ================================ tins =============================== -->
+  <!-- ============================ tins at a glance ========================= -->
   <section class="section section--alt" id="tins">
     <div class="wrap wrap--wide">
       <p class="eyebrow">The tins</p>
-      <h2 class="section-title">What each one is, and what proves it</h2>
+      <h2 class="section-title">Tins at a glance</h2>
       <p class="lede">
-        Every tin is Apache-2.0, published on mojoshelf, and CI-tested on stable Mojo 1.0.0
-        and the current nightly, across macOS and Linux. Each carries its own correctness
-        oracle — an outside implementation I made it agree with.
+        {tins.filter((t) => t.tier !== "oracle").length} tins, each independently usable and
+        checked against the reference implementation of the format it speaks. What each one is
+        and what proves it lives on <a href="/tins">the tins page</a>.
       </p>
 
-      {
-        (["table", "format", "primitive", "oracle"] as const).map((tier) => (
-          <div class="tier">
-            <h3 class="tier__label">{TIER_LABEL[tier]}</h3>
-            <div class:list={["tin-grid", tier === "table" && "tin-grid--lead"]}>
-              {tinsByTier(tier).map((t) => (
-                <TinCard tin={t} featured={tier === "table"} />
-              ))}
+      <div class="tin-glance">
+        {
+          tinTiers.map((tier) => (
+            <div class="tier">
+              <h3 class="tier__label">{TIER_LABEL[tier]}</h3>
+              <ul class="tin-glance__list">
+                {tinsByTier(tier).map((t) => (
+                  <li>
+                    <a href="/tins">
+                      <span class="tin-glance__name">{t.name}</span>
+                      <span class="tin-glance__version">{t.version}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
-        ))
-      }
-    </div>
-  </section>
-
-  <!-- ============================= performance ============================ -->
-  <section class="section" id="performance">
-    <div class="wrap wrap--wide">
-      <p class="eyebrow">Performance</p>
-      <h2 class="section-title">Measured, including where it loses</h2>
-      <p class="lede">
-        I measured all of this on 1 September 2026, on an Apple M4, single core unless a
-        row says otherwise — same machine, same files, and every row reproducible from
-        its own repository.
-        magmalake beats pyarrow on single-core Parquet reads. It loses on writes and on
-        multi-threaded scans, where what is left of the Iceberg gap is mostly libzstd
-        itself.
-      </p>
-      <p class="lede">
-        Every number here is a <em>mean over calibrated repetitions</em>, not a
-        best-of-N, and each benchmark reports its own spread. That change alone moved
-        several published figures — one benchmark had its random-number generator inside
-        the timed loop, and most of the fast operations had been timing a cold pass over
-        a buffer they had just built. Where a row measures a C library rather than Mojo,
-        it says so.
-      </p>
-
-      <div class="perf-groups">
-        {perfGroups.map((g) => <PerfTable group={g} />)}
-      </div>
-
-      <div class="panel" id="benchmarks" style="margin-bottom: 2.5rem; scroll-margin-top: 5rem;">
-        <h3 class="panel__title">
-          <a class="perf__anchor" href="#benchmarks">Benchmark history</a>
-        </h3>
-        <p>
-          <strong>The table above is hand-measured; these are not.</strong> Those
-          numbers were taken in one sitting on the M4 named at the top, which is why
-          they carry a date rather than a build number. Every merge also runs the same
-          benchmarks on a GitHub runner and appends to a history each repository
-          publishes itself:
-        </p>
-        <ul class="bench-links">
-          {
-            tins.filter((t) => t.benchmarks).map((t) => (
-              <li><a href={t.benchmarks} rel="noopener"><code>{t.name}</code></a></li>
-            ))
-          }
-        </ul>
-        <p>
-          Expect those to be slower and noisier than the table — a shared runner is not
-          a workstation. They are worth reading as <em>trends</em>, not as absolute
-          figures: each history is keyed by machine, so a run on a laptop and a run on
-          CI stay separate series and are never averaged, and a benchmark is only
-          flagged as regressed when it falls further than its own recent variance.
-        </p>
-      </div>
-
-      <div class="panel" id="perf-reproduce" style="margin-bottom: 2.5rem; scroll-margin-top: 5rem;">
-        <h3 class="panel__title">
-          <a class="perf__anchor" href="#perf-reproduce">Reproducing any of this</a>
-        </h3>
-        <p>
-          Every tin carries its own benchmarks and runs them through the same harness,
-          <a href="https://github.com/magmalake/bench.mojo" rel="noopener">bench.mojo</a>.
-          Clone the repo a row belongs to and run:
-        </p>
-        <pre class="callout__code"><code>git clone https://github.com/magmalake/parquet.mojo
-cd parquet.mojo
-
-pixi run -e bench bench                    # the table, with spread
-pixi run -e bench bench -- --json          # every repetition, machine-readable
-pixi run -e bench bench -- --list          # what this repo measures
-pixi run -e bench bench -- --only bench_read_wide</code></pre>
-        <p>
-          The <code>bench</code> environment is stable Mojo 1.0.0: a precompiled Mojo
-          package is stamped with the compiler version that built it, and every tin
-          builds with 1.0.0. The libraries themselves test on stable and nightly.
-        </p>
-        <p>
-          A few benchmarks need a fixture that is generated rather than committed —
-          parquet wants <code>python tools/bench_pyarrow.py --make</code> first, iceberg
-          builds a warehouse, objectstore needs MinIO. Each repo's README says which, and
-          the bench stops with instructions rather than measuring the wrong thing. Expect
-          your absolute numbers to differ from an M4; the ratios are what travel.
-        </p>
-      </div>
-
-      <div class="two-col two-col--wide">
-        <div class="panel">
-          <h3 class="panel__title">Threads, for now, come from a tin</h3>
-          <p>
-            Mojo's standard library currently has no threading. <code>parallelize</code> was
-            removed and there is no thread pool reachable from user code, so every number
-            above that mentions more than one core goes through
-            <a href="https://github.com/magmalake/threads.mojo" rel="noopener">magmalake/threads</a>,
-            which wraps pthreads directly via <code>external_call</code>.
-          </p>
-          <p>
-            That tin is <strong>inspired by and distilled from
-            <a href="https://github.com/ehsanmok/flare" rel="noopener">flare</a></strong>
-            — Ehsan Mokhtarian's project, MIT-licensed — which worked out how to get real OS
-            threads out of Mojo in the first place. threads.mojo keeps the parts a data stack
-            needs and drops the rest.
-          </p>
-          <p class="panel__fine">
-            It is explicitly a stopgap. When the language ships its own threading, this tin
-            should stop existing.
-          </p>
-        </div>
-
-        <div class="panel">
-          <h3 class="panel__title">How these numbers were found</h3>
-          <p class="panel__fine" style="margin-bottom: 1rem;">
-            Four optimisation passes. I profiled before each one instead of guessing, which
-            was just as well — not one of the bottlenecks was where I would have looked first.
-          </p>
-          <ol class="passes">
-            {
-              passes.map((p) => (
-                <li>
-                  <span class="passes__found">{p.found}</span>
-                  <span class="passes__fix">{p.fix}</span>
-                </li>
-              ))
-            }
-          </ol>
-        </div>
+          ))
+        }
       </div>
     </div>
   </section>
 
-  <!-- ============================= correctness ============================ -->
-  <section class="section section--alt" id="correctness">
+  <!-- ============================= take a tin ============================= -->
+  <section class="section">
     <div class="wrap wrap--wide">
-      <p class="eyebrow">Correctness</p>
-      <h2 class="section-title">Gated on someone else's implementation</h2>
-      <p class="lede">
-        A format library that only passes its own tests has proved nothing, so I gated every
-        format tin here against the reference implementation of the format — in both
-        directions where the format has two.
-      </p>
-
-      <div class="proofs">
-        <div class="proof">
-          <h3>Iceberg</h3>
-          <p>
-            Row-sets <strong>cell-exact against PyIceberg 0.11.1 and DuckDB 1.5.5</strong>
-            across <strong>48 of 48 filter cases</strong>, in both directions, including
-            deletes, deletion vectors and schema evolution. Tables magmalake writes are read
-            back cell-exact by both — and PyIceberg can append to a table magmalake created.
-          </p>
-        </div>
-        <div class="proof">
-          <h3>Parquet</h3>
-          <p>
-            Value-exact against pyarrow on 33 fixtures — every value of every column — and
-            pyarrow reads back every file magmalake writes. The Arrow export imports through
-            <code>pyarrow.Array._import_from_c</code>.
-          </p>
-        </div>
-        <div class="proof">
-          <h3>Avro &amp; Thrift</h3>
-          <p>
-            Avro round-trips against fastavro both ways across all four codecs. Thrift is
-            <strong>byte-identical to Apache Thrift</strong> on generated wire vectors, in
-            both the compact and the binary protocol.
-          </p>
-        </div>
-        <div class="proof">
-          <h3>S3 &amp; SigV4</h3>
-          <p>
-            <strong>37 of 37</strong> cases of the official AWS SigV4 test suite, every stage.
-            S3 is verified end-to-end against MinIO <strong>in CI</strong>, not only on a
-            developer's machine.
-          </p>
-        </div>
-        <div class="proof">
-          <h3>Roaring</h3>
-          <p>
-            Byte-exact against pyroaring in both directions, with pyroaring-produced payloads
-            baked into the tests as constants so the oracle cannot drift.
-          </p>
-        </div>
-        <div class="proof">
-          <h3>Everything else</h3>
-          <p>
-            Codecs against Python <code>zstandard</code>, <code>lz4</code>,
-            <code>brotli</code> and <code>python-snappy</code>; hashes against zlib, mmh3 and
-            xxhash plus the Iceberg spec's own vectors; threads against contended-count and
-            memory-visibility proofs.
-          </p>
-        </div>
-      </div>
-
-      <div class="upstream">
-        <h3 class="upstream__title">Building it found bugs upstream</h3>
-        <p class="upstream__blurb">
-          Holding three implementations against each other surfaces disagreements, and not all
-          of them turned out to be my fault. I cut each one below down to a standalone script
-          or unit test with no magmalake code in it, then either reported it upstream or —
-          where someone had got there first — matched it to the report that already existed.
-        </p>
-        <ul class="upstream__list">
-          {
-            upstreamIssues.map((u) => (
-              <li>
-                <a class="upstream__head" href={u.url} rel="noopener">
-                  <span class="upstream__project">{u.project}</span>
-                  <span class="upstream__ref">{u.ref}</span>
-                  <span class:list={["upstream__tag", `upstream__tag--${u.status}`]}>
-                    {STATUS_LABEL[u.status]}
-                  </span>
-                </a>
-                <span class="upstream__bug">{u.bug}</span>
-              </li>
-            ))
-          }
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <!-- =============================== status ============================== -->
-  <section class="section" id="status">
-    <div class="wrap wrap--wide">
-      <p class="eyebrow">Status</p>
-      <h2 class="section-title">Active, v0.x</h2>
-      <p class="lede">
-        Reads are complete for Iceberg format v1 through v3. Writes cover the common table
-        operations. Several things are genuinely missing, and they are listed here rather
-        than left to be discovered.
-      </p>
-
-      <div class="status-grid">
-        <div class="status-col status-col--yes">
-          <h3 class="status-col__head">Works today</h3>
-          <ul>{worksToday.map((w) => <li>{w}</li>)}</ul>
-        </div>
-        <div class="status-col status-col--no">
-          <h3 class="status-col__head">Not yet</h3>
-          <ul>{notYet.map((n) => <li>{n}</li>)}</ul>
-          <p class="status-col__fine">
-            The spec's v4 drafts — relative paths and <code>content_stats</code> — are tracked
-            but not implemented. What is proposed but unbuilt lives in
-            <a href="https://github.com/magmalake/.github/issues" rel="noopener">the issue
-            tracker</a>. The last spec there,
-            <a href="https://github.com/magmalake/.github/issues/1" rel="noopener">a PostgreSQL
-            tin</a>, shipped as postgres.mojo and put the SQL catalog on a server.
-          </p>
-        </div>
-      </div>
-
-      <div class="cta">
-        <div>
-          <h3 class="cta__title">Take a tin</h3>
-          <p class="cta__text">
-            Each of the {tins.length} repositories is independently usable and independently
-            installable. Start with whichever layer you need — you do not have to take the stack.
-          </p>
-        </div>
-        <div class="cta__actions">
-          <a class="btn btn--primary" href="https://github.com/magmalake" rel="noopener">
-            github.com/magmalake
-          </a>
-          <a class="btn" href="https://mojoshelf.org" rel="noopener">mojoshelf.org</a>
-        </div>
-      </div>
+      <TakeATinCta />
     </div>
   </section>
 </Base>
 
 <style>
-  /* ---- shared section furniture ---- */
-  .two-col {
-    display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-    gap: 3rem;
-    align-items: start;
+  .tin-glance__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
   }
-  .two-col--wide {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin-top: 3rem;
-  }
-
-  @media (max-width: 900px) {
-    .two-col,
-    .two-col--wide {
-      grid-template-columns: 1fr;
-      gap: 2.25rem;
-    }
-  }
-
-  /* ---- mojoshelf callout ---- */
-  .callout {
-    background: var(--surface);
+  .tin-glance__list a {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    padding: 0.45rem 0.8rem;
     border: 1px solid var(--border);
-    border-left: 3px solid var(--lake);
-    border-radius: var(--radius);
-    padding: 1.5rem 1.6rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    text-decoration: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .tin-glance__list a:hover {
+    border-color: var(--border-strong);
     box-shadow: var(--shadow);
   }
-  .callout__title {
-    font-size: 1.0625rem;
-    margin-bottom: 0.7rem;
-  }
-  .callout p {
-    font-size: 0.875rem;
-    color: var(--text-muted);
-    line-height: 1.6;
-  }
-  .callout__code {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 0.7rem 0.9rem;
-    margin: 1rem 0;
-  }
-  .callout__code code {
-    background: none;
-    border: 0;
-    padding: 0;
-    color: var(--lake);
-    font-size: 0.8125rem;
-  }
-  .callout__fine {
-    font-size: 0.8125rem !important;
-    color: var(--text-faint) !important;
-  }
-  .callout__link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    margin-top: 1rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    text-decoration: none;
-  }
-  .callout__link:hover { text-decoration: underline; }
-
-  /* ---- tins ---- */
-  .tier { margin-top: 2.75rem; }
-
-  .tier__label {
+  .tin-glance__name {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    font-weight: 500;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--text-faint);
-    margin-bottom: 1rem;
-    padding-bottom: 0.6rem;
-    border-bottom: 1px solid var(--rule);
-  }
-
-  .tin-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 310px), 1fr));
-    gap: 1rem;
-  }
-  /* iceberg is the only tin in its tier; give it the full width. */
-  .tin-grid--lead { grid-template-columns: minmax(0, 1fr); }
-
-  /* ---- performance ---- */
-  .perf-groups { margin-top: 2.5rem; }
-
-  .panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.6rem 1.7rem;
-  }
-  .panel__title {
-    font-size: 1.0625rem;
-    margin-bottom: 0.8rem;
-  }
-  .panel p {
     font-size: 0.875rem;
-    color: var(--text-muted);
-    line-height: 1.62;
-    margin-bottom: 0.85rem;
-  }
-  .panel__fine {
-    font-size: 0.8125rem !important;
-    color: var(--text-faint) !important;
-  }
-
-  .passes {
-    list-style: none;
-    counter-reset: pass;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.95rem;
-  }
-  .passes li {
-    counter-increment: pass;
-    position: relative;
-    padding-left: 2rem;
-  }
-  .passes li::before {
-    content: counter(pass);
-    position: absolute;
-    left: 0;
-    top: 0.05em;
-    width: 1.35rem;
-    height: 1.35rem;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    background: var(--ember-wash);
-    color: var(--ember);
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
     font-weight: 600;
-  }
-  .passes__found {
-    display: block;
-    font-size: 0.875rem;
-    font-weight: 500;
-    line-height: 1.45;
-  }
-  .passes__fix {
-    display: block;
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-    line-height: 1.5;
-    margin-top: 0.15rem;
-  }
-
-  /* ---- correctness ---- */
-  .proofs {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
-    gap: 1px;
-    margin-top: 2.5rem;
-    background: var(--border);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-  .proof {
-    background: var(--surface);
-    padding: 1.4rem 1.5rem;
-  }
-  .proof h3 {
-    font-size: 0.9375rem;
-    margin-bottom: 0.5rem;
-    color: var(--lake);
-  }
-  .proof p {
-    font-size: 0.8125rem;
-    line-height: 1.6;
-    color: var(--text-muted);
-    margin: 0;
-  }
-  .proof strong { color: var(--text); }
-
-  .upstream {
-    margin-top: 2.5rem;
-    border: 1px solid color-mix(in srgb, var(--ember) 28%, var(--border));
-    border-radius: var(--radius);
-    background: var(--ember-wash);
-    padding: 1.6rem 1.7rem;
-  }
-  .upstream__title {
-    font-size: 1.0625rem;
-    margin-bottom: 0.45rem;
-  }
-  .upstream__blurb {
-    font-size: 0.875rem;
-    color: var(--text-muted);
-    max-width: 72ch;
-    margin-bottom: 1.2rem;
-  }
-  .upstream__list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
-    gap: 1rem;
-  }
-  .upstream__list li {
-    border-left: 2px solid color-mix(in srgb, var(--ember) 45%, transparent);
-    padding-left: 0.85rem;
-  }
-  .upstream__head {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 0.4rem 0.55rem;
-    margin-bottom: 0.3rem;
-    text-decoration: none;
-  }
-  .upstream__head:hover .upstream__ref { text-decoration: underline; }
-  .upstream__project {
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--ember);
-  }
-  .upstream__ref {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }
-  .upstream__tag {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding: 0.1rem 0.4rem;
-    border-radius: 999px;
-    border: 1px solid var(--border-strong);
-    color: var(--text-faint);
-    white-space: nowrap;
-  }
-  .upstream__tag--filed {
-    color: var(--ember);
-    border-color: color-mix(in srgb, var(--ember) 45%, transparent);
-  }
-  .upstream__bug {
-    display: block;
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-    line-height: 1.5;
-  }
-
-  /* ---- status ---- */
-  .status-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-    gap: 1rem;
-    margin-top: 2.5rem;
-  }
-  @media (max-width: 820px) {
-    .status-grid { grid-template-columns: 1fr; }
-  }
-
-  .status-col {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.5rem 1.6rem;
-  }
-  .status-col__head {
-    font-size: 0.9375rem;
-    margin-bottom: 1rem;
-    padding-bottom: 0.7rem;
-    border-bottom: 1px solid var(--border);
-  }
-  .status-col--yes .status-col__head { color: var(--lake); }
-  .status-col--no .status-col__head { color: var(--ember); }
-
-  .status-col ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-  }
-  .status-col li {
-    position: relative;
-    padding-left: 1.4rem;
-    font-size: 0.875rem;
-    line-height: 1.5;
-    color: var(--text-muted);
-  }
-  .status-col li::before {
-    position: absolute;
-    left: 0;
-    top: 0;
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
-  }
-  .status-col--yes li::before { content: "+"; color: var(--lake); }
-  .status-col--no li::before { content: "\2013"; color: var(--ember); }
-
-  .status-col__fine {
-    margin: 1.1rem 0 0;
-    padding-top: 0.9rem;
-    border-top: 1px solid var(--border);
-    font-size: 0.8125rem;
-    color: var(--text-faint);
-  }
-
-  /* ---- closing CTA ---- */
-  .cta {
-    margin-top: 3rem;
-    padding: 2rem;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    background: linear-gradient(
-      120deg,
-      color-mix(in srgb, var(--ember) 7%, var(--surface)),
-      color-mix(in srgb, var(--lake) 7%, var(--surface))
-    );
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 2rem;
-    flex-wrap: wrap;
-  }
-  .cta__title { font-size: 1.25rem; margin-bottom: 0.4rem; }
-  .cta__text {
-    font-size: 0.9375rem;
-    color: var(--text-muted);
-    margin: 0;
-    max-width: 48ch;
-  }
-  .cta__actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.65rem 1.25rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-strong);
-    background: var(--surface);
     color: var(--text);
-    font-size: 0.9375rem;
-    font-weight: 500;
-    text-decoration: none;
-    transition: all 0.15s ease;
   }
-  .btn:hover { border-color: var(--text-muted); box-shadow: var(--shadow); }
-  .btn--primary {
-    background: var(--ember);
-    border-color: var(--ember);
-    color: #fff;
+  .tin-glance__version {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-faint);
   }
-  :root[data-theme="dark"] .btn--primary { color: #1a0d06; }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .btn--primary { color: #1a0d06; }
-  }
-  .btn--primary:hover {
-    background: var(--ember-soft);
-    border-color: var(--ember-soft);
-  }
-  .panel__title .perf__anchor { color: inherit; text-decoration: none; }
-
-  .bench-links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem 1.1rem;
-    list-style: none;
-    padding: 0;
-    margin: 0 0 1rem;
-  }
-  .bench-links code { font-size: 0.85rem; }
 </style>

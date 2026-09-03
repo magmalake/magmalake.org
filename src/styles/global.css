@@ -6,6 +6,8 @@
  * has a complete palette; the dark blocks only redefine the same tokens.
  */
 
+@import "./sections.css";
+
 :root {
   color-scheme: light;
 

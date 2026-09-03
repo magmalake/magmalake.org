@@ -1,0 +1,199 @@
+---
+import Base from "../layouts/Base.astro";
+import { upstreamIssues, STATUS_LABEL } from "../data/upstream";
+
+const description =
+  "How every format tin is checked against the reference implementation of the format it speaks, and the upstream bugs that turned up along the way.";
+---
+
+<Base title="Correctness" description={description}>
+  <section class="section section--alt">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">Correctness</p>
+      <h1 class="section-title">Gated on someone else's implementation</h1>
+      <p class="lede">
+        A format library that only passes its own tests has proved nothing, so I gated every
+        format tin here against the reference implementation of the format — in both
+        directions where the format has two.
+      </p>
+
+      <div class="proofs">
+        <div class="proof">
+          <h3>Iceberg</h3>
+          <p>
+            Row-sets <strong>cell-exact against PyIceberg 0.11.1 and DuckDB 1.5.5</strong>
+            across <strong>48 of 48 filter cases</strong>, in both directions, including
+            deletes, deletion vectors and schema evolution. Tables magmalake writes are read
+            back cell-exact by both — and PyIceberg can append to a table magmalake created.
+          </p>
+        </div>
+        <div class="proof">
+          <h3>Parquet</h3>
+          <p>
+            Value-exact against pyarrow on 33 fixtures — every value of every column — and
+            pyarrow reads back every file magmalake writes. The Arrow export imports through
+            <code>pyarrow.Array._import_from_c</code>.
+          </p>
+        </div>
+        <div class="proof">
+          <h3>Avro &amp; Thrift</h3>
+          <p>
+            Avro round-trips against fastavro both ways across all four codecs. Thrift is
+            <strong>byte-identical to Apache Thrift</strong> on generated wire vectors, in
+            both the compact and the binary protocol.
+          </p>
+        </div>
+        <div class="proof">
+          <h3>S3 &amp; SigV4</h3>
+          <p>
+            <strong>37 of 37</strong> cases of the official AWS SigV4 test suite, every stage.
+            S3 is verified end-to-end against MinIO <strong>in CI</strong>, not only on a
+            developer's machine.
+          </p>
+        </div>
+        <div class="proof">
+          <h3>Roaring</h3>
+          <p>
+            Byte-exact against pyroaring in both directions, with pyroaring-produced payloads
+            baked into the tests as constants so the oracle cannot drift.
+          </p>
+        </div>
+        <div class="proof">
+          <h3>Everything else</h3>
+          <p>
+            Codecs against Python <code>zstandard</code>, <code>lz4</code>,
+            <code>brotli</code> and <code>python-snappy</code>; hashes against zlib, mmh3 and
+            xxhash plus the Iceberg spec's own vectors; threads against contended-count and
+            memory-visibility proofs.
+          </p>
+        </div>
+      </div>
+
+      <div class="upstream">
+        <h3 class="upstream__title">Building it found bugs upstream</h3>
+        <p class="upstream__blurb">
+          Holding three implementations against each other surfaces disagreements, and not all
+          of them turned out to be my fault. I cut each one below down to a standalone script
+          or unit test with no magmalake code in it, then either reported it upstream or —
+          where someone had got there first — matched it to the report that already existed.
+        </p>
+        <ul class="upstream__list">
+          {
+            upstreamIssues.map((u) => (
+              <li>
+                <a class="upstream__head" href={u.url} rel="noopener">
+                  <span class="upstream__project">{u.project}</span>
+                  <span class="upstream__ref">{u.ref}</span>
+                  <span class:list={["upstream__tag", `upstream__tag--${u.status}`]}>
+                    {STATUS_LABEL[u.status]}
+                  </span>
+                </a>
+                <span class="upstream__bug">{u.bug}</span>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .proofs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+    gap: 1px;
+    margin-top: 2.5rem;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .proof {
+    background: var(--surface);
+    padding: 1.4rem 1.5rem;
+  }
+  .proof h3 {
+    font-size: 0.9375rem;
+    margin-bottom: 0.5rem;
+    color: var(--lake);
+  }
+  .proof p {
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: var(--text-muted);
+    margin: 0;
+  }
+  .proof strong { color: var(--text); }
+
+  .upstream {
+    margin-top: 2.5rem;
+    border: 1px solid color-mix(in srgb, var(--ember) 28%, var(--border));
+    border-radius: var(--radius);
+    background: var(--ember-wash);
+    padding: 1.6rem 1.7rem;
+  }
+  .upstream__title {
+    font-size: 1.0625rem;
+    margin-bottom: 0.45rem;
+  }
+  .upstream__blurb {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    max-width: 72ch;
+    margin-bottom: 1.2rem;
+  }
+  .upstream__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: 1rem;
+  }
+  .upstream__list li {
+    border-left: 2px solid color-mix(in srgb, var(--ember) 45%, transparent);
+    padding-left: 0.85rem;
+  }
+  .upstream__head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.55rem;
+    margin-bottom: 0.3rem;
+    text-decoration: none;
+  }
+  .upstream__head:hover .upstream__ref { text-decoration: underline; }
+  .upstream__project {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--ember);
+  }
+  .upstream__ref {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  .upstream__tag {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    color: var(--text-faint);
+    white-space: nowrap;
+  }
+  .upstream__tag--filed {
+    color: var(--ember);
+    border-color: color-mix(in srgb, var(--ember) 45%, transparent);
+  }
+  .upstream__bug {
+    display: block;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+</style>

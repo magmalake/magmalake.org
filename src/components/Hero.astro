@@ -44,7 +44,7 @@ const highlights = [
       <a class="btn btn--primary" href="https://github.com/magmalake" rel="noopener">
         Browse the org on GitHub
       </a>
-      <a class="btn" href="#tins">See the tins</a>
+      <a class="btn" href="/tins">See the tins</a>
     </div>
 
     <dl class="hero__stats">
@@ -151,36 +151,8 @@ const highlights = [
     margin-bottom: 3rem;
   }
 
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.65rem 1.25rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-strong);
-    background: var(--surface);
-    color: var(--text);
-    font-size: 0.9375rem;
-    font-weight: 500;
-    text-decoration: none;
-    transition: all 0.15s ease;
-  }
-  .btn:hover {
-    border-color: var(--text-muted);
-    box-shadow: var(--shadow);
-  }
-  .btn--primary {
-    background: var(--ember);
-    border-color: var(--ember);
-    color: #fff;
-  }
-  :root[data-theme="dark"] .btn--primary { color: #1a0d06; }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .btn--primary { color: #1a0d06; }
-  }
-  .btn--primary:hover {
-    background: var(--ember-soft);
-    border-color: var(--ember-soft);
-  }
+  /* .btn / .btn--primary live in src/styles/sections.css — shared with the
+     closing CTA on the home and status pages. */
 
   .hero__stats {
     display: grid;
