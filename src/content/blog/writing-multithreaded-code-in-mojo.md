@@ -7,6 +7,7 @@ sourceUrl: https://github.com/magmalake/threads.example
 sourceLabel: threads.example
 related:
   - multithreading-with-origins-in-mojo
+unlisted: true
 draft: false
 ---
 

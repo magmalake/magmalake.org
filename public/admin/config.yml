@@ -65,6 +65,15 @@ collections:
           value_field: "{{slug}}"
           display_fields: [title]
           search_fields: [title]
+      - label: Unlisted
+        name: unlisted
+        widget: boolean
+        default: false
+        hint: >-
+          Hidden from the blog index and never recommended by another post, but
+          still live at its URL, still in the sitemap, and still showing its own
+          "Keep reading" links. For a post that is superseded but still getting
+          search traffic. To take a post off the site entirely, use Draft.
       - label: Draft
         name: draft
         widget: boolean
