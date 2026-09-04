@@ -15,18 +15,17 @@ draft: false
      please keep it at the top and leave the markup alone. -->
 <aside class="callout callout--correction" aria-labelledby="correction-heading">
   <p class="callout__label" id="correction-heading">Correction</p>
-  <p><strong>Do not build on the <code>Ctx[T]</code> pattern below — it has a
-  lifetime bug.</strong> <code>Ctx[T]</code> erases the origin of the state it
+  <p>TLDR; see  <a
+  href="/blog/multithreading-with-origins-in-mojo/">Multithreading with origins
+  in Mojo 1.0</a> for a safer pattern</p>
+  <p>Do not build on the <code>Ctx[T]</code> pattern below — it has a
+  lifetime bug. <code>Ctx[T]</code> erases the origin of the state it
   shares, so the compiler cannot see that the threads use it and destroys
   <code>totals</code> before the first thread starts. The program below printed
   <code>499500</code> by luck, not by construction.</p>
   <p>The fix is to stop erasing the origin in user code: <code>parallel_for</code>
   now takes the state as a <code>ref</code> argument, so its lifetime covers the
-  call and the joins inside it. <a
-  href="/blog/multithreading-with-origins-in-mojo/">Multithreading with origins
-  in Mojo 1.0</a> has the corrected program, the library change behind it, and a
-  harness that tests for this. Read that one first; the rest of this post is
-  left as it was written.</p>
+  call and the joins inside it.</p>
 </aside>
 
 Mojo compiles to native code and your machine has ten cores. Using them is
