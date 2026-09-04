@@ -49,6 +49,22 @@ collections:
         required: false
         hint: The repository the post is about, shown under the title.
       - { label: Source label, name: sourceLabel, widget: string, required: false }
+      - label: Related posts
+        name: related
+        widget: list
+        required: false
+        hint: >-
+          Most relevant first. Shown at the end of the post and in the bar that
+          slides in mid-read. Leave empty to fall back to the posts either side
+          of this one by date.
+        field:
+          label: Post
+          name: post
+          widget: relation
+          collection: blog
+          value_field: "{{slug}}"
+          display_fields: [title]
+          search_fields: [title]
       - label: Draft
         name: draft
         widget: boolean

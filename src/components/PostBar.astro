@@ -1,0 +1,225 @@
+---
+/**
+ * A one-post bar that slides in once the reader is into the article and sticks
+ * to the bottom of the viewport.
+ *
+ * It is an enhancement, never the only route: the markup ships with `hidden`
+ * set, so with JavaScript off it never appears and RelatedPosts at the end of
+ * the article is what the reader gets. It shows a single post — two would need
+ * height a phone cannot spare.
+ */
+import type { CollectionEntry } from "astro:content";
+
+interface Props {
+  post: CollectionEntry<"blog">;
+  /** Slug of the post being read; scopes the "stay dismissed" flag to it. */
+  onSlug: string;
+}
+
+const { post, onSlug } = Astro.props;
+---
+
+<aside class="postbar" data-postbar data-slug={onSlug} aria-label="Suggested reading" hidden>
+  <a class="postbar__link" href={`/blog/${post.id}/`}>
+    <span class="postbar__label">Keep reading</span>
+    <span class="postbar__title">{post.data.title}</span>
+  </a>
+  <button class="postbar__close" type="button" data-postbar-close aria-label="Dismiss suggested reading">
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+      <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
+    </svg>
+  </button>
+</aside>
+
+<style>
+  .postbar {
+    position: fixed;
+    z-index: 45; /* under the sticky nav (50) and the skip link (100) */
+    left: 1rem;
+    right: 1rem;
+    bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    margin-inline: auto;
+    max-width: 30rem;
+
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.55rem 0.55rem 1rem;
+
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lift);
+
+    /* Out state. `visibility` keeps it out of the tab order and the
+       accessibility tree while it is off screen; it is transitioned with a
+       delay so it only disappears once the slide has finished. */
+    visibility: hidden;
+    opacity: 0;
+    transform: translateY(calc(100% + 1.5rem));
+    transition:
+      transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.24s ease,
+      visibility 0s linear 0.32s;
+  }
+
+  .postbar.is-in {
+    visibility: visible;
+    opacity: 1;
+    transform: none;
+    transition:
+      transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.24s ease,
+      visibility 0s;
+  }
+
+  .postbar__link {
+    flex: 1;
+    min-width: 0;
+    text-decoration: none;
+    color: inherit;
+    border-radius: var(--radius-sm);
+  }
+
+  .postbar__label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ember);
+  }
+
+  .postbar__title {
+    display: block;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    line-height: 1.3;
+    color: var(--text);
+    /* Two lines at most: one is enough at 30rem, and a phone gets the whole
+       title instead of an ellipsis while the bar stays around 80px tall. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .postbar__link:hover .postbar__title {
+    color: var(--ember);
+  }
+
+  .postbar__close {
+    flex: none;
+    /* A 44px target even though the icon is 16px. */
+    width: 2.75rem;
+    height: 2.75rem;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .postbar__close:hover {
+    color: var(--text);
+    background: var(--surface-2);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .postbar,
+    .postbar.is-in {
+      transform: none;
+      transition: none;
+    }
+  }
+
+  /* A short window — a phone in landscape — is where a fixed bar really does
+     eat the page. Do not offer one; the end-of-post block still applies. */
+  @media (max-height: 26rem) {
+    .postbar {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  const bar = document.querySelector("[data-postbar]");
+  const article = document.querySelector("[data-post-body]");
+
+  if (bar instanceof HTMLElement && article instanceof HTMLElement) {
+    const key = "ml-postbar:" + bar.dataset.slug;
+    // Per-post and per-session. A bar that comes back after you closed it is
+    // worse than no bar; a bar that is gone forever across every post is a
+    // feature you cannot rediscover.
+    const dismissed = () => {
+      try {
+        return sessionStorage.getItem(key) === "1";
+      } catch {
+        return false; // private mode, blocked storage
+      }
+    };
+    const remember = () => {
+      try {
+        sessionStorage.setItem(key, "1");
+      } catch {
+        /* nothing to do; it will reappear on the next load of this post */
+      }
+    };
+
+    if (!dismissed()) {
+      // The end-of-post links; once they are on screen the bar is redundant
+      // and would only cover the last lines of the article.
+      const endBlock = article.querySelector(".related");
+      let shown = false;
+      let queued = false;
+
+      const wanted = () => {
+        const rect = article.getBoundingClientRect();
+        const vh = window.innerHeight || document.documentElement.clientHeight;
+        const passed = -rect.top; // pixels of the article scrolled past
+        // A scroll threshold, not a timer: a quarter of the way through, and
+        // never before most of a screen has gone by, so a short post in a tall
+        // window does not fire on the first nudge.
+        const threshold = Math.max(vh * 0.8, (rect.height - vh) * 0.25);
+        const endInView = endBlock ? endBlock.getBoundingClientRect().top < vh : false;
+        return passed > threshold && !endInView;
+      };
+
+      const apply = () => {
+        queued = false;
+        const want = wanted();
+        if (want === shown) return;
+        shown = want;
+        if (want) {
+          // Removed once and left off; `.is-in` does the rest. Fixed
+          // positioning means neither step moves any content.
+          bar.hidden = false;
+          requestAnimationFrame(() => bar.classList.add("is-in"));
+        } else {
+          bar.classList.remove("is-in");
+        }
+      };
+
+      const onScroll = () => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(apply);
+      };
+
+      bar.querySelector("[data-postbar-close]")?.addEventListener("click", () => {
+        remember();
+        bar.classList.remove("is-in");
+        bar.hidden = true;
+        window.removeEventListener("scroll", onScroll);
+        window.removeEventListener("resize", onScroll);
+      });
+
+      window.addEventListener("scroll", onScroll, { passive: true });
+      window.addEventListener("resize", onScroll, { passive: true });
+      apply();
+    }
+  }
+</script>

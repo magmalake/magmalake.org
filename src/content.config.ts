@@ -14,6 +14,19 @@ const blog = defineCollection({
     /** Shown under the title; usually the repo the post is about. */
     sourceUrl: z.string().url().optional(),
     sourceLabel: z.string().optional(),
+    /**
+     * Slugs of other posts to offer the reader, most relevant first.
+     *
+     * Explicit slugs rather than a shared tag, deliberately. `eyebrow` already
+     * groups by topic, but a topic is not a relation: the two multithreading
+     * posts are a *sequence*, and a tag would silently reshuffle what each one
+     * points at the moment a fifth "Concurrency" post lands. A list of slugs
+     * says the same thing a year from now, and an unknown slug fails the build
+     * (see src/data/related.ts) instead of quietly linking nowhere.
+     *
+     * Posts that set nothing fall back to their neighbours by date.
+     */
+    related: z.array(z.string()).default([]),
     draft: z.boolean().default(false),
   }),
 });

@@ -1,0 +1,108 @@
+---
+/**
+ * The end-of-post links. Plain markup, no script: this is the route out for a
+ * reader who finished the post, and the fallback for anyone without
+ * JavaScript. PostBar is the enhancement on top of it, never the only way.
+ */
+import type { CollectionEntry } from "astro:content";
+
+interface Props {
+  posts: CollectionEntry<"blog">[];
+}
+
+const { posts } = Astro.props;
+---
+
+{
+  posts.length > 0 && (
+    <nav class="related" aria-labelledby="related-heading">
+      <h2 class="related__heading" id="related-heading">
+        Keep reading
+      </h2>
+      <ul class="related__list">
+        {posts.map((p) => (
+          <li>
+            <a class="related__link" href={`/blog/${p.id}/`}>
+              <span class="related__eyebrow">{p.data.eyebrow}</span>
+              <span class="related__title">{p.data.title}</span>
+              <span class="related__desc">{p.data.description}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+      <p class="related__all">
+        <a href="/blog/">All posts</a>
+      </p>
+    </nav>
+  )
+}
+
+<style>
+  .related {
+    margin-top: 3.5rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--rule);
+  }
+  .related__heading {
+    font-size: 0.6875rem;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 1.1rem;
+  }
+  .related__list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.85rem;
+  }
+  .related__link {
+    display: block;
+    padding: 1.05rem 1.2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s ease;
+  }
+  .related__link:hover {
+    border-color: var(--ember);
+  }
+  .related__eyebrow {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ember);
+    margin-bottom: 0.4rem;
+  }
+  .related__title {
+    display: block;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.05rem;
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+    color: var(--text);
+    margin-bottom: 0.35rem;
+  }
+  .related__desc {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+  .related__all {
+    margin: 1.1rem 0 0;
+    font-size: 0.875rem;
+  }
+</style>
