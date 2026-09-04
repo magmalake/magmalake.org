@@ -1,13 +1,19 @@
 ---
 import { getCollection, render } from "astro:content";
 import Base from "../../layouts/Base.astro";
+import PostBar from "../../components/PostBar.astro";
+import RelatedPosts from "../../components/RelatedPosts.astro";
+import { relatedPosts } from "../../data/related";
 
 export async function getStaticPaths() {
   const posts = await getCollection("blog", ({ data }) => !data.draft);
-  return posts.map((post) => ({ params: { slug: post.id }, props: { post } }));
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post, related: relatedPosts(post, posts) },
+  }));
 }
 
-const { post } = Astro.props;
+const { post, related } = Astro.props;
 const { Content } = await render(post);
 const iso = post.data.date.toISOString().slice(0, 10);
 const shown = post.data.date.toLocaleDateString("en-GB", {
@@ -18,7 +24,7 @@ const shown = post.data.date.toLocaleDateString("en-GB", {
 ---
 
 <Base title={post.data.title} description={post.data.description}>
-  <article class="section post">
+  <article class="section post" data-post-body>
     <div class="wrap">
       <p class="eyebrow">{post.data.eyebrow}</p>
       <h1 class="post__title">{post.data.title}</h1>
@@ -36,8 +42,10 @@ const shown = post.data.date.toLocaleDateString("en-GB", {
         }
       </p>
       <Content />
+      <RelatedPosts posts={related} />
     </div>
   </article>
+  {related.length > 0 && <PostBar post={related[0]} onSlug={post.id} />}
 </Base>
 
 <style is:global>
@@ -72,6 +80,37 @@ const shown = post.data.date.toLocaleDateString("en-GB", {
     line-height: 1.6;
     margin: 0 0 1.4rem;
   }
+  /*
+   * Callouts. Written as raw HTML in the Markdown body, because a correction
+   * has to sit above the thing it corrects and inline `code` has to survive.
+   * `--correction` is the loud one: the post below it is wrong.
+   */
+  .post .callout {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--text-muted);
+    border-radius: var(--radius);
+    padding: 1.15rem 1.3rem;
+    margin: 0 0 2.25rem;
+  }
+  .post .callout--correction {
+    border-left-color: var(--ember);
+    background: var(--ember-wash);
+  }
+  .post .callout__label {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ember);
+    margin: 0 0 0.6rem;
+  }
+  .post .callout p { font-size: 0.9375rem; line-height: 1.65; }
+  .post .callout p:last-child { margin-bottom: 0; }
+  /* The wash is already tinted; a second tint on inline code muddies it. */
+  .post .callout code { background: var(--surface); }
+
   .post table {
     width: 100%;
     border-collapse: collapse;

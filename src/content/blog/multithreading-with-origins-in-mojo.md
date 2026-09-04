@@ -5,6 +5,8 @@ eyebrow: Concurrency
 date: 2026-09-03
 sourceUrl: https://github.com/magmalake/threads.example
 sourceLabel: threads.example
+related:
+  - writing-multithreaded-code-in-mojo
 draft: false
 ---
 
