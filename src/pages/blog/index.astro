@@ -1,10 +1,14 @@
 ---
 import { getCollection } from "astro:content";
 import Base from "../../layouts/Base.astro";
+import { listed } from "../../data/related";
 
-const posts = (await getCollection("blog", ({ data }) => !data.draft)).sort(
-  (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
-);
+// `listed` drops unlisted posts. They are still built and still reachable at
+// their URL — see the field's note in src/content.config.ts — they are just
+// not offered to anyone who did not already have the link.
+const posts = (await getCollection("blog", ({ data }) => !data.draft))
+  .filter(listed)
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 ---
 
 <Base
