@@ -55,35 +55,35 @@ export const perfGroups: Group[] = [
       {
         op: "Parquet read, 1M rows — 1 core",
         note: "int64, double and two dictionary columns, uncompressed, four row groups",
-        result: "4.7 ms p50 / 4.8 p90 — 211M rows/s",
+        result: "3.77 ms p50 / 3.83 p90 — 265M rows/s",
         lead: true,
-        reference: "pyarrow, one thread: 7.9 ms — we are 1.7× faster",
+        reference: "pyarrow, one thread: 8.0 ms — we are 2.1× faster",
       },
       {
         op: "Parquet read, 1M rows — 4 workers",
         note: "the same file, ParquetReader.num_workers = 4",
-        result: "2.35 ms p50 / 2.4 p90 — 426M rows/s",
+        result: "1.96 ms p50 / 2.07 p90 — 510M rows/s",
         lead: true,
         reference:
-          "pyarrow, threaded across all 10 CPUs: 2.7 ms — we are 1.15× faster while using four threads to its ten",
+          "pyarrow, threaded across all 10 CPUs: 2.57 ms — we are 1.3× faster while using four threads to its ten",
       },
       {
         op: "Parquet read, worker scaling",
         note: "the same file at 1 / 2 / 4 / 8 / 10 workers",
-        result: "4.7 / 3.3 / 2.35 / 2.17 / 2.14 ms",
+        result: "3.77 / 2.42 / 1.96 / 1.90 / 1.90 ms",
         reference:
-          "it bends at four, which is how many performance cores this M4 has. Past four the p50 buys about 8% and the p90 gets worse — 2.4 ms at four workers, 2.9 ms at eight.",
+          "it bends at four, which is how many performance cores this M4 has. Past four the p50 buys about 3% and the p90 gets worse — 2.07 ms at four workers, 2.50 ms at eight.",
       },
       {
         op: "Parquet read, 100k rows, nested and mixed",
         note: "int64, double, string, bool and a list<int32>, snappy — 1 core / 4 workers",
-        result: "3.3 ms / 1.15 ms",
+        result: "2.63 ms / 0.98 ms — 0.78 ms at eight workers",
         reference:
-          "pyarrow 2.3 ms one thread, 0.70 ms threaded — 1.4× and 1.6× faster than us. This one is lost on a single core, before threading comes into it at all.",
+          "pyarrow 2.24 ms one thread, 0.66 ms threaded — 1.17× and 1.18× faster than us. Still the file we lose, but by a fifth rather than by half.",
       },
       {
         op: "Parquet write, 1M rows",
-        result: "31.7 ms",
+        result: "32.8 ms",
         reference: "pyarrow 31.7 ms — parity, inside the run-to-run spread",
       },
       {
