@@ -190,6 +190,22 @@ itself, belongs in the compiler's lifetime checker, and
 for it there. `L003` will stay a lint whatever happens to `L001`: deciding
 which stores race needs the `Sync` the language does not have.
 
+## Where it runs
+
+The typed overload is what four tins in the stack now build on, which is a
+better test of the shape than any harness:
+
+- [parquet.mojo](https://github.com/magmalake/parquet.mojo) fans a Parquet
+  read out over (row group, column chunk) pairs behind `num_workers`, and
+  assembles Arrow on the workers rather than on the calling thread.
+- [iceberg.mojo](https://github.com/magmalake/iceberg.mojo) runs a scan's
+  files in parallel behind `ScanOptions.num_workers`.
+- [postgres.mojo](https://github.com/magmalake/postgres.mojo) puts `Mutex` and
+  `CondVar` under a connection pool, so a checkout waiting for a free
+  connection blocks on a condition variable instead of spinning.
+- [restate.mojo](https://github.com/magmalake/restate.mojo) serves on a
+  `TypedPool` of workers over one origin-tracked handler state.
+
 ## Learnings
 
 - A test for undefined behaviour must not itself be undefined. The destructor
