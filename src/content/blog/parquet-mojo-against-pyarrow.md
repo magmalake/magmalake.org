@@ -1,12 +1,13 @@
 ---
 title: The parquet.mojo performance bar
-description: Flat columnar reads are ahead of pyarrow on one core and on four, writes are at parity, and nested data loses before threading comes into it at all. Here is the whole table, and the measurement rules the numbers now have to pass.
+description: Flat columnar reads are ahead of pyarrow on one core and on four, writes are at parity, and nested data loses before threading comes into it at all.
 eyebrow: Performance
 date: 2026-09-05
 sourceUrl: https://github.com/magmalake/parquet.mojo
 sourceLabel: parquet.mojo
 related:
   - how-far-parquet-mojo-is-validated
+unlisted: false
 draft: true
 ---
 
@@ -17,7 +18,7 @@ way as the rows it wins.
 Apple M4 — ten cores, four of them performance — macOS, stable Mojo 1.0.0,
 re-measured on 5 September 2026 with nothing else building on the machine.
 
-| operation | parquet.mojo | pyarrow | |
+| operation | parquet.mojo | pyarrow |  |
 | --- | --- | --- | --- |
 | Flat read, 1M rows, 1 core | **3.77 ms** — 265M rows/s | 8.0 ms, one thread | **2.1× ahead** |
 | Flat read, 1M rows, 4 workers | **1.96 ms** — 510M rows/s | 2.57 ms, threaded over all 10 CPUs | **1.3× ahead**, on four threads to its ten |
@@ -43,8 +44,8 @@ caller manages, or a batch loop.
 
 ## Worker scaling, and where it bends
 
-The same file at 1, 2, 4, 8 and 10 workers: **3.77 / 2.42 / 1.96 / 1.90 /
-1.90 ms**.
+The same file at 1, 2, 4, 8 and 10 workers: \*\*3.77 / 2.42 / 1.96 / 1.90 /
+1.90 ms\*\*.
 
 It bends at four, which is how many performance cores this M4 has. Past four
 the p50 buys about 3% and the p90 gets worse — 2.07 ms at four workers, 2.50 ms
@@ -89,7 +90,7 @@ byte-identical and the column goes out 3.3× faster.
 
 The dictionary heuristic that remains is capped in absolute terms rather than
 as a fraction of the row group. A dictionary allowed to reach half a row group
-makes fixed-width chunks 30% *larger* than plain encoding, so the cap is a
+makes fixed-width chunks 30% _larger_ than plain encoding, so the cap is a
 guarantee about the size of what you get, not only about how fast you get it.
 
 ## The numbers that moved
@@ -100,7 +101,7 @@ reason to trust the numbers above.
 
 **The pyarrow comparison flattered us.** The published single-core number was
 1.9× faster than pyarrow. The honest figure at the time was **1.7×**. Two things were wrong
-with the old comparison. `pq.read_table` is pyarrow's *dataset scanner*, not
+with the old comparison. `pq.read_table` is pyarrow's _dataset scanner_, not
 parquet-cpp's read path; `ParquetFile.read()` is the right single-thread
 comparator, and it is faster. And `pa.set_cpu_count(1)` matters even with
 `use_threads=False`: on one fixture the same file reads 2.25 ms one way and
