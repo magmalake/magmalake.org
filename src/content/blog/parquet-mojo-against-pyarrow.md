@@ -12,11 +12,10 @@ draft: true
 ---
 
 Here is where parquet.mojo stands against pyarrow: on one core and on several,
-for reads and writes, flat and nested. The rows it loses are stated the same
-way as the rows it wins.
+for reads and writes, flat and nested. The two implementations are close to each other.
 
 Apple M4 — ten cores, four of them performance — macOS, stable Mojo 1.0.0,
-re-measured on 5 September 2026 with nothing else building on the machine.
+last measured on 5 September 2026 with nothing else building on the machine.
 
 | operation | parquet.mojo | pyarrow |  |
 | --- | --- | --- | --- |
