@@ -39,7 +39,7 @@ export const tins: Tin[] = [
       "Format v1–v3 reads: position and equality deletes, v3 deletion vectors, schema evolution, nested types",
       "Writes: create, fast-append, delete (copy-on-write and merge-on-read), overwrite, dynamic partition overwrite, expire_snapshots",
       "REST, filesystem and SQL catalogs — the SQL one on SQLite or PostgreSQL, PyIceberg's schema; local, HTTP, S3, GCS and Azure IO",
-      "Scans 1M rows in 35.8 ms single-core, 12.1 ms across four workers",
+      "Scans 1M rows in 36 ms on one core, 11 ms across four workers",
     ],
   },
   {
@@ -57,7 +57,7 @@ export const tins: Tin[] = [
       "Nested lists, maps and structs reconstructed from definition and repetition levels",
       "Row-group, page-index and bloom-filter pruning; field-id projection for Iceberg",
       "Arrow C Data Interface export, verified by pyarrow importing the arrays",
-      "Reads 1M rows in 4.3 ms — 232M rows/s, 1.9× pyarrow",
+      "Reads 1M rows in 4.7 ms on one core — 211M rows/s, 1.7× single-threaded pyarrow — and 2.35 ms on four, past threaded pyarrow",
     ],
   },
   {
@@ -74,7 +74,7 @@ export const tins: Tin[] = [
       "Object Container Files, read and write, null / deflate / snappy / zstandard",
       "A schema-compiled RecordCursor with no per-record allocation",
       "Iceberg field-ids and OCF metadata survive parsing intact",
-      "Decodes manifest-shaped records at 19.2M/s — 11× fastavro",
+      "Decodes manifest-shaped records at 18.1M/s — 10.7× fastavro",
     ],
   },
   {
@@ -116,12 +116,14 @@ export const tins: Tin[] = [
     version: "0.2.0",
     tier: "format",
     what:
-      "A PostgreSQL client over libpq: parameterized statements, typed text-format results, transactions with savepoints and COPY, every error carrying its SQLSTATE. A fork of dvirarad/mojo-postgres, rewritten for the 1.x toolchain.",
+      "A PostgreSQL client over libpq: parameterized statements, typed text-format results, transactions with savepoints and COPY, every error carrying its SQLSTATE — and, in a module of its own, a connection pool for a threaded service. A fork of dvirarad/mojo-postgres, rewritten for the 1.x toolchain.",
     oracle: "psycopg 3 and psql — cell-exact, both directions",
     bullets: [
       "Every §5 type, with NULL distinct from empty and numeric kept as text",
       "PQexecParams and prepared statements — no values escaped into SQL",
       "COPY in and out at 5 M rows/s; handles co-own the connection",
+      "A bounded ConnectionPool behind with pool.lease(): acquire timeouts, is_alive-checked checkout, lifetime and idle recycling, ROLLBACK on return",
+      "A connection whose statement or transaction outlives its lease is closed, never handed to a second thread",
       "Tested against a throwaway cluster on every CI leg — no Docker",
     ],
   },

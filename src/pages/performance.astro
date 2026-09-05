@@ -14,20 +14,37 @@ const description =
       <p class="eyebrow">Performance</p>
       <h1 class="section-title">Measured, including where it loses</h1>
       <p class="lede">
-        I measured all of this on 1 September 2026, on an Apple M4, single core unless a
-        row says otherwise — same machine, same files, and every row reproducible from
-        its own repository.
-        magmalake beats pyarrow on single-core Parquet reads. It loses on writes and on
-        multi-threaded scans, where what is left of the Iceberg gap is mostly libzstd
-        itself.
+        I re-measured all of this on 5 September 2026, on an Apple M4 — ten cores, four
+        of them performance — with nothing else building on the machine. Same machine,
+        same files, and every row reproducible from its own repository.
+        magmalake beats pyarrow on flat columnar Parquet reads, on one core and on four.
+        It is at parity on writes. It loses on nested and mixed data, and an Iceberg scan
+        is still about 1.3× behind pyarrow at matched thread counts. Those rows are in
+        the table too.
       </p>
       <p class="lede">
-        Every number here is a <em>mean over calibrated repetitions</em>, not a
-        best-of-N, and each benchmark reports its own spread. That change alone moved
-        several published figures — one benchmark had its random-number generator inside
-        the timed loop, and most of the fast operations had been timing a cold pass over
-        a buffer they had just built. Where a row measures a C library rather than Mojo,
-        it says so.
+        Almost every number here is a <em>p50 over real iterations</em>, with the p90
+        beside it where the spread is the point — not a mean, which one slow sample can
+        move by 30%, and not a best-of-N. The two repos whose benchmarks are not on that
+        harness yet, iceberg and objectstore, say so in their own rows.
+        Each benchmark is <em>compiled and then run</em>:
+        JIT-executing a suite with <code>mojo run</code> inflated one of these figures by
+        1.9×, and comparing a JIT number against a compiled one produced two confident
+        wrong diagnoses before that was found. Rows are taken per benchmark rather than
+        from one pass over a whole suite, and the harness times a reference kernel either
+        side of every benchmark and reads the load average, so a run taken on a busy
+        machine says so instead of quietly reporting inflated numbers. Where a row
+        measures a C library rather than Mojo, it says so.
+      </p>
+      <p class="lede">
+        <strong>&ldquo;Single core&rdquo; is no longer a property of this stack.</strong>
+        <code>ParquetReader.num_workers</code> and <code>ScanOptions.num_workers</code>
+        both exist now, so every row carries its own thread count — and so does every
+        pyarrow reference, which is quoted either as <em>one thread</em>
+        (<code>set_cpu_count(1)</code>, <code>set_io_thread_count(1)</code>,
+        <code>use_threads=False</code>) or as <em>threaded</em>, pyarrow's own default.
+        On the 1M-row file those two legs are 2.9× apart, so a comparison that does not
+        name the leg is not a comparison.
       </p>
 
       <div class="perf-groups">
@@ -81,6 +98,15 @@ pixi run -e bench bench -- --only bench_read_wide</code></pre>
           The <code>bench</code> environment is stable Mojo 1.0.0: a precompiled Mojo
           package is stamped with the compiler version that built it, and every tin
           builds with 1.0.0. The libraries themselves test on stable and nightly.
+        </p>
+        <p>
+          Two caveats on reproducing the numbers above exactly. The tins currently pin
+          <a href="https://github.com/magmalake/bench.mojo" rel="noopener">bench.mojo</a>
+          0.2.0, which prints the same p50 and p90 but not the <code>machine: steady</code>
+          verdict — that arrived in 0.4.0, which is what these rows were taken with, and
+          the tins have yet to be moved onto it. And the worker ladders contend with each
+          other if you run them together, so take them one at a time:
+          <code>--only bench_read_wide_w4</code>.
         </p>
         <p>
           A few benchmarks need a fixture that is generated rather than committed —
