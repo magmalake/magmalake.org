@@ -19,11 +19,11 @@ re-measured on 5 September 2026 with nothing else building on the machine.
 
 | operation | parquet.mojo | pyarrow | |
 | --- | --- | --- | --- |
-| Flat read, 1M rows, 1 core | **4.7 ms** — 211M rows/s | 7.9 ms, one thread | **1.7× ahead** |
-| Flat read, 1M rows, 4 workers | **2.35 ms** — 426M rows/s | 2.7 ms, threaded over all 10 CPUs | **1.15× ahead**, on four threads to its ten |
-| Nested and mixed read, 100k rows, 1 core | 3.3 ms | 2.3 ms, one thread | **1.4× behind** |
-| Nested and mixed read, 100k rows, 4 workers | 1.15 ms | 0.70 ms, threaded | **1.6× behind** |
-| Write, 1M rows | 31.7 ms | 31.7 ms | **parity**, inside the run-to-run spread |
+| Flat read, 1M rows, 1 core | **3.77 ms** — 265M rows/s | 8.0 ms, one thread | **2.1× ahead** |
+| Flat read, 1M rows, 4 workers | **1.96 ms** — 510M rows/s | 2.57 ms, threaded over all 10 CPUs | **1.3× ahead**, on four threads to its ten |
+| Nested and mixed read, 100k rows, 1 core | 2.63 ms | 2.24 ms, one thread | **1.17× behind** |
+| Nested and mixed read, 100k rows, 8 workers | 0.78 ms | 0.66 ms, threaded | **1.18× behind** |
+| Write, 1M rows | 32.8 ms | 31.7 ms | **parity**, inside the run-to-run spread |
 | Footer, 1,000 columns × 50 row groups | 56.6 ms read / 2.6 ms write | — | — |
 
 The flat file is 1M rows of int64, double and two dictionary columns,
@@ -33,8 +33,8 @@ in the repo, and every row above is reproducible from it.
 
 ## Flat columnar reads
 
-The win holds at every thread count measured: 4.7 ms against pyarrow's 7.9 ms
-on one thread, and 2.35 ms on four workers against 2.7 ms from pyarrow using
+The win holds at every thread count measured: 3.77 ms against pyarrow's 8.0 ms
+on one thread, and 1.96 ms on four workers against 2.57 ms from pyarrow using
 all ten CPUs it can see.
 
 `ParquetReader.num_workers` is the whole interface to that. Reading a Parquet
@@ -43,28 +43,36 @@ caller manages, or a batch loop.
 
 ## Worker scaling, and where it bends
 
-The same file at 1, 2, 4, 8 and 10 workers: **4.7 / 3.3 / 2.35 / 2.17 /
-2.14 ms**.
+The same file at 1, 2, 4, 8 and 10 workers: **3.77 / 2.42 / 1.96 / 1.90 /
+1.90 ms**.
 
 It bends at four, which is how many performance cores this M4 has. Past four
-the p50 buys about 8% and the p90 gets worse — 2.4 ms at four workers, 2.9 ms
+the p50 buys about 3% and the p90 gets worse — 2.07 ms at four workers, 2.50 ms
 at eight. Four is the setting to use on this machine, and the shape of that
 curve, rather than the core count, is what to look for on another one.
 
 ## Nested and mixed data
 
 parquet.mojo loses here, and it loses on a single core, before threading comes
-into it at all: 3.3 ms against pyarrow's 2.3 ms one-thread leg. Adding workers
-does not close it, because pyarrow gets the same benefit from its own pool.
+into it at all: 2.63 ms against pyarrow's 2.24 ms one-thread leg. Adding
+workers does not close it, because pyarrow gets the same benefit from its own
+pool.
 
-The cost is located rather than suspected. On that file, Dremel assembly into
-Arrow buffers is 30% of the read and decompression another 25%. The ranked
-list of what the reference implementations do that we do not — parquet-cpp at
-the tag pyarrow 25.0.1 actually runs, and arrow-rs at HEAD, each item cited to
-a file and a function and costed against this profile — is
-[parquet.mojo#18](https://github.com/magmalake/parquet.mojo/issues/18). Four of
-its items are worth roughly 0.7–1.1 ms of the 3.29 ms between them, which would
-be parity to slightly behind. None of them is done.
+The cost was located rather than suspected, and then removed. A ranked list of
+what the reference implementations do that we did not — parquet-cpp at the tag
+pyarrow 25.0.1 actually runs, and arrow-rs at HEAD, each item cited to a file
+and a function and costed against a stage profile — is
+[parquet.mojo#18](https://github.com/magmalake/parquet.mojo/issues/18). Its
+three implementable items are done: an uncompressed page is handed back rather
+than copied, the dictionary gather is fused with its bounds check, and the
+nested path samples its row index, decodes validity as a bitmap and spaces
+nulls by runs. That took this file from 3.29 ms to 2.63, and the gap from
+1.4× to 1.17×.
+
+Two of the three estimates in that issue were wrong, both in the direction of
+caution: the fused gather was worth more than predicted, the sampled row index
+about half. The remaining item asks for a change to a public trait that is not
+worth it yet.
 
 Anyone choosing parquet.mojo for list, struct and map columns today should
 expect to be somewhat behind pyarrow, and should read that issue rather than
@@ -91,7 +99,7 @@ re-measurement. The corrections are worth stating plainly, because they are the
 reason to trust the numbers above.
 
 **The pyarrow comparison flattered us.** The published single-core number was
-1.9× faster than pyarrow. The honest figure is **1.7×**. Two things were wrong
+1.9× faster than pyarrow. The honest figure at the time was **1.7×**. Two things were wrong
 with the old comparison. `pq.read_table` is pyarrow's *dataset scanner*, not
 parquet-cpp's read path; `ParquetFile.read()` is the right single-thread
 comparator, and it is faster. And `pa.set_cpu_count(1)` matters even with
