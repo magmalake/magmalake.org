@@ -8,7 +8,7 @@ sourceLabel: parquet.mojo
 related:
   - how-far-parquet-mojo-is-validated
 unlisted: false
-draft: true
+draft: false
 ---
 
 parquet.mojo is ready to use. Flat columnar reads are about twice as fast as pyarrow on
