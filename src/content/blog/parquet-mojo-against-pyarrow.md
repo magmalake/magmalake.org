@@ -16,19 +16,16 @@ one core and faster again on four; writes are at parity; nested and mixed data
 is the one shape that loses, by about a fifth. Every limit is named below
 rather than waiting to be found.
 
-Take parquet.mojo if you are reading columnar data from Mojo and want to stay in Mojo.
-Take pyarrow if you need Parquet encryption,  or the Arrow types that only an `ARROW:schema`
+Use parquet.mojo if you are reading columnar data from Mojo and want to stay in Mojo.
+Use pyarrow if you need Parquet encryption,  or the Arrow types that only an `ARROW:schema`
 block can restore. See the repository for more details.
 
 The rest of this post is the evidence, in decreasing order of how much it
-matters: why the GPU is not the answer, what a pyarrow comparison has to say
-to be one, the rules every figure had to pass, and finally the measurements
-themselves.
+matters: the GPU story, the pyarrow comparison, the methodology, and finally the measurements themselves.
 
 Every number here is one machine's. The claim is not that these hold on your
 hardware — it is that each one is reproducible, says which thread count and
-which reference API it used, and comes from a run that checked the machine was
-idle.
+which reference API it used. Additionally each measurement was made after checking that the machine was idle.
 
 ## GPU considerations
 
@@ -58,9 +55,8 @@ reason to wait.
 
 ## The reference
 
-A pyarrow number is only a comparison if it says which pyarrow it is.
-
-`pq.read_table` and `ParquetFile.read` are different code paths, and neither is
+There is more than one API into Pyarrow, `pq.read_table` and `ParquetFile.read` 
+are different code paths, and neither is
 faster in both directions. On one thread `ParquetFile.read` wins — 2.24 ms
 against 2.44 on the mixed file. Threaded, `read_table` wins by much more, 0.66
 against 0.86, because it parallelises across row groups where
@@ -72,8 +68,7 @@ quotes whichever of the two is faster for that leg.
 `pa.set_cpu_count` does. On the 1M-row file the two readings are **2.9× apart**,
 which is wider than most of the differences anyone is trying to measure.
 
-Both legs come from a script in the repository, so the comparison can be run
-rather than believed.
+All entries come from a script in the repository, so the comparison can be reproduced on your hardware.
 
 ## The measurement rules
 
@@ -101,7 +96,7 @@ the two repos whose benchmarks are not on that harness yet, is on
 
 ## The skill
 
-The rules above are five of thirty-five. The rest — fast-path gates that
+The rules above are five of a list of thirty-five rules. The rest — fast-path gates that
 cannot be satisfied, decoding into the destination representation, the shape of
 a parallel decomposition, the tests that catch an optimisation which silently
 never fires — are packaged as an agent skill, `writing-performant-data-code`,
