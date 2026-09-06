@@ -97,6 +97,14 @@ const shown = post.data.date.toLocaleDateString("en-GB", {
     border-left-color: var(--ember);
     background: var(--ember-wash);
   }
+  /* A pointer to runnable code, not a warning: same shape as the
+     correction callout, lake rather than ember. */
+  .post .callout--source {
+    border-left-color: var(--lake);
+    background: var(--lake-wash);
+  }
+  .post .callout--source .callout__label { color: var(--lake); }
+
   .post .callout__label {
     font-family: var(--font-mono);
     font-size: 0.6875rem;

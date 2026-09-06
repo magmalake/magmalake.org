@@ -16,6 +16,24 @@ before the first thread started. The program still printed `499500`, which is
 why I did not notice, and this post is about why it printed the right number,
 what is the right approach, and how to avoid it next time. 
 
+<!-- The post shows the fix in pieces; this is where a reader goes for the
+     whole compiling program. Keep it above the first listing. -->
+<aside class="callout callout--source" aria-labelledby="companion-heading">
+  <p class="callout__label" id="companion-heading">The whole program</p>
+  <p>Every listing below is an excerpt. The complete, compiling version of
+  the pattern this post arrives at is
+  <a href="https://github.com/magmalake/threads.example/blob/main/src/origins.mojo"
+  rel="noopener"><code>src/origins.mojo</code></a> in
+  <a href="https://github.com/magmalake/threads.example" rel="noopener">threads.example</a>,
+  alongside <code>src/post.mojo</code>, which is the previous post's unsafe
+  version kept for comparison.</p>
+  <p>It builds against <code>threads.mojo</code> the way a reader would get
+  it — from mojoshelf, as a pixi git source dependency — so cloning it also
+  checks that the install path here works:</p>
+  <p><code>git clone https://github.com/magmalake/threads.example &amp;&amp; cd
+  threads.example &amp;&amp; pixi run run</code></p>
+</aside>
+
 ## The destruction point
 
 Mojo destroys a value at its last visible use, not at the end of its block.
