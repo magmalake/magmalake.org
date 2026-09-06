@@ -1,6 +1,6 @@
 ---
 title: The parquet.mojo performance bar
-description: Flat columnar reads are ahead of pyarrow on one core and on four, writes are at parity, and nested data loses before threading comes into it at all.
+description: Flat columnar reads are ahead of pyarrow on one core and on four, writes are at parity, and nested data loses before threading comes into it.
 eyebrow: Performance
 date: 2026-09-05
 sourceUrl: https://github.com/magmalake/parquet.mojo
@@ -11,65 +11,33 @@ unlisted: false
 draft: true
 ---
 
-parquet.mojo is ready to use. Flat columnar reads are faster than pyarrow on
+parquet.mojo is ready to use. Flat columnar reads are alightly faster than pyarrow on
 one core and faster again on four; writes are at parity; nested and mixed data
 is the one shape that loses, by about a fifth. Every limit is named below
 rather than waiting to be found.
 
-Take it if you are reading columnar data from Mojo and want to stay in Mojo.
-Take pyarrow if you need Parquet encryption, or a single column chunk holding
-more than 2 GiB of strings, or the Arrow types that only an `ARROW:schema`
-block can restore.
+Take  mojo if you are reading columnar data from Mojo and want to stay in Mojo.
+Take pyarrow if you need Parquet encryption,  or the Arrow types that only an `ARROW:schema`
+block can restore. See the repository for more details.
 
 The rest of this post is the evidence, in decreasing order of how much it
 matters: what the limits are, why the GPU is not the answer, what changed in
 the numbers, and finally the measurements themselves.
-
-## Limits, named
-
-Flat columnar reads are ahead of pyarrow on one core and on four. Writes are at
-parity. Nested and mixed data is behind by 1.17× on one thread and 1.18×
-threaded. A 50,000-column-chunk footer costs 56.6 ms to read, which is a real
-cost for very wide schemas. Scaling bends at the performance-core count, and
-past it the p90 gets worse while the p50 barely improves.
-
-The gaps are enumerated in the repository, and each is a decision rather than a
-surprise:
-
-- **More than 2 GiB of `BYTE_ARRAY` in one column chunk.** Arrow's 32-bit
-  offsets cannot address it, so the read raises instead of wrapping negative.
-- **Encryption.** A `PARE` footer or an encrypted column raises; Parquet
-  modular encryption is not implemented.
-- **`ARROW:schema` metadata.** pyarrow stores an Arrow IPC schema in the file's
-  key/value metadata to restore types Parquet cannot record. This reader
-  derives everything from the Parquet schema, as `parquet-mr` does. The values
-  are identical; only the Arrow type differs.
-- **Page-level skipping for repeated columns.** The page index prunes pages for
-  flat columns; a column with a repetition level above zero reads every page.
-- **One file in `apache/parquet-testing` that we accept and Arrow rejects.**
-  Its dictionary indices use bit width 0, which is legal RLE for a page whose
-  values are all the same index — indistinguishable from a page referencing
-  only the first entry. Rejecting it would reject a valid encoding, so this one
-  is deliberate.
-
-Of the 70 files in that corpus, 67 read, two are corrupt by design and are
-correctly rejected, and one is the 2 GiB case.
 
 Every number here is one machine's. The claim is not that these hold on your
 hardware — it is that each one is reproducible, says which thread count and
 which reference API it used, and comes from a run that checked the machine was
 idle.
 
-## GPU, measured
+## GPU considerations
 
 Mojo compiles to Metal, and Apple Silicon has unified memory, so the obvious
-question is whether the decode belongs on the GPU. It does not, and the
-measurement is unambiguous.
+question is whether the decode belongs on the GPU. The measurements below are machine dependent, on a M4 the computations used by Parquet reading do not make sense on the GPU. If you are optimizing a data pipeline enf-to-end, across boundaries component boundaries, the conclusion may be different.
 
 The dictionary gather is the friendliest possible candidate — pure data
 parallelism, no nesting, and 43.7% of a flat read before it was fused. On an
 M4 it costs **337 µs of fixed overhead plus 1.80 ns per value**, against the
-CPU's 0 and 0.51. The marginal cost is *higher*, so the two curves diverge:
+CPU's 0 and 0.51. The marginal cost is _higher_, so the two curves diverge:
 there is no page size at which the GPU wins. A real 13-page string chunk takes
 397 µs on the CPU and 12.4 ms on the GPU.
 
@@ -88,7 +56,6 @@ The CPU path is the product. GPU support is a reason to write Mojo, not a
 reason to wait.
 
 ## The numbers that moved
-
 
 Several figures published on this site were wrong, in our favour, until this
 re-measurement. The corrections are worth stating plainly, because they are the
@@ -114,7 +81,6 @@ pyarrow's 31.6 ms. It is 31.7 against 31.7.
 
 ## The measurement rules
 
-
 Every row above comes from a run that satisfied all of these.
 
 - **p50 headline, p90 beside it, never the mean alone.** One first-call sample
@@ -139,7 +105,6 @@ the two repos whose benchmarks are not on that harness yet, is on
 [the performance page](/performance).
 
 ## The skill
-
 
 The rules above are five of thirty-five. The rest — fast-path gates that
 cannot be satisfied, decoding into the destination representation, the shape of
@@ -173,7 +138,6 @@ in the repo, and every row above is reproducible from it.
 
 ## Flat columnar reads
 
-
 The win holds at every thread count measured: 3.77 ms against pyarrow's 8.0 ms
 on one thread, and 1.96 ms on four workers against 2.57 ms from pyarrow using
 all ten CPUs it can see.
@@ -184,7 +148,6 @@ caller manages, or a batch loop.
 
 ## Worker scaling, and where it bends
 
-
 The same file at 1, 2, 4, 8 and 10 workers: \*\*3.77 / 2.42 / 1.96 / 1.90 /
 1.90 ms\*\*.
 
@@ -194,7 +157,6 @@ at eight. Four is the setting to use on this machine, and the shape of that
 curve, rather than the core count, is what to look for on another one.
 
 ## Nested and mixed data
-
 
 parquet.mojo loses here, and it loses on a single core, before threading comes
 into it at all: 2.63 ms against pyarrow's 2.24 ms one-thread leg. Adding
@@ -222,7 +184,6 @@ expect to be somewhat behind pyarrow, and should read that issue rather than
 this paragraph for how far.
 
 ## Writes
-
 
 A write of 1M rows takes 31.7 ms, against pyarrow's 31.7 ms on the same data.
 That is parity inside the run-to-run spread, not a win.
