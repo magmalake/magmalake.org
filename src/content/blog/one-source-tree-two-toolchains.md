@@ -8,7 +8,7 @@ sourceLabel: threads.mojo
 related:
   - writing-multithreaded-code-in-mojo
 unlisted: false
-draft: true
+draft: false
 ---
 
 Mojo 1.0 and nightly will diverge over time. Here is what you could do about it.
