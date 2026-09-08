@@ -67,6 +67,13 @@ const shown = post.data.date.toLocaleDateString("en-GB", {
     letter-spacing: -0.015em;
     margin: 2.75rem 0 0.85rem;
   }
+  /* global.css zeroes the margin on every heading, so a subsection needs its
+     own rule or it renders jammed against the prose either side. */
+  .post h3 {
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    margin: 2rem 0 0.7rem;
+  }
   .post p { margin: 0 0 1.15rem; line-height: 1.7; }
   .post ul { margin: 0 0 1.15rem 1.1rem; line-height: 1.7; }
   /* Markdown code fences, styled like the hand-written blocks were. */

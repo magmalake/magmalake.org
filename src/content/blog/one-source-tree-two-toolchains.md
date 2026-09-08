@@ -1,6 +1,6 @@
 ---
-title: One source tree, two mojo versions
-description: Mojo  1.0 and nightly will diverge over time. Here is one possible pattern on how to handle that.
+title: One source tree, two Mojo versions
+description: Mojo 1.0 and nightly will diverge over time. Here is one possible pattern on how to handle that.
 eyebrow: Toolchains
 date: 2026-09-08
 sourceUrl: https://github.com/magmalake/threads.mojo
@@ -11,7 +11,7 @@ unlisted: false
 draft: true
 ---
 
-Mojo  1.0 and nightly will diverge over time. Here is what you could do about it.
+Mojo 1.0 and nightly will diverge over time. Here is what you could do about it.
 
 ## The pattern
 
@@ -70,9 +70,10 @@ In the general case you may have more than one divergence. Here `std.atomic.Atom
 That looks like it should infect every call site. It does not. Once the alias
 exists, `fetch_add[ordering = …]`, `load[ordering = …]` and `store[ordering = …]`
 are **identical text** on both toolchains — the difference lives entirely in the
-declaration.
+declaration. In `threads.mojo` that leaves one divergent line per toolchain and
+400 shared ones.
 
-### Two things that do not work
+## Two things that do not work
 
 **A conditional alias at module scope does not parse.** This is the obvious
 first attempt and it fails on both toolchains:
