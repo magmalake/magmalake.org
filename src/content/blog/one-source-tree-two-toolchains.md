@@ -75,20 +75,31 @@ declaration. In `threads.mojo` that leaves one divergent line per toolchain and
 
 ## Two things that do not work
 
-**A conditional alias at module scope does not parse.** This is the obvious
-first attempt and it fails on both toolchains:
+**A conditional alias at module scope is rejected.** This is the obvious first
+attempt, and it fails identically on Mojo 1.0.0 and on nightly:
 
 ```mojo
 comptime if NIGHTLY:
-    comptime Cell = Atomic[Int64]      # does not parse
+    comptime Cell = Atomic[Int64]
 else:
     comptime Cell = Atomic[DType.int64]
 ```
 
-**`-D` defines cannot select a type.** They work — `std.sys.defines.get_defined_bool`
-plus `comptime if` compiles on both, and `mojo build -D MY_FLAG=true` sets it — but
-a define can only branch _inside a function body_. It cannot choose what a type
-alias binds to at module scope. Useful for behavioural differences; no help here.
+```
+error: 'comptime if' must be contained in a function
+```
+
+That is a scope rule with a message written for it, not a parser tripping over
+the syntax — which makes it a thing that could simply be allowed. Filed as
+[modular/modular#7096](https://github.com/modular/modular/issues/7096), asking
+for `comptime if` at module scope when its branches contain only declarations.
+
+**`-D` defines do not route around it.** The define itself is fine, and further
+along than you might expect — `comptime NIGHTLY = get_defined_bool["MOJO_NIGHTLY",
+False]()` evaluates happily at module scope, and `mojo build -D MOJO_NIGHTLY=true`
+flips it. It is the *branch* that has to live inside a function. A define can
+change a value; it cannot choose what a type alias binds to. Useful for
+behavioural differences; no help here.
 
 Which leaves the include path, and the include path is enough.
 
