@@ -117,6 +117,35 @@ pixi run -e bench bench -- --only bench_read_wide</code></pre>
         </p>
       </div>
 
+      <div class="panel" id="perf-endtoend" style="margin-bottom: 2.5rem; scroll-margin-top: 5rem;">
+        <h3 class="panel__title">
+          <a class="perf__anchor" href="#perf-endtoend">A whole query, end to end</a>
+        </h3>
+        <p>
+          The rows above measure one tin at a time. <a
+            href="https://github.com/magmalake/taxibench.example"
+            rel="noopener">taxibench.example</a> measures the stack the way a caller
+          uses it: eight analytical queries over <strong>79,478,796 NYC taxi trips</strong>
+          as an Iceberg table, answered by <a
+            href="https://github.com/magmalake/iceberg.mojo" rel="noopener">iceberg.mojo</a>
+          and by PyIceberg, with every answer diffed between the two before any timing is
+          quoted.
+        </p>
+        <p>
+          It is also where the last few releases came from. Profiling it found four gaps —
+          no intra-file parallelism, no metadata-only <code>count()</code>, a residual
+          evaluated per row, and a scan that read whole files to decode four columns of
+          nineteen — and closing them took the suite from <strong>0.70x to 1.34x</strong>
+          the speed of PyIceberg single-threaded, and to <strong>1.68x</strong> across ten
+          threads.
+        </p>
+        <p class="panel__fine">
+          The same repository also asks what a table format is worth by answering the same
+          eight questions from PostgreSQL, and packages both stacks as container images —
+          521 MB for the Python one against 126 MB, or 57 MB without object storage.
+        </p>
+      </div>
+
       <div class="two-col two-col--wide">
         <div class="panel">
           <h3 class="panel__title">Threads, for now, come from a tin</h3>
