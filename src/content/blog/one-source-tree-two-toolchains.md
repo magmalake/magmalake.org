@@ -1,13 +1,14 @@
 ---
 title: One source tree, two toolchains
-description: If your Mojo library targets 1.0 and nightly, the two will disagree about how to spell things — and you do not have to fork a module to handle it. Here is the pattern, in one line per toolchain, shipped in threads.mojo 0.5.0.
+description: Mojo  1.0 and nightly will diverge over time. Here is one possible pattern on how to handle that.
 eyebrow: Toolchains
 date: 2026-09-08
 sourceUrl: https://github.com/magmalake/threads.mojo
 sourceLabel: threads.mojo
 related:
   - writing-multithreaded-code-in-mojo
-draft: false
+unlisted: false
+draft: true
 ---
 
 If your library supports Mojo 1.0 and current nightly, you will hit a case where
@@ -63,7 +64,7 @@ THREADS_COMPAT = "compat/nightly"
 `std.atomic.Atomic` takes a `DType` on 1.0 and a type on nightly:
 
 | toolchain | compiles | rejected |
-|---|---|---|
+| --- | --- | --- |
 | Mojo 1.0.0 | `Atomic[DType.int64]` | `Atomic[Int64]` |
 | nightly | `Atomic[Int64]` | `Atomic[DType.int64]` |
 
@@ -90,7 +91,7 @@ else:
 
 **`-D` defines cannot select a type.** They work — `std.sys.defines.get_defined_bool`
 plus `comptime if` compiles on both, and `mojo build -D MY_FLAG=true` sets it — but
-a define can only branch *inside a function body*. It cannot choose what a type
+a define can only branch _inside a function body_. It cannot choose what a type
 alias binds to at module scope. Useful for behavioural differences; no help here.
 
 Which leaves the include path, and the include path is enough.
@@ -99,7 +100,7 @@ Which leaves the include path, and the include path is enough.
 
 The temptation is to build an abstraction over "toolchain differences." Resist it.
 What is described above is file selection and nothing more: two files, same module
-name, one on the path at a time. It does not know *why* the files differ.
+name, one on the path at a time. It does not know _why_ the files differ.
 
 That matters because the next divergence will not look like this one. This case was
 one API spelled two ways. When first-class async lands, the difference will be that
@@ -116,7 +117,7 @@ beside the source one. That is worth stating in your changelog under its own
 heading, because it is a build-time break for exactly the people who will not
 read past the summary.
 
----
+***
 
 The pattern is in
 [threads.mojo 0.5.0](https://github.com/magmalake/threads.mojo) — `compat/`
