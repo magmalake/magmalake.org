@@ -11,8 +11,7 @@ unlisted: false
 draft: true
 ---
 
-If your library supports Mojo 1.0 and current nightly, you will hit a case where
-the two spell the same thing differently. Here is what to do about it.
+Mojo  1.0 and nightly will diverge over time. Here is what you could do about it.
 
 ## The pattern
 
@@ -61,7 +60,7 @@ THREADS_COMPAT = "compat/nightly"
 
 ## Why it collapses to one line
 
-`std.atomic.Atomic` takes a `DType` on 1.0 and a type on nightly:
+In the general case you may have more than one divergence. Here `std.atomic.Atomic` takes a `DType` on 1.0 and a type on nightly:
 
 | toolchain | compiles | rejected |
 | --- | --- | --- |
@@ -73,11 +72,7 @@ exists, `fetch_add[ordering = …]`, `load[ordering = …]` and `store[ordering 
 are **identical text** on both toolchains — the difference lives entirely in the
 declaration.
 
-In `threads.mojo` that turned a 408-line module into 400 shared lines and one
-divergent line per toolchain. The compat files are 18 lines each; 17 of those
-are the docstring explaining why they exist.
-
-## Two things that do not work
+### Two things that do not work
 
 **A conditional alias at module scope does not parse.** This is the obvious
 first attempt and it fails on both toolchains:
