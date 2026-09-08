@@ -11,11 +11,18 @@
   "name": "magmalake-org",
   "compatibility_date": "2026-08-31",
   "main": "worker/posthog-proxy.js",
-  // The apex domain magmalake.org is registered in this Cloudflare account;
-  // wrangler creates and manages the DNS record for a custom domain itself.
+  // These domains are registered in this Cloudflare account; wrangler creates
+  // and manages the DNS record for a custom domain itself, so a domain that is
+  // missing here has no DNS at all, not merely no route.
+  //
+  // mlake.dev serves the same site rather than redirecting to it. Canonical
+  // links and the sitemap come from `site` in astro.config.mjs and still say
+  // magmalake.org, which is what consolidates the two for search.
   "routes": [
     { "pattern": "magmalake.org", "custom_domain": true },
-    { "pattern": "www.magmalake.org", "custom_domain": true }
+    { "pattern": "www.magmalake.org", "custom_domain": true },
+    { "pattern": "mlake.dev", "custom_domain": true },
+    { "pattern": "www.mlake.dev", "custom_domain": true }
   ],
   "assets": {
     "directory": "./dist",
