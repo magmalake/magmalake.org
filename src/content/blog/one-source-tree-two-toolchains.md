@@ -1,5 +1,5 @@
 ---
-title: One source tree, two toolchains
+title: One source tree, two mojo versions
 description: Mojo  1.0 and nightly will diverge over time. Here is one possible pattern on how to handle that.
 eyebrow: Toolchains
 date: 2026-09-08
