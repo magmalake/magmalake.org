@@ -22,7 +22,9 @@
     { "pattern": "magmalake.org", "custom_domain": true },
     { "pattern": "www.magmalake.org", "custom_domain": true },
     { "pattern": "mlake.dev", "custom_domain": true },
-    { "pattern": "www.mlake.dev", "custom_domain": true }
+    { "pattern": "www.mlake.dev", "custom_domain": true },
+    { "pattern": "magmalake.dev", "custom_domain": true },
+    { "pattern": "www.magmalake.dev", "custom_domain": true }
   ],
   "assets": {
     "directory": "./dist",
