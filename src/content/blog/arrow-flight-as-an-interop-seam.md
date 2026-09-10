@@ -7,7 +7,7 @@ sourceUrl: https://github.com/magmalake/flight.mojo
 sourceLabel: flight.mojo
 related:
   - parquet-mojo-against-pyarrow
-draft: false
+draft: true
 ---
 
 A fast reader in a new language is unreachable. Nobody is going to rewrite a
