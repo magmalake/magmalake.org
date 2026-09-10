@@ -1,6 +1,6 @@
 ---
 title: Arrow Flight as an interop seam
-description: A fast reader in a new language is unreachable until something can call it. Flight is the seam that makes it callable — here is when it pays, when it does not, and what it cost to implement.
+description: Iceberg already decides where a scan divides. Flight is how you hand that decision to somebody else's client — including one running on another machine. When it pays, when it does not, and what snapshot isolation has to do with it.
 eyebrow: Interop
 date: 2026-09-10
 sourceUrl: https://github.com/magmalake/flight.mojo
@@ -48,11 +48,8 @@ new language.
 of rows crossing the boundary, because it removes per-row work rather than
 per-request work.
 
-**You want the split to be visible.** `GetFlightInfo` returns *endpoints*, and
-a client may fetch them independently and in parallel. If your planner already
-knows where the work divides — as Iceberg's does, having pruned partitions and
-attached delete files per data file — the endpoints are that plan, handed out.
-One endpoint per data file, and the union is the table.
+**The work divides, and you want the division visible.** This is the case
+worth dwelling on, and the next section is about why Iceberg makes it easy.
 
 ## When it does not
 
@@ -71,6 +68,82 @@ That last distinction caught us out and is worth stating plainly: the C Data
 Interface and IPC solve different problems. The first shares memory between
 libraries in one process. The second is a byte format for sending data
 somewhere else. Having one does not give you the other.
+
+## Iceberg already decided where the work divides
+
+The hard part of distributing a read is not moving bytes, it is agreeing on who
+reads what. Iceberg answers that before Flight enters the picture, because its
+metadata is a tree of immutable files.
+
+`plan_files()` walks table metadata to snapshot to manifest list to manifests
+to data files, and returns a list of tasks. Each carries its own data file, its
+own delete files, and its own residual predicate — the part of your `WHERE` the
+planner could not satisfy from partitions and statistics. The tasks are
+disjoint *by construction*: for a given snapshot a data file appears in exactly
+one manifest entry, so splitting by task splits the rows. No locks, no
+coordination, no shuffle. A worker reading task *k* cannot collide with a
+worker reading task *j*.
+
+Pruning happens before the division rather than instead of it. Partition
+pruning drops whole manifests, per-file statistics drop files, and what
+survives becomes the residual on each task. The planner shrinks the work, then
+divides what is left.
+
+So Flight's endpoints are not a split we invented. `GetFlightInfo` returns one
+endpoint per task, and a ticket names the task. The union of the endpoints is
+the table.
+
+### Snapshot isolation is what makes that safe
+
+A scan pinned to a snapshot sees exactly that snapshot, whatever commits land
+meanwhile. Readers never block writers and writers never disturb readers, which
+is what lets workers plan and read at different moments and still agree.
+
+That guarantee has to be *asked for*, and we initially did not. The server
+built a fresh scan for every call, so `GetFlightInfo` and a later `DoGet` could
+plan against different snapshots. Data files are immutable, so the failure was
+never corruption — it was a client fetching endpoints in parallel while a
+commit landed, and assembling a table that never existed at any single point in
+time. Worse than an error, because it looks reasonable.
+
+The fix is the standard shape: the coordinator pins a snapshot once, and the
+ticket carries it. A worker plans at the ticket's snapshot, not at whatever is
+current. That is what makes the union of endpoints the table across *time* as
+well as across workers.
+
+### What Iceberg gives you on the write side
+
+Writers produce data files and manifests with no coordination at all, and then
+a single atomic compare-and-swap on the catalog moves the table pointer. If
+someone committed first, re-validate and retry. Appends never conflict, which
+is why streaming ingestion scales; overwrites and deletes can, and that is
+where the retry logic earns its keep.
+
+Unlimited write parallelism with one serialization point is a strong property,
+and it is worth knowing that it is Iceberg's, not the query engine's.
+
+## What this is not
+
+Three layers make a distributed reader. Iceberg supplies the first and hardest:
+pruning, disjoint tasks, snapshot isolation. Flight supplies the second —
+advertising the split and moving Arrow bytes; the `Location` field on an
+endpoint, empty here and meaning "ask me", is the only thing between one
+process and many. The third is a scheduler, and that is most of what Ray and
+Daft actually are.
+
+So this gets you a distributed *reader* without a scheduler: a coordinator
+plans, hands out tickets with locations, and any Arrow client fans out. What it
+does not get you is **shuffle**. Joins and high-cardinality group-by need data
+to move between workers, and neither Iceberg nor Flight has an opinion about
+that. It is also the part where distributed engines are actually hard — spill,
+backpressure, skew — so the absence is worth being explicit about rather than
+discovering later.
+
+One gap on the read side is worth naming too: task granularity is currently one
+data file. Iceberg's task carries `start` and `length` so a large file can be
+split at row-group boundaries into several tasks, which is what stops one big
+file becoming a straggler. The fields are there; the policy is not implemented
+yet.
 
 ## What it cost
 
@@ -110,14 +183,11 @@ union of every endpoint is the whole table, with nothing repeated and nothing
 lost. Two data files, three rows and four, seven distinct ids. One endpoint
 would pass every value check while proving nothing about the partition.
 
-## Where this goes
+## Why bother before you are distributed
 
-The endpoints carry no `Location`, which Flight defines as "fetch from the
-server you asked". That is correct for one process and it is also the only
-thing standing between this and a distributed reader: fill in locations and
-the same `GetFlightInfo` response describes work spread across machines, with
-no change to the client.
-
-Flight is worth having before any of that, though. It is what makes a fast
-reader in a new language something you can point an existing tool at — which
-is the difference between a benchmark and a thing people can use.
+None of the above requires more than one machine to be worth it. Flight is what
+makes a fast reader in a new language something an existing tool can point at,
+which is the difference between a benchmark and a thing people can use. That
+the same `GetFlightInfo` response also describes work spread across machines —
+once the endpoints carry locations — is a property you get for having taken the
+planner's word for where the seams are.
