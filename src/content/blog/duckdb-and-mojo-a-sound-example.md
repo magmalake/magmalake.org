@@ -1,5 +1,5 @@
 ---
-title: "DuckDB and Mojo: a sound example"
+title: 'DuckDB and Mojo: a sound example'
 description: Five audio features as ordinary SQL expressions, computed in Mojo on the bytes of the DuckDB vector. What it guarantees, what it costs to carry, and where the speed actually comes from.
 eyebrow: Interop
 date: 2026-09-11
@@ -8,25 +8,25 @@ sourceLabel: duckdb.extension
 related:
   - parquet-mojo-against-pyarrow
   - how-far-parquet-mojo-is-validated
+unlisted: false
 draft: true
 ---
 
-The `mlake` DuckDB extension already read Iceberg tables through the Mojo
-stack. It now also computes: five audio features over a `BLOB` column, and a
+The problem to solve: we have acoustic sensors at four construction sites, 
+two seconds of sound an hour. A
+relational table says where each sensor is and when each clip was taken. Noise
+permits run 07:00 to 19:00.
+
+This is a showcase of the Mojo  `mlake` DuckDB extension. It can use any Mojo libraries, e.g.  read Iceberg tables through the magmalake stack. 
+The interesting addtiontion is that It now also computes: 
+five audio features over a `BLOB` column, and a
 table function over a directory of recordings. The kernel is Mojo, compiled
 into the extension, running on the bytes of the DuckDB vector where they
 already are.
 
-Use this shape when the per-row work is real, the data is already in the
-database, and you want the result to compose with the rest of the query. Use a
-Python UDF when the kernel is one numpy call away and you are not short of
-time. The measurements below say where the line falls.
+We compare with a numpy implementation below.
 
 ## The query
-
-Acoustic sensors at four construction sites, two seconds of sound an hour. A
-relational table says where each sensor is and when each clip was taken. Noise
-permits run 07:00 to 19:00.
 
 ```sql
 WITH measured AS (
@@ -72,7 +72,7 @@ The repository carries an independent numpy implementation — `np.fft.rfft` ove
 Python's `wave` module, sharing no code with the Mojo — and diffs the two over
 every clip in the dataset:
 
-```
+```plain
   ok  duration_s   max |mojo - numpy| = 0.000e+00
   ok  rms_db       max |mojo - numpy| = 0.000e+00
   ok  peak_db      max |mojo - numpy| = 0.000e+00
@@ -92,8 +92,8 @@ blob into Python to loop there.
 
 `rms_db`, one pass over the samples:
 
-| | 1 thread | 10 threads |
-|---|---|---|
+|  | 1 thread | 10 threads |
+| --- | --- | --- |
 | mojo | 67.6 ms | **13.8 ms** |
 | py-arrow | 90.7 ms | 45.5 ms |
 | py-native | 129.8 ms | 148.8 ms |
@@ -101,8 +101,8 @@ blob into Python to loop there.
 
 `centroid_hz`, sixty-odd Fourier transforms per clip:
 
-| | 1 thread | 10 threads |
-|---|---|---|
+|  | 1 thread | 10 threads |
+| --- | --- | --- |
 | mojo | 271.7 ms | **57.3 ms** |
 | py-arrow | 276.7 ms | 110.1 ms |
 | py-native | 318.6 ms | 195.5 ms |
@@ -126,13 +126,14 @@ boundary once per row, and is written in something other than C++.
 
 ## What it costs to carry
 
-| | Mojo | Python |
-|---|---|---|
+|  | Mojo | Python |
+| --- | --- | --- |
 | decode + four features | 331 lines | 64 lines |
 | leaning on | nothing | numpy, 24 MB |
 | shipped as | a 2.1 MB shared library | an interpreter and its site-packages |
 
-Five times the source, because the Mojo does the work instead of delegating it:
+Five times the source but a lot less dependencies.
+Mojo does the work instead of delegating it:
 chunk-walking the RIFF container that Python's `wave` module handles, and a
 radix-2 transform where numpy calls `rfft`. That is the trade — more code you
 own, and nothing to install beside the database.
