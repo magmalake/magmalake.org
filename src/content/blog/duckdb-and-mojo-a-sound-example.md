@@ -9,7 +9,7 @@ related:
   - parquet-mojo-against-pyarrow
   - how-far-parquet-mojo-is-validated
 unlisted: false
-draft: true
+draft: false
 ---
 
 The problem to solve: we have acoustic sensors at four construction sites, two
