@@ -12,19 +12,18 @@ unlisted: false
 draft: true
 ---
 
-The problem to solve: we have acoustic sensors at four construction sites, 
-two seconds of sound an hour. A
-relational table says where each sensor is and when each clip was taken. Noise
-permits run 07:00 to 19:00.
+The problem to solve: we have acoustic sensors at four construction sites, two
+seconds of sound an hour. A relational table says where each sensor is and when
+each clip was taken. Noise permits run 07:00 to 19:00.
 
-This is a showcase of the Mojo  `mlake` DuckDB extension. It can use any Mojo libraries, e.g.  read Iceberg tables through the magmalake stack. 
-The interesting addtiontion is that It now also computes: 
-five audio features over a `BLOB` column, and a
+This is a showcase of the Mojo [`mlake` DuckDB
+extension](https://github.com/magmalake/duckdb.extension#readme). It can use
+any Mojo library — reading Iceberg tables through the
+[magmalake](https://magmalake.dev) stack, for one. The interesting addition is
+that it now also computes: five audio features over a `BLOB` column, and a
 table function over a directory of recordings. The kernel is Mojo, compiled
 into the extension, running on the bytes of the DuckDB vector where they
 already are.
-
-We compare with a numpy implementation below.
 
 ## The query
 
@@ -132,11 +131,10 @@ boundary once per row, and is written in something other than C++.
 | leaning on | nothing | numpy, 24 MB |
 | shipped as | a 2.1 MB shared library | an interpreter and its site-packages |
 
-Five times the source but a lot less dependencies.
-Mojo does the work instead of delegating it:
-chunk-walking the RIFF container that Python's `wave` module handles, and a
-radix-2 transform where numpy calls `rfft`. That is the trade — more code you
-own, and nothing to install beside the database.
+Five times the source but far fewer dependencies. Mojo does the work instead of
+delegating it: chunk-walking the RIFF container that Python's `wave` module
+handles, and a radix-2 transform where numpy calls `rfft`. That is the trade —
+more code you own, and nothing to install beside the database.
 
 ## Limits
 
@@ -153,8 +151,9 @@ the expression runs eliminates the decode with it.
 
 ## Running it
 
-`examples/soundlake` in the repository is the whole thing: a generated dataset,
-eight queries in order, the numpy cross-check, and the benchmark above.
+[`examples/soundlake`](https://github.com/magmalake/duckdb.extension/tree/main/examples/soundlake)
+is the whole thing: a generated dataset, eight queries in order, the numpy
+cross-check, and the benchmark above.
 
 ```sh
 pixi run build
