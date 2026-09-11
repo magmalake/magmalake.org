@@ -51,8 +51,17 @@ worker:
 npx wrangler secret put GITHUB_CLIENT_ID
 npx wrangler secret put GITHUB_CLIENT_SECRET
 # Stops anyone else's site using your authenticator:
-npx wrangler secret put ALLOWED_DOMAINS   # magmalake.org
+npx wrangler secret put ALLOWED_DOMAINS   # magmalake.dev,mlake.dev
 ```
+
+`ALLOWED_DOMAINS` must list **every host the CMS is opened from**. The worker
+embeds it in the page that hands the OAuth token back and posts the token only
+to a matching origin, so a missing host fails login with nothing useful in the
+console.
+
+Since magmalake.org now redirects to magmalake.dev, `/admin` is reached at
+`https://magmalake.dev/admin`. A value still reading `magmalake.org` matches
+nothing after the redirect and the CMS will not sign in.
 
 ## 3. Point the CMS at the worker
 

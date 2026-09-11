@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://magmalake.org/sitemap-index.xml
+Sitemap: https://magmalake.dev/sitemap-index.xml

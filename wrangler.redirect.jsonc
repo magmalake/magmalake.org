@@ -1,0 +1,25 @@
+{
+  // The legacy domain, and nothing else.
+  //
+  //   npx wrangler deploy -c wrangler.redirect.jsonc
+  //
+  // magmalake.org used to be canonical and served the site; it now redirects
+  // to magmalake.dev. Kept as its own Worker with its own config so the assets
+  // Worker in wrangler.jsonc keeps serving magmalake.dev straight from `dist/`
+  // with no Worker in the path — see the comment at the top of worker/redirect.js.
+  //
+  // These two custom domains moved here from wrangler.jsonc. A custom domain
+  // belongs to one Worker at a time, so deploy that one first to release them,
+  // then this one to claim them.
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "magmalake-org-redirect",
+  "compatibility_date": "2026-08-31",
+  "main": "worker/redirect.js",
+  "routes": [
+    { "pattern": "magmalake.org", "custom_domain": true },
+    { "pattern": "www.magmalake.org", "custom_domain": true }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

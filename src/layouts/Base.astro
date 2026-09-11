@@ -13,7 +13,7 @@ interface Props {
 
 const { title, description, bare = false } = Astro.props;
 const fullTitle = bare ? title : `${title} — magmalake`;
-const canonical = new URL(Astro.url.pathname, Astro.site ?? "https://magmalake.org");
+const canonical = new URL(Astro.url.pathname, Astro.site ?? "https://magmalake.dev");
 const posthogEnabled = POSTHOG_KEY.startsWith("phc_");
 ---
 

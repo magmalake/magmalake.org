@@ -15,12 +15,16 @@
   // and manages the DNS record for a custom domain itself, so a domain that is
   // missing here has no DNS at all, not merely no route.
   //
-  // mlake.dev serves the same site rather than redirecting to it. Canonical
-  // links and the sitemap come from `site` in astro.config.mjs and still say
-  // magmalake.org, which is what consolidates the two for search.
+  // magmalake.dev is canonical: `site` in astro.config.mjs says so, and that
+  // is where the canonical links and the sitemap point. mlake.dev serves the
+  // same site rather than redirecting to it, which is what consolidates the
+  // two for search.
+  //
+  // magmalake.org is deliberately absent. It redirects here instead, from the
+  // Worker in wrangler.redirect.jsonc — kept separate so this Worker can go on
+  // running only for `/ph/*` and every other request to the canonical domain
+  // is served straight from `dist/`.
   "routes": [
-    { "pattern": "magmalake.org", "custom_domain": true },
-    { "pattern": "www.magmalake.org", "custom_domain": true },
     { "pattern": "mlake.dev", "custom_domain": true },
     { "pattern": "www.mlake.dev", "custom_domain": true },
     { "pattern": "magmalake.dev", "custom_domain": true },
