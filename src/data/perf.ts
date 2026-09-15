@@ -39,6 +39,15 @@ export interface Group {
  * best-of-three warm rather than percentiles, and objectstore.mojo's is a
  * single timed pass — those figures are the median of three runs of it.
  *
+ * The Iceberg rows were re-measured on 15 September 2026, median of three
+ * runs, and every one of them got faster. Nothing about the reader changed:
+ * `pixi.lock` had pinned `zstd-mojo` at that repo's first commit, which
+ * predates its process-wide `OwnedDLHandle` and so dlopened the shim on every
+ * decompressed page. The figures published before that date were measuring the
+ * loader as much as the scan — about 1.2× on this bench table, and far more on
+ * a real one, because the cost is per page and this table has few of them.
+ * Parquet's rows are unaffected: that bench file is uncompressed.
+ *
  * pyarrow figures come from `parquet.mojo/tools/bench_pyarrow.py`, which
  * reports two labelled legs: **one thread** (`set_cpu_count(1)`,
  * `set_io_thread_count(1)`, `use_threads=False`) and **threaded** (pyarrow's
@@ -94,35 +103,35 @@ export const perfGroups: Group[] = [
       {
         op: "Iceberg scan, 1M rows — 1 core / 4 workers",
         note: "zstd, six columns; best-of-three warm, not the percentile harness",
-        result: "36.3 ms / 11.3 ms",
+        result: "30.3 ms / 9.9 ms",
         reference:
-          "pyarrow on the same four data files: 27.3 ms one thread, 8.8 ms threaded — about 1.3× ahead of us at either thread count. PyIceberg 0.11.1 does the whole scan in 8.0 ms on pyarrow's pool.",
+          "pyarrow on the same four data files: 27.3 ms one thread, 8.8 ms threaded — about 1.1× ahead of us at either thread count. PyIceberg 0.11.1 does the whole scan in 8.0 ms on pyarrow's pool.",
       },
       {
         op: "Iceberg scan, nested columns, 200k rows",
         note: "a struct and a list column, 1 core",
-        result: "10.1 ms",
+        result: "8.7 ms",
         reference:
-          "PyIceberg 4.0 ms on pyarrow's thread pool — 2.5× faster. Nested reconstruction is the slowest path we have: on the mixed Parquet file above, Dremel assembly into Arrow buffers is 30% of the read and decompression another 25%.",
+          "PyIceberg 5 ms on pyarrow's thread pool in the same runs — about 1.7× faster. Nested reconstruction is the slowest path we have: on the mixed Parquet file above, Dremel assembly into Arrow buffers is 30% of the read and decompression another 25%.",
       },
       {
         op: "Iceberg scan, 2M rows over eight files",
         note: "1 / 2 / 4 / 8 workers, to_batches",
-        result: "71.2 / 38.1 / 21.8 / 16.5 ms — 4.3× at eight",
+        result: "60.2 / 32.1 / 19.3 / 14.9 ms — 4.0× at eight",
         reference:
           "eight files give the workers more to divide than the four-file table above; PyIceberg reads the same table in 15 ms",
       },
       {
         op: "Iceberg append, 1M rows",
         note: "data files, manifests and commit",
-        result: "192 ms",
-        reference: "PyIceberg 165 ms, writing three times the Parquet bytes",
+        result: "191 ms",
+        reference: "PyIceberg 156 ms, writing three times the Parquet bytes",
       },
       {
         op: "Iceberg scan planning, 500 manifests",
-        result: "21.2 ms for 2,000 file tasks",
+        result: "19.5 ms for 2,000 file tasks",
         reference:
-          "31.5 µs fixed per manifest, 11.6 µs of that the file read itself",
+          "28.9 µs fixed per manifest, 10.2 µs of that the file read itself",
       },
       {
         op: "Avro decode, manifest-shaped records",
