@@ -1,31 +1,27 @@
 ---
-title: Arrow Flight as an interop seam
-description: Iceberg already decides where a scan divides. Flight is how you hand that decision to somebody else's client — including one running on another machine. When it pays, when it does not, and what snapshot isolation has to do with it.
+title: Arrow Flight as a gateway in/out of Magmalake
+description: Flight allows you to distribute processing between servers.
 eyebrow: Interop
-date: 2026-09-10
+date: 2026-09-16
 sourceUrl: https://github.com/magmalake/flight.mojo
 sourceLabel: flight.mojo
 related:
   - parquet-mojo-against-pyarrow
+unlisted: false
 draft: true
 ---
 
-A fast reader in a new language is unreachable. Nobody is going to rewrite a
-pipeline to try it, and a benchmark nobody can run against their own data is a
-claim rather than a result. The gap is not performance, it is that no existing
-tool can call the thing.
+It  is not sufficient to have A fast reader and a custom processing module in Mojo. Nobody is going to rewrite a
+pipeline to try it on their own data. 
 
-Arrow Flight closes that gap. A stock `pyarrow.flight` client now reads an
-Iceberg table served from Mojo, and nothing on the Python side knows or cares
+Arrow Flight closes that gap. A stock `pyarrow.flight` client can now read an
+Iceberg table served from Mojo, without caring
 what the server is written in.
 
-## What Flight actually is
+## What is Flight
 
-Two pieces, and it is worth separating them because only one is interesting.
-
-A **gRPC service** with a fixed method set — `GetFlightInfo` asks what a
-dataset looks like and where to fetch it, `DoGet` fetches one piece. That part
-is unremarkable plumbing.
+Flight is first a  **gRPC service** with a fixed method set — `GetFlightInfo` asks what a
+dataset looks like and where to fetch it, `DoGet` fetches one piece. 
 
 An **Arrow IPC stream** as the payload: the flatbuffer-encoded schema and
 record batches that Arrow already uses on disk and in memory. This is the part
@@ -79,10 +75,10 @@ metadata is a tree of immutable files.
 to data files, and returns a list of tasks. Each carries its own data file, its
 own delete files, and its own residual predicate — the part of your `WHERE` the
 planner could not satisfy from partitions and statistics. The tasks are
-disjoint *by construction*: for a given snapshot a data file appears in exactly
+disjoint _by construction_: for a given snapshot a data file appears in exactly
 one manifest entry, so splitting by task splits the rows. No locks, no
-coordination, no shuffle. A worker reading task *k* cannot collide with a
-worker reading task *j*.
+coordination, no shuffle. A worker reading task _k_ cannot collide with a
+worker reading task _j_.
 
 Pruning happens before the division rather than instead of it. Partition
 pruning drops whole manifests, per-file statistics drop files, and what
@@ -99,7 +95,7 @@ A scan pinned to a snapshot sees exactly that snapshot, whatever commits land
 meanwhile. Readers never block writers and writers never disturb readers, which
 is what lets workers plan and read at different moments and still agree.
 
-That guarantee has to be *asked for*, and we initially did not. The server
+That guarantee has to be _asked for_, and we initially did not. The server
 built a fresh scan for every call, so `GetFlightInfo` and a later `DoGet` could
 plan against different snapshots. Data files are immutable, so the failure was
 never corruption — it was a client fetching endpoints in parallel while a
@@ -108,7 +104,7 @@ time. Worse than an error, because it looks reasonable.
 
 The fix is the standard shape: the coordinator pins a snapshot once, and the
 ticket carries it. A worker plans at the ticket's snapshot, not at whatever is
-current. That is what makes the union of endpoints the table across *time* as
+current. That is what makes the union of endpoints the table across _time_ as
 well as across workers.
 
 ### What Iceberg gives you on the write side
@@ -131,7 +127,7 @@ endpoint, empty here and meaning "ask me", is the only thing between one
 process and many. The third is a scheduler, and that is most of what Ray and
 Daft actually are.
 
-So this gets you a distributed *reader* without a scheduler: a coordinator
+So this gets you a distributed _reader_ without a scheduler: a coordinator
 plans, hands out tickets with locations, and any Arrow client fans out. What it
 does not get you is **shuffle**. Joins and high-cardinality group-by need data
 to move between workers, and neither Iceberg nor Flight has an opinion about
