@@ -51,9 +51,14 @@ flatbuffer schema. Ordinary HTTP and JSON are fine, and simpler.
 protocol and has no opinion about writes, transactions or sessions.
 
 **When you control both ends and share a process.** If the consumer is in the
-same process, the Arrow **C Data Interface** hands over pointers with no
-serialisation at all. Flight is for crossing a process or a network — reaching
-for it in-process is strictly worse.
+same process, the Arrow
+[**C Data Interface**](https://arrow.apache.org/docs/format/CDataInterface.html)
+hands over pointers with no serialisation at all. Arrow's own
+[Python and Java walkthrough](https://arrow.apache.org/docs/python/integration/python_java.html)
+is the shape of it: one side exports an array with `_export_to_c()`, the other
+reads and mutates it in place, and nothing is encoded on the way. Flight is for
+crossing a process or a network — reaching for it in-process is strictly
+worse.
 
 ## Iceberg already decides how to parallelize
 
