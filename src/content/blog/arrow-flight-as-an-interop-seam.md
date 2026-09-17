@@ -1,5 +1,5 @@
 ---
-title: Arrow Flight as a gateway to your Mojo code
+title: Arrow Flight to integrate your Mojo code in your legacy pipelines
 description: Flight allows you to distribute processing between servers.
 eyebrow: Interop
 date: 2026-09-16
@@ -28,11 +28,11 @@ record batches that Arrow already uses on disk and in memory.  The  Flight serve
 library  wants, so a client materialises a table by pointing at
 buffers, not by decoding a row format into objects.
 
-That difference has big performance benefits argument. A JDBC or REST endpoint hands back rows
+That difference has big performance benefits. A JDBC or REST endpoint hands back rows
 that have to be parsed, boxed, and rebuilt into columns. Flight hands over the
 columns.
 
-## When it pays
+## When to use
 
 **Your data is somewhere the ecosystem's readers are slow or absent.** This is
 the honest case for a Mojo stack: the reader exists and is fast, but no Python
@@ -64,7 +64,7 @@ Interface and IPC solve different problems. The first shares memory between
 libraries in one process. The second is a byte format for sending data
 somewhere else. Having one does not give you the other.
 
-## Iceberg already decided where the work divides
+## Iceberg already decided how to parallelize
 
 The hard part of distributing a read is not moving bytes, it is agreeing on who
 reads what. Iceberg answers that before Flight enters the picture, because its
