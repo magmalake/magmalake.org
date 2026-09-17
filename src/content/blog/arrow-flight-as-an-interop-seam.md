@@ -181,15 +181,18 @@ cache, p50 of five full reads after a discarded warm-up.
 
 | how the rows arrive | time | vs in-process |
 |---|---:|---:|
-| in this process, over the C Data Interface | 91 ms | 1.0× |
-| Arrow Flight, TCP on loopback | 148 ms | 1.6× |
-| Arrow Flight, `flight.mojo`'s own server | 389 ms | 4.4× |
-| Arrow Flight, Unix domain socket | 582 ms | 6.6× |
+| in this process, over the C Data Interface | 89 ms | 1.0× |
+| Arrow Flight, TCP on loopback | 149 ms | 1.7× |
+| Arrow Flight, `flight.mojo`'s own server | 391 ms | 4.4× |
+| Arrow Flight, Unix domain socket | 581 ms | 6.5× |
 
 The loopback and Unix-socket rows are **pyarrow's** Flight server reading the
-same Parquet files, and that is deliberate. Timing a client against my own server would add
-the protocol and my encoder together and print the sum under the heading
-"Flight", which is not a fact about Flight.
+same Parquet files, and that is deliberate: timing a client against my own
+server alone would add the protocol and my encoder together and print the sum
+under the heading "Flight", which is not a fact about Flight. Having both in
+the table is what made the next section possible — my server started at
+12.1 seconds, and the only reason I could tell that none of it was gRPC is
+that a second implementation of gRPC was sitting beside it.
 
 **Crossing a process costs 1.7× here, not an order of magnitude.** A stream of
 Arrow record batches over gRPC is about as cheap as moving that many bytes
@@ -210,7 +213,7 @@ bulk transfer. Worth knowing before reaching for it.
 
 `flight.mojo` served that column in **12.1 seconds** — 636 MB at about
 53 MB/s — while pyarrow's server moved the same bytes over the same protocol
-in 149 ms. It serves it in **389 ms** now. Four things, none of them the
+in 149 ms. It serves it in **391 ms** now. Four things, none of them the
 network, and the order they were found in is the whole method.
 
 The first was measurement. `FLIGHT_TIMING=1` splits a `DoGet` into reading and
@@ -246,7 +249,7 @@ decide how much to take. A 28 MiB message advancing 64 KiB at a time copies
 about 6 GB to send 28 MB, and the work grows with the square of the response
 while the wire time grows linearly. It is invisible on the small bodies a test
 suite covers. Asking the window what it will take and copying exactly that:
-**800 ms → 389 ms**, and one endpoint from 152 ms to 58 ms.
+**800 ms → 391 ms**, and one endpoint from 152 ms to 58 ms.
 
 Thirty-one times, and not one of those changes touched the protocol, the wire
 format, or the reader. Three of the four were the same mistake — moving bytes
@@ -270,8 +273,8 @@ consumer can map a file and point at the buffers where they lie:
 
 | the handover alone, nothing decoded | time |
 |---|---:|
-| Arrow IPC, memory-mapped | 28 ms |
-| Arrow IPC, read into the heap | 64 ms |
+| Arrow IPC, memory-mapped | 24 ms |
+| Arrow IPC, read into the heap | 54 ms |
 
 That pair is a different measurement from the table above — there is no
 Parquet in it, only a column that is already Arrow — and the gap between the
