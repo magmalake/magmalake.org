@@ -8,7 +8,7 @@ sourceLabel: flight.mojo
 related:
   - parquet-mojo-against-pyarrow
 unlisted: false
-draft: true
+draft: false
 ---
 
 It  is not sufficient to have a fast reader and write your custom processing module in Mojo, if you have to   rewrite a
