@@ -49,8 +49,8 @@ never the client's.
 
 ## When to use Flight
 
-**You have access to the data in Mojo and can compress it further with custom
-code.** Let's say you have data in Iceberg tables and need to process it on the
+**You have access to the data in Mojo and can compress it further with custom**
+**code.** Let's say you have data in Iceberg tables and need to process it on the
 GPU or with SIMD first. Write the core in Mojo and expose the resulting columns
 over Flight.
 
@@ -58,7 +58,7 @@ over Flight.
 of rows crossing the boundary, because it removes per-row work rather than
 per-request work.
 
-**The work is distributable.** The next section describes how Iceberg already
+**The work is distributable.**  One of the next sections describes how Iceberg already
 helps.
 
 ## When not to use Flight
@@ -87,12 +87,11 @@ pa.Array._import_from_c(array_addr, schema_addr)
 
 Nothing is encoded between those two lines.
 [`carrow_scan.mojo`](https://github.com/magmalake/iceberg.mojo/blob/main/tools/carrow_scan.mojo)
-is a working one: a shared library that scans an Iceberg table and hands a
+is a working example: a shared library that scans an Iceberg table and hands a
 column over, structs, lists and maps included, which
 [`consume_c_data.py`](https://github.com/magmalake/iceberg.mojo/blob/main/tools/consume_c_data.py)
 imports into pyarrow and checks against PyIceberg's own read. Flight is for
-crossing a process or a network — reaching for it in-process is strictly
-worse.
+crossing a process or a network — not for in-process.
 
 ## Iceberg already decides how to parallelize
 
@@ -104,7 +103,7 @@ to data files, and returns a list of tasks. Each carries its own data file, its
 own delete files, and its own residual predicate — the part of your `WHERE` the
 planner could not satisfy from partitions and statistics. The tasks are
 disjoint _by construction_: for a given snapshot a data file appears in exactly
-one manifest entry, so splitting by task splits the rows. No locks, no
+one manifest entry, so splitting by task splits the rows. No need for locks, no
 coordination, no shuffle. A worker reading task _k_ cannot collide with a
 worker reading task _j_.
 
@@ -113,11 +112,11 @@ pruning drops whole manifests, per-file statistics drop files, and what
 survives becomes the residual on each task. The planner shrinks the work, then
 divides what is left.
 
-So Flight's `GetFlightInfo` returns one
+In the end Flight's `GetFlightInfo` returns one
 endpoint per task, and a ticket names the task. The union of the endpoints is
 the table.
 
-That last sentence is a contract, and a client can hold it to account:
+That last sentence is a contract, here is how a client can use it for fun and profit:
 
 ```python
 with ThreadPoolExecutor(max_workers=len(info.endpoints)) as pool:
@@ -126,10 +125,9 @@ table = pa.concat_tables(parts)
 assert table.num_rows == info.total_records
 ```
 
-Worth asserting in your own code, because the failure is not an error. A client
-that fans out over a split it has misunderstood quietly returns a wrong answer.
+Worth asserting in your own code, because the failure is not an error. 
 
-### Snapshot isolation is what makes that safe
+### Snapshot isolation is what makes this safe
 
 A scan pinned to a snapshot sees exactly that snapshot, whatever commits land
 meanwhile. Readers never block writers and writers never disturb readers, which
