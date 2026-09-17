@@ -207,20 +207,36 @@ bulk transfer. Worth knowing before reaching for it.
 
 ### My own Flight server is not in that table
 
-`flight.mojo` serves the same column in **12.1 seconds**. That is 636 MB in
-12.1 s, about 53 MB/s, and it is not the protocol — pyarrow's server moves the
-same bytes over the same gRPC in 149 ms. It is the encoder, and the diagnosis
-is embarrassingly familiar: the server copies each value out of Arrow layout
-into a typed Mojo list, writes each value back out one byte at a time
-(`_push_f64` is eight appends), and then the framing copies the whole body one
-byte at a time again. Three scalar passes over 636 MB to send buffers that
-were already in the right layout.
+`flight.mojo` served the same column in **12.1 seconds** — 636 MB at about
+53 MB/s. None of that was gRPC: pyarrow's server moves the same bytes over the
+same protocol in 149 ms. It was the encoder, and the diagnosis was
+embarrassingly familiar. The server loaded each value out of Arrow layout into
+a typed Mojo list, wrote each value back out as eight appends, and then copied
+the finished body into the stream framing one byte at a time. Three scalar
+passes over 636 MB to send buffers that were already in the right layout, in
+three different files, each looking local and reasonable where it was written.
 
-I had just fixed the same shape of bug on the in-process path — the C Data
+I had just fixed the same shape of bug on the in-process path: the C Data
 Interface export in `arrow-mlake.mojo` was building its buffers byte by byte,
 which cost 412 ms of a 585 ms scan and is 14 ms now that it is a `memcpy`.
-The number above is what the same mistake costs when it is between you and a
-socket, and it is the next thing to fix in that repository.
+
+All three are copies now — a fixed-width Arrow buffer needs no conversion to
+become an Arrow IPC buffer, because both are native-endian and every platform
+this runs on is little-endian, so what looked like encoding was a `memcpy`
+written as a shift per byte. The same column now serves in **6.0 seconds**.
+
+That is still 40× pyarrow's server, and I do not yet know where the rest goes.
+It is not those three copies and not the protobuf writer underneath them,
+which was making the same mistake with the message body and is worth about a
+percent now that it is fixed. What is left is the scan the server runs per
+`DoGet` and the HTTP/2 write path below it, and that is the next thing to
+measure rather than the next thing to assert.
+
+The four gates that make this checkable are pyarrow reading what the server
+writes — an IPC round trip, a Flight round trip, an Iceberg table and a
+two-worker cluster. Rewriting an encoder is a comfortable thing to do when
+someone else's implementation is the judge of whether the bytes are still
+right.
 
 ### Below Flight, on one machine
 
