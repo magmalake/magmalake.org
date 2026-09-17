@@ -181,12 +181,13 @@ cache, p50 of five full reads after a discarded warm-up.
 
 | how the rows arrive | time | vs in-process |
 |---|---:|---:|
-| in this process, over the C Data Interface | 88 ms | 1.0× |
-| Arrow Flight, TCP on loopback | 149 ms | 1.7× |
+| in this process, over the C Data Interface | 91 ms | 1.0× |
+| Arrow Flight, TCP on loopback | 148 ms | 1.6× |
+| Arrow Flight, `flight.mojo`'s own server | 800 ms | 8.8× |
 | Arrow Flight, Unix domain socket | 582 ms | 6.6× |
 
-Both Flight rows are **pyarrow's** Flight server reading the same Parquet
-files, and that is deliberate. Timing a client against my own server would add
+The loopback and Unix-socket rows are **pyarrow's** Flight server reading the
+same Parquet files, and that is deliberate. Timing a client against my own server would add
 the protocol and my encoder together and print the sum under the heading
 "Flight", which is not a fact about Flight.
 
@@ -205,38 +206,56 @@ either side of the TCP run, on the same server process. Whatever gRPC does
 with a Unix socket, it is not what it does with a loopback connection for a
 bulk transfer. Worth knowing before reaching for it.
 
-### My own Flight server is not in that table
+### My own Flight server was 80× off, and none of it was gRPC
 
-`flight.mojo` served the same column in **12.1 seconds** — 636 MB at about
-53 MB/s. None of that was gRPC: pyarrow's server moves the same bytes over the
-same protocol in 149 ms. It was the encoder, and the diagnosis was
-embarrassingly familiar. The server loaded each value out of Arrow layout into
-a typed Mojo list, wrote each value back out as eight appends, and then copied
-the finished body into the stream framing one byte at a time. Three scalar
-passes over 636 MB to send buffers that were already in the right layout, in
-three different files, each looking local and reasonable where it was written.
+`flight.mojo` served that column in **12.1 seconds** — 636 MB at about
+53 MB/s — while pyarrow's server moved the same bytes over the same protocol
+in 149 ms. Four things, in order of how much they cost, and none of them the
+network.
 
-I had just fixed the same shape of bug on the in-process path: the C Data
-Interface export in `arrow-mlake.mojo` was building its buffers byte by byte,
-which cost 412 ms of a 585 ms scan and is 14 ms now that it is a `memcpy`.
+The first was measurement. `FLIGHT_TIMING=1` splits a `DoGet` into reading and
+encoding, and it said the handler produced 28 MiB in **16 ms** while the client
+waited 1236 ms for it. That number is the whole investigation: whatever was
+wrong lived on the other side of the handler, so there was no point optimising
+the reader.
 
-All three are copies now — a fixed-width Arrow buffer needs no conversion to
-become an Arrow IPC buffer, because both are native-endian and every platform
-this runs on is little-endian, so what looked like encoding was a `memcpy`
-written as a shift per byte. The same column now serves in **6.0 seconds**.
+**Copies, byte by byte, in four places.** The server loaded each value out of
+Arrow layout into a typed list, wrote each value back out as eight appends,
+copied the body into the stream framing a byte at a time, and then the
+protobuf writer copied it again into the message. Four scalar passes over data
+that was in the right layout to begin with — a fixed-width Arrow buffer *is* an
+Arrow IPC buffer, both native-endian on every platform this runs on, so what
+looked like encoding was a `memcpy` written as a shift per byte. I had fixed
+the identical bug in the C Data Interface export days earlier, where it cost
+412 ms of a 585 ms scan. **12.1 s → 6.0 s.**
 
-That is still 40× pyarrow's server, and I do not yet know where the rest goes.
-It is not those three copies and not the protobuf writer underneath them,
-which was making the same mistake with the message body and is worth about a
-percent now that it is fixed. What is left is the scan the server runs per
-`DoGet` and the HTTP/2 write path below it, and that is the next thing to
-measure rather than the next thing to assert.
+**gzip.** Every gRPC client advertises `grpc-accept-encoding: gzip`, and flare
+took that as an instruction rather than as permission. A profile of the server
+under load was 715 samples of `deflate` out of about a thousand: 28 MiB
+compressed at roughly 25 MB/s, per endpoint, in the path of a format whose
+entire argument is that the consumer casts the buffers where they land.
+gRPC's own implementations default to identity for this reason — accepting an
+encoding is not asking for it. **6.0 s → 3.1 s**, and one endpoint from
+1236 ms to 385 ms.
 
-The four gates that make this checkable are pyarrow reading what the server
-writes — an IPC round trip, a Flight round trip, an Iceberg table and a
-two-worker cluster. Rewriting an encoder is a comfortable thing to do when
-someone else's implementation is the judge of whether the bytes are still
-right.
+**A full table scan to learn the schema.** `fields()` derived the Arrow schema
+by scanning, and it is called on every `GetFlightInfo` *and* every `DoGet`. So
+serving one endpoint read the whole table once for its own 28 MiB of rows and
+again to remember what the columns were called. The snapshot is pinned when
+the source is built, so the schema is resolved there too, from a one-row scan.
+**3.1 s → 800 ms**, and one endpoint from 385 ms to 152 ms.
+
+Fifteen times, and not one of those changes touched the protocol, the wire
+format, or the reader. The gates that made it safe are pyarrow reading what
+the server writes — an IPC round trip, a Flight round trip, an Iceberg table
+and a two-worker cluster — which is the right way to rewrite an encoder:
+someone else's implementation decides whether the bytes are still correct.
+
+What is left is 5.4× rather than 80×, and I know where it is not. At 152 ms
+per endpoint the server spends 16 ms and is otherwise idle, so it is not the
+reader and not the encoder; 28 MiB is 1792 DATA frames at the default 16 KiB
+maximum frame size, plus a flow-control round trip each time the window runs
+out. That is the next thing to measure.
 
 ### Below Flight, on one machine
 
