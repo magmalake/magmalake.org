@@ -55,11 +55,6 @@ same process, the Arrow **C Data Interface** hands over pointers with no
 serialisation at all. Flight is for crossing a process or a network — reaching
 for it in-process is strictly worse.
 
-That last distinction caught us out and is worth stating plainly: the C Data
-Interface and IPC solve different problems. The first shares memory between
-libraries in one process. The second is a byte format for sending data
-somewhere else. Having one does not give you the other.
-
 ## Iceberg already decided how to parallelize
 
 The hard part of distributing a read is not moving bytes, it is agreeing on who
