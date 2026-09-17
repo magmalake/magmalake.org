@@ -34,19 +34,15 @@ columns.
 
 ## When to use
 
-**Your data is somewhere the ecosystem's readers are slow or absent.** This is
-the honest case for a Mojo stack: the reader exists and is fast, but no Python
-tool can reach it. Flight makes it reachable without asking anyone to adopt a
-new language.
+**You have access to the data in Mojo and can compress it further with custom code.** Let’s say you have data in iceberg tables and need first to process it on the GPU or SIMD. Write the core in Mojo and expose the resulting columns over Flight.
 
-**The result is large and columnar.** Flight's advantage grows with the number
+**The result is somewhat large and columnar.** Flight's advantage grows with the number
 of rows crossing the boundary, because it removes per-row work rather than
-per-request work.
+per-request work. 
 
-**The work divides, and you want the division visible.** This is the case
-worth dwelling on, and the next section is about why Iceberg makes it easy.
+**The work is distributable.**  The  next section describes how Iceberg already helps.
 
-## When it does not
+## When not to use Flight
 
 **Small results.** A handful of rows does not repay a gRPC round trip and a
 flatbuffer schema. Ordinary HTTP and JSON are fine, and simpler.
