@@ -11,36 +11,55 @@ unlisted: false
 draft: false
 ---
 
-It  is not sufficient to have a fast reader and write your custom processing module in Mojo, if you have to   rewrite a
-pipeline to try it on your own data. 
+It is not sufficient to have a fast reader and write your custom processing
+module in Mojo if you have to rewrite a pipeline to try it on your own data.
 
 Arrow Flight closes that gap. A stock `pyarrow.flight` client can now read an
-Iceberg table served from Mojo, without caring
-what the server is written in.
+Iceberg table served from Mojo without caring what the server is written in.
 
 ## What is Flight
 
-Flight is first a  **gRPC service** with a fixed method set — `GetFlightInfo` asks what a
-dataset looks like and where to fetch it, `DoGet` fetches one piece. 
+Flight is first a **gRPC service** with a fixed method set — `GetFlightInfo`
+asks what a dataset looks like and where to fetch it; `DoGet` fetches one
+piece.
 
-The next layer is an **Arrow IPC stream** as the payload: the flatbuffer-encoded schema and
-record batches that Arrow already uses on disk and in memory.  The  Flight server sends  the bytes the client's Arrow
-library  wants, so a client materialises a table by pointing at
-buffers, not by decoding a row format into objects.
+The next layer is an **Arrow IPC stream** as the payload: the
+flatbuffer-encoded schema and record batches that Arrow already uses on disk
+and in memory. The Flight server sends the bytes the client's Arrow library
+wants, so a client materialises a table by pointing at buffers, not by decoding
+a row format into objects.
 
-That difference has big performance benefits. A JDBC or REST endpoint hands back rows
-that have to be parsed, boxed, and rebuilt into columns. Flight hands over the
-columns.
+That difference has big performance benefits. A JDBC or REST endpoint hands
+back rows that have to be parsed, boxed, and rebuilt into columns. Flight hands
+over the columns.
 
-## When to use
+From the client, that is four calls and no Mojo:
 
-**You have access to the data in Mojo and can compress it further with custom code.** Let’s say you have data in iceberg tables and need first to process it on the GPU or SIMD. Write the core in Mojo and expose the resulting columns over Flight.
+```python
+import pyarrow.flight as fl
+
+client = fl.connect("grpc://127.0.0.1:8815")
+info = client.get_flight_info(fl.FlightDescriptor.for_path("taxi"))
+table = client.do_get(info.endpoints[0].ticket).read_all()
+```
+
+`info` carries the Arrow schema before any data moves, so a client can plan or
+refuse. The ticket is opaque bytes whose meaning is the server's business and
+never the client's.
+
+## When to use Flight
+
+**You have access to the data in Mojo and can compress it further with custom
+code.** Let's say you have data in Iceberg tables and need to process it on the
+GPU or with SIMD first. Write the core in Mojo and expose the resulting columns
+over Flight.
 
 **The result is somewhat large and columnar.** Flight's advantage grows with the number
 of rows crossing the boundary, because it removes per-row work rather than
-per-request work. 
+per-request work.
 
-**The work is distributable.**  The  next section describes how Iceberg already helps.
+**The work is distributable.** The next section describes how Iceberg already
+helps.
 
 ## When not to use Flight
 
@@ -62,8 +81,8 @@ worse.
 
 ## Iceberg already decides how to parallelize
 
- Iceberg can optimally distribute your code to data, because its
-metadata is a tree of immutable files.
+Iceberg can optimally distribute your code to the data, because its metadata
+is a tree of immutable files.
 
 `plan_files()` walks table metadata to snapshot to manifest list to manifests
 to data files, and returns a list of tasks. Each carries its own data file, its
@@ -82,6 +101,18 @@ divides what is left.
 So Flight's `GetFlightInfo` returns one
 endpoint per task, and a ticket names the task. The union of the endpoints is
 the table.
+
+That last sentence is a contract, and a client can hold it to account:
+
+```python
+with ThreadPoolExecutor(max_workers=len(info.endpoints)) as pool:
+    parts = list(pool.map(fetch, info.endpoints))
+table = pa.concat_tables(parts)
+assert table.num_rows == info.total_records
+```
+
+Worth asserting in your own code, because the failure is not an error. A client
+that fans out over a split it has misunderstood quietly returns a wrong answer.
 
 ### Snapshot isolation is what makes that safe
 
@@ -116,3 +147,24 @@ to move between workers, and neither Iceberg nor Flight has an opinion about
 that. It is also the part where distributed engines are actually hard — spill,
 backpressure, skew — so the absence is worth being explicit about rather than
 discovering later.
+
+## Running it
+
+[`pyarrow-flight.example`](https://github.com/magmalake/pyarrow-flight.example)
+is the client side of all of the above: reading a table, fanning out across
+endpoints, handing the result to polars, duckdb and pandas, the error cases
+pyarrow spells differently from gRPC, and a Daft `DataSource` built on the same
+two calls.
+
+```sh
+pixi run check
+```
+
+That runs every example against a Python reference server, which keeps two
+things apart that are easy to confuse: client code that is wrong, and a server
+that is. No Mojo toolchain needed to find out which.
+
+Pointing the same examples at the real thing is
+[`flight.mojo`](https://github.com/magmalake/flight.mojo)'s `serve` task, or
+`serve-iceberg` for a table PyIceberg wrote, planned and split by the Mojo
+stack — that second one is what makes the fan-out above more than one endpoint.
