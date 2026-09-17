@@ -161,6 +161,15 @@ that. It is also the part where distributed engines are actually hard — spill,
 backpressure, skew — so the absence is worth being explicit about rather than
 discovering later.
 
+The way out is to borrow one rather than write one. An engine that already has
+a shuffle can take the endpoints as its task list and keep its own scheduler:
+[`daft_flight/`](https://github.com/magmalake/pyarrow-flight.example/tree/main/daft_flight)
+is that handoff, and it is small — `GetFlightInfo` becomes Daft's task list,
+`DoGet` becomes a task's batches, and joins and group-bys are Daft's problem
+from there. Ray Data and Spark take the same shape. One caveat worth knowing
+before you reach for it: a ticket is opaque, so there is no field in which to
+send a predicate. Only the limit pushes down, and filters run after the read.
+
 ## Running it
 
 [`pyarrow-flight.example`](https://github.com/magmalake/pyarrow-flight.example)
