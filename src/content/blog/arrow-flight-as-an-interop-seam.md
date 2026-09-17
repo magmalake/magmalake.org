@@ -44,7 +44,7 @@ per-request work.
 
 ## When not to use Flight
 
-**Small results.** A handful of rows does not repay a gRPC round trip and a
+**Small results.** A handful of rows does not justify a gRPC round trip and a
 flatbuffer schema. Ordinary HTTP and JSON are fine, and simpler.
 
 **Anything transactional.** Flight moves result sets. It is not a database
@@ -55,10 +55,9 @@ same process, the Arrow **C Data Interface** hands over pointers with no
 serialisation at all. Flight is for crossing a process or a network — reaching
 for it in-process is strictly worse.
 
-## Iceberg already decided how to parallelize
+## Iceberg already decides how to parallelize
 
-The hard part of distributing a read is not moving bytes, it is agreeing on who
-reads what. Iceberg answers that before Flight enters the picture, because its
+ Iceberg can optimally distribute your code to data, because its
 metadata is a tree of immutable files.
 
 `plan_files()` walks table metadata to snapshot to manifest list to manifests
@@ -75,7 +74,7 @@ pruning drops whole manifests, per-file statistics drop files, and what
 survives becomes the residual on each task. The planner shrinks the work, then
 divides what is left.
 
-So Flight's endpoints are not a split we invented. `GetFlightInfo` returns one
+So Flight's `GetFlightInfo` returns one
 endpoint per task, and a ticket names the task. The union of the endpoints is
 the table.
 
@@ -84,18 +83,6 @@ the table.
 A scan pinned to a snapshot sees exactly that snapshot, whatever commits land
 meanwhile. Readers never block writers and writers never disturb readers, which
 is what lets workers plan and read at different moments and still agree.
-
-That guarantee has to be _asked for_, and we initially did not. The server
-built a fresh scan for every call, so `GetFlightInfo` and a later `DoGet` could
-plan against different snapshots. Data files are immutable, so the failure was
-never corruption — it was a client fetching endpoints in parallel while a
-commit landed, and assembling a table that never existed at any single point in
-time. Worse than an error, because it looks reasonable.
-
-The fix is the standard shape: the coordinator pins a snapshot once, and the
-ticket carries it. A worker plans at the ticket's snapshot, not at whatever is
-current. That is what makes the union of endpoints the table across _time_ as
-well as across workers.
 
 ### What Iceberg gives you on the write side
 
@@ -124,56 +111,3 @@ to move between workers, and neither Iceberg nor Flight has an opinion about
 that. It is also the part where distributed engines are actually hard — spill,
 backpressure, skew — so the absence is worth being explicit about rather than
 discovering later.
-
-One gap on the read side is worth naming too: task granularity is currently one
-data file. Iceberg's task carries `start` and `length` so a large file can be
-split at row-group boundaries into several tasks, which is what stops one big
-file becoming a straggler. The fields are there; the policy is not implemented
-yet.
-
-## What it cost
-
-The gRPC half was mostly assembly. The Arrow IPC half was not, because nothing
-in the Mojo ecosystem writes it — that meant a FlatBuffers writer.
-
-Writing FlatBuffers is far smaller than reading them. A reader must honour
-whatever layout a producer chose; a writer chooses the layout, so the encoder
-only has to be self-consistent and spec-legal. Scoped to the types actually
-needed — `int64`, `float64`, `bool`, `utf8`, `timestamp` — it is a few hundred
-lines rather than a library.
-
-Two details cost more time than they should have, and both are the kind that
-fail quietly:
-
-**`FlightInfo.schema` is an encapsulated IPC message**, not a bare flatbuffer:
-the continuation marker and length prefix are part of it. Send a bare one and
-the client reports "Invalid flatbuffers message", because it reads the first
-four bytes as a length.
-
-**A validity bitmap that is dropped or misaligned produces plausible numbers**,
-not an error. Nulls are the assertion worth writing in a test, precisely
-because their absence is invisible.
-
-## Trust the other implementation, not your own
-
-Every gate here is pyarrow reading what we wrote. That is deliberate. A writer
-checked only against a reader you also wrote proves the two agree and nothing
-about whether either matches Arrow.
-
-The Iceberg gate goes one step further: the table is written by **PyIceberg**,
-then planned and served by the Mojo stack, then read by pyarrow. Our code is
-in the middle of a chain whose ends are both somebody else's.
-
-It also asserts the property that makes the split worth having — that the
-union of every endpoint is the whole table, with nothing repeated and nothing
-lost. Two data files, three rows and four, seven distinct ids. One endpoint
-would pass every value check while proving nothing about the partition.
-
-## Why bother before you are distributed
-
-None of the above requires more than one machine to be worth it. Flight is what
-makes a fast reader in a new language something an existing tool can point at,
-which is the difference between a benchmark and a thing people can use. That
-the same `GetFlightInfo` response also describes work spread across machines —
-once the endpoints carry locations — is a property you get for having taken the
-planner's word for where the seams are.
