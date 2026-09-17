@@ -170,6 +170,93 @@ from there. Ray Data and Spark take the same shape. One caveat worth knowing
 before you reach for it: a ticket is opaque, so there is no field in which to
 send a predicate. Only the limit pushes down, and filters run after the read.
 
+## What the boundary costs
+
+I had been asserting that in-process beats Flight without a number beside it,
+so I measured one. The same column of the same 79.5M-row Iceberg table, read
+by the same engine — Daft, through the connectors in
+[`pyarrow-flight.example`](https://github.com/magmalake/pyarrow-flight.example)
+— with nothing changing but how the rows cross the boundary. Apple M4, warm
+cache, p50 of five full reads after a discarded warm-up.
+
+| how the rows arrive | time | vs in-process |
+|---|---:|---:|
+| in this process, over the C Data Interface | 88 ms | 1.0× |
+| Arrow Flight, TCP on loopback | 149 ms | 1.7× |
+| Arrow Flight, Unix domain socket | 582 ms | 6.6× |
+
+Both Flight rows are **pyarrow's** Flight server reading the same Parquet
+files, and that is deliberate. Timing a client against my own server would add
+the protocol and my encoder together and print the sum under the heading
+"Flight", which is not a fact about Flight.
+
+**Crossing a process costs 1.7× here, not an order of magnitude.** A stream of
+Arrow record batches over gRPC is about as cheap as moving that many bytes
+between two processes can be, and the earlier advice — use the C Data
+Interface when you share a process, Flight when you do not — is a smaller
+difference in practice than "serialisation versus a function call" suggests.
+1.7× is a price worth paying for a retry boundary, a crash boundary, or a
+credential that should not leave a service.
+
+**A Unix socket is worse, which is the opposite of what I expected.** Taking
+the loopback stack out of the path is the obvious same-machine optimisation
+and it makes this transfer nearly four times slower on macOS. Measured twice,
+either side of the TCP run, on the same server process. Whatever gRPC does
+with a Unix socket, it is not what it does with a loopback connection for a
+bulk transfer. Worth knowing before reaching for it.
+
+### My own Flight server is not in that table
+
+`flight.mojo` serves the same column in **12.1 seconds**. That is 636 MB in
+12.1 s, about 53 MB/s, and it is not the protocol — pyarrow's server moves the
+same bytes over the same gRPC in 149 ms. It is the encoder, and the diagnosis
+is embarrassingly familiar: the server copies each value out of Arrow layout
+into a typed Mojo list, writes each value back out one byte at a time
+(`_push_f64` is eight appends), and then the framing copies the whole body one
+byte at a time again. Three scalar passes over 636 MB to send buffers that
+were already in the right layout.
+
+I had just fixed the same shape of bug on the in-process path — the C Data
+Interface export in `arrow-mlake.mojo` was building its buffers byte by byte,
+which cost 412 ms of a 585 ms scan and is 14 ms now that it is a `memcpy`.
+The number above is what the same mistake costs when it is between you and a
+socket, and it is the next thing to fix in that repository.
+
+### Below Flight, on one machine
+
+If both processes are on one machine, can the copy go away entirely? Not
+through the C Data Interface: it hands over **pointers**, and a pointer is
+meaningless in another address space. What can cross is a mapping. Arrow's IPC
+*file* layout is the in-memory layout with every buffer 8-byte aligned, so a
+consumer can map a file and point at the buffers where they lie:
+
+| the handover alone, nothing decoded | time |
+|---|---:|
+| Arrow IPC, memory-mapped | 28 ms |
+| Arrow IPC, read into the heap | 64 ms |
+
+That pair is a different measurement from the table above — there is no
+Parquet in it, only a column that is already Arrow — and the gap between the
+two lines is one copy of 636 MB. **That copy is the whole of what shared
+memory saves**, and it is worth roughly what the numbers say: a little over
+half the cost of a handover once decoding is out of the picture.
+
+Getting it end to end takes one change in the producer rather than a new
+protocol. The buffers have to be *allocated* in the shared mapping in the
+first place — in this stack that means `arrow-mlake`'s `ArrayArena` backed by
+a mapped segment instead of the heap — after which handing them over is
+publishing a file descriptor and a set of offsets. Flight can still be the
+control plane: a ticket is opaque bytes, so a server that knows the client is
+on the same host can put a segment name in it and let the client map it,
+which is the same seam doing the same job with a cheaper `DoGet`. (Arrow's
+own shared-memory object store, Plasma, is not the answer here — it was
+removed from Arrow and lives on inside Ray.)
+
+What it costs is what the in-process path always costs, in a more awkward
+form: no crash boundary, no retry boundary, and now an ownership question
+about who unmaps the segment and when. Flight's 1.7× buys those back, which
+is why the table above is the more useful one for most people.
+
 ## Running it
 
 [`pyarrow-flight.example`](https://github.com/magmalake/pyarrow-flight.example)
@@ -185,6 +272,22 @@ pixi run check
 That runs every example against a Python reference server, which keeps two
 things apart that are easy to confuse: client code that is wrong, and a server
 that is. No Mojo toolchain needed to find out which.
+
+Every number above comes from one command in the same repository:
+
+```sh
+pixi run transports
+```
+
+It brings up a pyarrow Flight server over the taxi table's Parquet files and
+`flight.mojo`'s Iceberg server, reads the same column through each of them and
+through the in-process source, tears the servers down, and asserts that every
+leg returned the same 79,478,796 rows — a transport that is fast because it
+lost rows is not fast. Legs whose pieces are missing are skipped with a note,
+so the in-process number is available without a Flight server and the Flight
+numbers without a Mojo toolchain. It needs the taxi table, which
+[`taxibench.example`](https://github.com/magmalake/taxibench.example) builds
+with `pixi run load`.
 
 Pointing the same examples at the real thing is
 [`flight.mojo`](https://github.com/magmalake/flight.mojo)'s `serve` task, or
