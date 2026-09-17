@@ -183,7 +183,7 @@ cache, p50 of five full reads after a discarded warm-up.
 |---|---:|---:|
 | in this process, over the C Data Interface | 91 ms | 1.0× |
 | Arrow Flight, TCP on loopback | 148 ms | 1.6× |
-| Arrow Flight, `flight.mojo`'s own server | 800 ms | 8.8× |
+| Arrow Flight, `flight.mojo`'s own server | 389 ms | 4.4× |
 | Arrow Flight, Unix domain socket | 582 ms | 6.6× |
 
 The loopback and Unix-socket rows are **pyarrow's** Flight server reading the
@@ -210,52 +210,55 @@ bulk transfer. Worth knowing before reaching for it.
 
 `flight.mojo` served that column in **12.1 seconds** — 636 MB at about
 53 MB/s — while pyarrow's server moved the same bytes over the same protocol
-in 149 ms. Four things, in order of how much they cost, and none of them the
-network.
+in 149 ms. It serves it in **389 ms** now. Four things, none of them the
+network, and the order they were found in is the whole method.
 
 The first was measurement. `FLIGHT_TIMING=1` splits a `DoGet` into reading and
 encoding, and it said the handler produced 28 MiB in **16 ms** while the client
-waited 1236 ms for it. That number is the whole investigation: whatever was
-wrong lived on the other side of the handler, so there was no point optimising
-the reader.
+waited 1236 ms for it. Everything after that was a search on the far side of
+the handler, and nothing was spent on the reader, which was never the problem.
 
 **Copies, byte by byte, in four places.** The server loaded each value out of
 Arrow layout into a typed list, wrote each value back out as eight appends,
-copied the body into the stream framing a byte at a time, and then the
-protobuf writer copied it again into the message. Four scalar passes over data
-that was in the right layout to begin with — a fixed-width Arrow buffer *is* an
-Arrow IPC buffer, both native-endian on every platform this runs on, so what
-looked like encoding was a `memcpy` written as a shift per byte. I had fixed
-the identical bug in the C Data Interface export days earlier, where it cost
-412 ms of a 585 ms scan. **12.1 s → 6.0 s.**
+copied the body into the stream framing a byte at a time, and the protobuf
+writer copied it again into the message. Four scalar passes over data that was
+already in the right layout — a fixed-width Arrow buffer *is* an Arrow IPC
+buffer, both native-endian on every platform this runs on, so what looked like
+encoding was a `memcpy` written as a shift per byte. **12.1 s → 6.0 s.**
 
-**gzip.** Every gRPC client advertises `grpc-accept-encoding: gzip`, and flare
-took that as an instruction rather than as permission. A profile of the server
-under load was 715 samples of `deflate` out of about a thousand: 28 MiB
-compressed at roughly 25 MB/s, per endpoint, in the path of a format whose
-entire argument is that the consumer casts the buffers where they land.
-gRPC's own implementations default to identity for this reason — accepting an
-encoding is not asking for it. **6.0 s → 3.1 s**, and one endpoint from
-1236 ms to 385 ms.
+**gzip.** Every gRPC client advertises `grpc-accept-encoding: gzip`, and the
+server took that as an instruction rather than permission. A profile under
+load was 715 samples of `deflate` out of about a thousand: 28 MiB compressed
+at roughly 25 MB/s, per endpoint, in the path of a format whose entire
+argument is that the consumer casts the buffers where they land. gRPC's own
+implementations default to identity for exactly this reason. **6.0 s → 3.1 s.**
 
 **A full table scan to learn the schema.** `fields()` derived the Arrow schema
 by scanning, and it is called on every `GetFlightInfo` *and* every `DoGet`. So
 serving one endpoint read the whole table once for its own 28 MiB of rows and
-again to remember what the columns were called. The snapshot is pinned when
-the source is built, so the schema is resolved there too, from a one-row scan.
-**3.1 s → 800 ms**, and one endpoint from 385 ms to 152 ms.
+again to remember what the columns were called. **3.1 s → 800 ms.**
 
-Fifteen times, and not one of those changes touched the protocol, the wire
-format, or the reader. The gates that made it safe are pyarrow reading what
-the server writes — an IPC round trip, a Flight round trip, an Iceberg table
-and a two-worker cluster — which is the right way to rewrite an encoder:
-someone else's implementation decides whether the bytes are still correct.
+**And a quadratic in the flow control.** A response too large for the peer's
+send window is parked and re-pumped when a `WINDOW_UPDATE` opens it. Both
+pump paths handed the framing layer the *entire* remainder each time — copying
+the parked body, then copying its tail a byte at a time — and let the window
+decide how much to take. A 28 MiB message advancing 64 KiB at a time copies
+about 6 GB to send 28 MB, and the work grows with the square of the response
+while the wire time grows linearly. It is invisible on the small bodies a test
+suite covers. Asking the window what it will take and copying exactly that:
+**800 ms → 389 ms**, and one endpoint from 152 ms to 58 ms.
 
-What is left is 5.4× rather than 80×, and I know where it is not. At 152 ms
-per endpoint the server spends 16 ms and is otherwise idle, so it is not the
-reader and not the encoder; 28 MiB is 1792 DATA frames at the default 16 KiB
-maximum frame size, plus a flow-control round trip each time the window runs
-out. That is the next thing to measure.
+Thirty-one times, and not one of those changes touched the protocol, the wire
+format, or the reader. Three of the four were the same mistake — moving bytes
+one at a time where the layout already matched — in four different files and
+two different repositories, each looking local and reasonable where it was
+written. That is what a serialisation boundary does to a codebase: it turns a
+copy that costs nothing on a 200-byte JSON response into the dominant cost of
+everything, and nothing in the type system marks the difference.
+
+What is left is 2.6× rather than 80×, against a mature C++ implementation that
+reads each file on several threads. The profile is finally dominated by
+zstd-decompressing Parquet, which is the work.
 
 ### Below Flight, on one machine
 
