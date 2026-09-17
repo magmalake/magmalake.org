@@ -1,5 +1,5 @@
 ---
-title: Arrow Flight as a gateway in/out of Magmalake
+title: Arrow Flight as a gateway to your Mojo code
 description: Flight allows you to distribute processing between servers.
 eyebrow: Interop
 date: 2026-09-16
@@ -11,8 +11,8 @@ unlisted: false
 draft: true
 ---
 
-It  is not sufficient to have A fast reader and a custom processing module in Mojo. Nobody is going to rewrite a
-pipeline to try it on their own data. 
+It  is not sufficient to have a fast reader and write your custom processing module in Mojo, if you have to   rewrite a
+pipeline to try it on your own data. 
 
 Arrow Flight closes that gap. A stock `pyarrow.flight` client can now read an
 Iceberg table served from Mojo, without caring
@@ -23,13 +23,12 @@ what the server is written in.
 Flight is first a  **gRPC service** with a fixed method set — `GetFlightInfo` asks what a
 dataset looks like and where to fetch it, `DoGet` fetches one piece. 
 
-An **Arrow IPC stream** as the payload: the flatbuffer-encoded schema and
-record batches that Arrow already uses on disk and in memory. This is the part
-that pays. The bytes a Flight server sends are the bytes the client's Arrow
-library already wants, so a client materialises a table by pointing at
+The next layer is an **Arrow IPC stream** as the payload: the flatbuffer-encoded schema and
+record batches that Arrow already uses on disk and in memory.  The  Flight server sends  the bytes the client's Arrow
+library  wants, so a client materialises a table by pointing at
 buffers, not by decoding a row format into objects.
 
-That difference is the whole argument. A JDBC or REST endpoint hands back rows
+That difference has big performance benefits argument. A JDBC or REST endpoint hands back rows
 that have to be parsed, boxed, and rebuilt into columns. Flight hands over the
 columns.
 
