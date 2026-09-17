@@ -37,6 +37,20 @@ That difference is the whole argument. A JDBC or REST endpoint hands back rows
 that have to be parsed, boxed, and rebuilt into columns. Flight hands over the
 columns.
 
+From the client, that is four calls and no Mojo:
+
+```python
+import pyarrow.flight as fl
+
+client = fl.connect("grpc://127.0.0.1:8815")
+info = client.get_flight_info(fl.FlightDescriptor.for_path("taxi"))
+table = client.do_get(info.endpoints[0].ticket).read_all()
+```
+
+`info` carries the Arrow schema before any data moves, so a client can plan or
+refuse; the ticket is opaque bytes whose meaning is the server's business and
+never the client's.
+
 ## When it pays
 
 **Your data is somewhere the ecosystem's readers are slow or absent.** This is
@@ -92,6 +106,18 @@ divides what is left.
 So Flight's endpoints are not a split we invented. `GetFlightInfo` returns one
 endpoint per task, and a ticket names the task. The union of the endpoints is
 the table.
+
+That last sentence is a contract, and a client can hold it to account:
+
+```python
+with ThreadPoolExecutor(max_workers=len(info.endpoints)) as pool:
+    parts = list(pool.map(fetch, info.endpoints))
+table = pa.concat_tables(parts)
+assert table.num_rows == info.total_records
+```
+
+Worth asserting in your own code, because the failure is not an error. A client
+that fans out over a split it has misunderstood quietly returns a wrong answer.
 
 ### Snapshot isolation is what makes that safe
 
@@ -191,3 +217,24 @@ which is the difference between a benchmark and a thing people can use. That
 the same `GetFlightInfo` response also describes work spread across machines —
 once the endpoints carry locations — is a property you get for having taken the
 planner's word for where the seams are.
+
+## Running it
+
+[`pyarrow-flight.example`](https://github.com/magmalake/pyarrow-flight.example)
+is the client side of all of the above: reading a table, fanning out across
+endpoints, handing the result to polars, duckdb and pandas, the error cases
+pyarrow spells differently from gRPC, and a Daft `DataSource` built on the same
+two calls.
+
+```sh
+pixi run check
+```
+
+That runs every example against a Python reference server, which keeps two
+things apart that are easy to confuse: client code that is wrong, and a server
+that is. No Mojo toolchain needed to find out which.
+
+Pointing the same examples at the real thing is
+[`flight.mojo`](https://github.com/magmalake/flight.mojo)'s `serve` task, or
+`serve-iceberg` for a table PyIceberg wrote, planned and split by the Mojo
+stack — that second one is what makes the fan-out above more than one endpoint.
