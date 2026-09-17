@@ -72,10 +72,25 @@ protocol and has no opinion about writes, transactions or sessions.
 **When you control both ends and share a process.** If the consumer is in the
 same process, the Arrow
 [**C Data Interface**](https://arrow.apache.org/docs/format/CDataInterface.html)
-hands over pointers with no serialisation at all. Arrow's own
-[Python and Java walkthrough](https://arrow.apache.org/docs/python/integration/python_java.html)
-is the shape of it: one side exports an array with `_export_to_c()`, the other
-reads and mutates it in place, and nothing is encoded on the way. Flight is for
+hands over pointers with no serialisation at all. Mojo exports an array:
+
+```mojo
+var e = export_c(batch.arena, batch.roots[col])
+var raw = e.into_raw()  # ArrowArray*, ArrowSchema* — the caller owns both now
+```
+
+and the consumer imports it where it stands:
+
+```python
+pa.Array._import_from_c(array_addr, schema_addr)
+```
+
+Nothing is encoded between those two lines.
+[`carrow_scan.mojo`](https://github.com/magmalake/iceberg.mojo/blob/main/tools/carrow_scan.mojo)
+is a working one: a shared library that scans an Iceberg table and hands a
+column over, structs, lists and maps included, which
+[`consume_c_data.py`](https://github.com/magmalake/iceberg.mojo/blob/main/tools/consume_c_data.py)
+imports into pyarrow and checks against PyIceberg's own read. Flight is for
 crossing a process or a network — reaching for it in-process is strictly
 worse.
 
