@@ -181,8 +181,9 @@ cache, p50 of five full reads after a discarded warm-up.
 | how the rows arrive | time | vs in-process |
 | --- | --- | --- |
 | in this process, over the C Data Interface | 89 ms | 1.0× |
-| Arrow Flight, TCP on loopback | 149 ms | 1.7× |
-| Arrow Flight, `flight.mojo`'s own server | 391 ms | 4.4× |
+| Arrow Flight, TCP on loopback | 152 ms | 1.7× |
+| Arrow Flight, `flight.mojo`'s own server | 384 ms | 4.3× |
+| shared memory, between two processes | 238 ms | 2.7× |
 | Arrow Flight, Unix domain socket | 581 ms | 6.5× |
 
 The loopback and Unix-socket rows are **pyarrow's** Flight server reading the
@@ -205,40 +206,25 @@ either side of the TCP run, on the same server process. Whatever gRPC does
 with a Unix socket, it is not what it does with a loopback connection for a
 bulk transfer. Worth knowing before reaching for it.
 
-### Below Flight, on one machine
+**Shared memory is not the free win it sounds like.** The C Data Interface
+cannot cross a process — it hands over pointers, and a pointer means nothing
+in another address space — but a mapping can, and Arrow's IPC *file* layout is
+the in-memory layout, so a consumer maps it and points at the buffers where
+they lie. Flight still divides the work and names the unit; only `DoGet`
+changes, from "here are 28 MiB" to "here is where they are", which a ticket
+can express because it is opaque bytes.
 
-If both processes are on one machine, can the copy go away entirely? Not
-through the C Data Interface: it hands over **pointers**, and a pointer is
-meaningless in another address space. What can cross is a mapping. Arrow's IPC
-_file_ layout is the in-memory layout with every buffer 8-byte aligned, so a
-consumer can map a file and point at the buffers where they lie:
-
-| the handover alone, nothing decoded | time |
-| --- | --- |
-| Arrow IPC, memory-mapped | 24 ms |
-| Arrow IPC, read into the heap | 54 ms |
-
-That pair is a different measurement from the table above — there is no
-Parquet in it, only a column that is already Arrow — and the gap between the
-two lines is one copy of 636 MB. \*\*That copy is the whole of what shared
-memory saves\*\*, and it is worth roughly what the numbers say: a little over
-half the cost of a handover once decoding is out of the picture.
-
-Getting it end to end takes one change in the producer rather than a new
-protocol. The buffers have to be _allocated_ in the shared mapping in the
-first place — in this stack that means `arrow-mlake`'s `ArrayArena` backed by
-a mapped segment instead of the heap — after which handing them over is
-publishing a file descriptor and a set of offsets. Flight can still be the
-control plane: a ticket is opaque bytes, so a server that knows the client is
-on the same host can put a segment name in it and let the client map it,
-which is the same seam doing the same job with a cheaper `DoGet`. (Arrow's
-own shared-memory object store, Plasma, is not the answer here — it was
-removed from Arrow and lives on inside Ray.)
-
-What it costs is what the in-process path always costs, in a more awkward
-form: no crash boundary, no retry boundary, and now an ownership question
-about who unmaps the segment and when. Flight's 1.7× buys those back, which
-is why the table above is the more useful one for most people.
+The consumer's half really is nearly free: **1.9 ms** to map one endpoint and
+fold every value in it, against 12 ms to stream the same rows. The producer's
+half is not, because the rows have to reach the mapping — writing them is a
+full copy of the column, and those writes overlap far worse than a stream
+does. Across 24 endpoints the mapping path speeds up 1.3× on threads where
+streaming manages 2.4×, and that is the whole of the difference between
+238 ms and 152 ms. Getting rid of the producer's copy as well means
+*allocating* the Arrow buffers inside the mapping to begin with — in this
+stack, `arrow-mlake`'s `ArrayArena` backed by a mapped segment — which is a
+change to the reader rather than to the protocol. Until then, the thing that
+looks like it should win by avoiding a copy pays for a different one.
 
 ## Running it
 
@@ -262,10 +248,11 @@ Every number above comes from one command in the same repository:
 pixi run transports
 ```
 
-It brings up a pyarrow Flight server over the taxi table's Parquet files and
-`flight.mojo`'s Iceberg server, reads the same column through each of them and
-through the in-process source, tears the servers down, and asserts that every
-leg returned the same 79,478,796 rows — a transport that is fast because it
+It brings up a pyarrow Flight server over the taxi table's Parquet files, a
+second one answering with mappings instead of rows, and `flight.mojo`'s
+Iceberg server, reads the same column through each of them and through the
+in-process source, tears the servers down, and asserts that every leg returned
+the same 79,478,796 rows — a transport that is fast because it
 lost rows is not fast. Legs whose pieces are missing are skipped with a note,
 so the in-process number is available without a Flight server and the Flight
 numbers without a Mojo toolchain. It needs the taxi table, which
