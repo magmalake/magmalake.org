@@ -225,6 +225,49 @@ export const perfGroups: Group[] = [
       },
     ],
   },
+  {
+    id: "boundary",
+    title: "Crossing the boundary",
+    blurb:
+      "One column of a 79,478,796-row Iceberg table, read by the same engine — Daft — with nothing changing but how the rows arrive. Measured 17 September 2026 with pyarrow-flight.example's `pixi run transports`, p50 of five full reads after a discarded warm-up, every leg asserting the same row count.",
+    rows: [
+      {
+        op: "In this process, Arrow C Data Interface",
+        note: "iceberg.mojo scanning into Daft's buffers, nothing encoded or sent",
+        result: "89 ms",
+        lead: true,
+      },
+      {
+        op: "Arrow Flight, TCP on loopback",
+        note: "pyarrow's own Flight server over the same Parquet files",
+        result: "149 ms — 1.7× the in-process read",
+        lead: true,
+        reference:
+          "crossing a process costs 1.7×, not an order of magnitude: a fair price for a crash boundary, a retry boundary, or a credential that should not leave a service",
+      },
+      {
+        op: "Arrow Flight, flight.mojo's own server",
+        note: "the same protocol, our implementation",
+        result: "391 ms — 2.6× pyarrow's server",
+        reference:
+          "12.1 s before four fixes: byte-at-a-time copies in four places, gzip applied to an Arrow payload the client merely said it would accept, a full table scan on every call to learn the schema, and a quadratic in HTTP/2 flow control that copied about 6 GB to send 28 MB",
+      },
+      {
+        op: "Arrow Flight, Unix domain socket",
+        note: "pyarrow's server again, gRPC over a socket instead of loopback",
+        result: "581 ms",
+        reference:
+          "the obvious same-machine optimisation, measured twice either side of the TCP run, and four times worse than loopback on macOS",
+      },
+      {
+        op: "The handover alone, no Parquet in it",
+        note: "one column already in Arrow: an IPC file memory-mapped, then read into the heap",
+        result: "24 ms mapped / 54 ms copied",
+        reference:
+          "the gap is one copy of 636 MB, and that copy is the whole of what a shared mapping saves — the C Data Interface cannot do it across processes because it hands over pointers",
+      },
+    ],
+  },
 ];
 
 export interface Pass {
