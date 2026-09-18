@@ -170,17 +170,16 @@ from there. Ray Data and Spark take the same shape. One caveat worth knowing
 before you reach for it: a ticket is opaque, so there is no field in which to
 send a predicate. Only the limit pushes down, and filters run after the read.
 
-## What the boundary costs
+## Communication costs
 
-I had been asserting that in-process beats Flight without a number beside it,
-so I measured one. The same column of the same 79.5M-row Iceberg table, read
+Here is an experiment measuring the  column of the same 79.5M-row Iceberg table, read
 by the same engine — Daft, through the connectors in
 [`pyarrow-flight.example`](https://github.com/magmalake/pyarrow-flight.example)
 — with nothing changing but how the rows cross the boundary. Apple M4, warm
 cache, p50 of five full reads after a discarded warm-up.
 
 | how the rows arrive | time | vs in-process |
-|---|---:|---:|
+| --- | --- | --- |
 | in this process, over the C Data Interface | 89 ms | 1.0× |
 | Arrow Flight, TCP on loopback | 149 ms | 1.7× |
 | Arrow Flight, `flight.mojo`'s own server | 391 ms | 4.4× |
@@ -189,10 +188,7 @@ cache, p50 of five full reads after a discarded warm-up.
 The loopback and Unix-socket rows are **pyarrow's** Flight server reading the
 same Parquet files, and that is deliberate: timing a client against my own
 server alone would add the protocol and my encoder together and print the sum
-under the heading "Flight", which is not a fact about Flight. Having both in
-the table is what made the next section possible — my server started at
-12.1 seconds, and the only reason I could tell that none of it was gRPC is
-that a second implementation of gRPC was sitting beside it.
+under the heading "Flight", which is not a fact about Flight. 
 
 **Crossing a process costs 1.7× here, not an order of magnitude.** A stream of
 Arrow record batches over gRPC is about as cheap as moving that many bytes
@@ -209,81 +205,27 @@ either side of the TCP run, on the same server process. Whatever gRPC does
 with a Unix socket, it is not what it does with a loopback connection for a
 bulk transfer. Worth knowing before reaching for it.
 
-### My own Flight server was 80× off, and none of it was gRPC
-
-`flight.mojo` served that column in **12.1 seconds** — 636 MB at about
-53 MB/s — while pyarrow's server moved the same bytes over the same protocol
-in 149 ms. It serves it in **391 ms** now. Four things, none of them the
-network, and the order they were found in is the whole method.
-
-The first was measurement. `FLIGHT_TIMING=1` splits a `DoGet` into reading and
-encoding, and it said the handler produced 28 MiB in **16 ms** while the client
-waited 1236 ms for it. Everything after that was a search on the far side of
-the handler, and nothing was spent on the reader, which was never the problem.
-
-**Copies, byte by byte, in four places.** The server loaded each value out of
-Arrow layout into a typed list, wrote each value back out as eight appends,
-copied the body into the stream framing a byte at a time, and the protobuf
-writer copied it again into the message. Four scalar passes over data that was
-already in the right layout — a fixed-width Arrow buffer *is* an Arrow IPC
-buffer, both native-endian on every platform this runs on, so what looked like
-encoding was a `memcpy` written as a shift per byte. **12.1 s → 6.0 s.**
-
-**gzip.** Every gRPC client advertises `grpc-accept-encoding: gzip`, and the
-server took that as an instruction rather than permission. A profile under
-load was 715 samples of `deflate` out of about a thousand: 28 MiB compressed
-at roughly 25 MB/s, per endpoint, in the path of a format whose entire
-argument is that the consumer casts the buffers where they land. gRPC's own
-implementations default to identity for exactly this reason. **6.0 s → 3.1 s.**
-
-**A full table scan to learn the schema.** `fields()` derived the Arrow schema
-by scanning, and it is called on every `GetFlightInfo` *and* every `DoGet`. So
-serving one endpoint read the whole table once for its own 28 MiB of rows and
-again to remember what the columns were called. **3.1 s → 800 ms.**
-
-**And a quadratic in the flow control.** A response too large for the peer's
-send window is parked and re-pumped when a `WINDOW_UPDATE` opens it. Both
-pump paths handed the framing layer the *entire* remainder each time — copying
-the parked body, then copying its tail a byte at a time — and let the window
-decide how much to take. A 28 MiB message advancing 64 KiB at a time copies
-about 6 GB to send 28 MB, and the work grows with the square of the response
-while the wire time grows linearly. It is invisible on the small bodies a test
-suite covers. Asking the window what it will take and copying exactly that:
-**800 ms → 391 ms**, and one endpoint from 152 ms to 58 ms.
-
-Thirty-one times, and not one of those changes touched the protocol, the wire
-format, or the reader. Three of the four were the same mistake — moving bytes
-one at a time where the layout already matched — in four different files and
-two different repositories, each looking local and reasonable where it was
-written. That is what a serialisation boundary does to a codebase: it turns a
-copy that costs nothing on a 200-byte JSON response into the dominant cost of
-everything, and nothing in the type system marks the difference.
-
-What is left is 2.6× rather than 80×, against a mature C++ implementation that
-reads each file on several threads. The profile is finally dominated by
-zstd-decompressing Parquet, which is the work.
-
 ### Below Flight, on one machine
 
 If both processes are on one machine, can the copy go away entirely? Not
 through the C Data Interface: it hands over **pointers**, and a pointer is
 meaningless in another address space. What can cross is a mapping. Arrow's IPC
-*file* layout is the in-memory layout with every buffer 8-byte aligned, so a
+_file_ layout is the in-memory layout with every buffer 8-byte aligned, so a
 consumer can map a file and point at the buffers where they lie:
 
 | the handover alone, nothing decoded | time |
-|---|---:|
+| --- | --- |
 | Arrow IPC, memory-mapped | 24 ms |
 | Arrow IPC, read into the heap | 54 ms |
 
 That pair is a different measurement from the table above — there is no
 Parquet in it, only a column that is already Arrow — and the gap between the
-two lines is one copy of 636 MB. **That copy is the whole of what shared
-memory saves**, and it is worth roughly what the numbers say: a little over
+two lines is one copy of 636 MB. \*\*That copy is the whole of what shared
+memory saves\*\*, and it is worth roughly what the numbers say: a little over
 half the cost of a handover once decoding is out of the picture.
 
 Getting it end to end takes one change in the producer rather than a new
-protocol. The buffers have to be *allocated* in the shared mapping in the
+protocol. The buffers have to be _allocated_ in the shared mapping in the
 first place — in this stack that means `arrow-mlake`'s `ArrayArena` backed by
 a mapped segment instead of the heap — after which handing them over is
 publishing a file descriptor and a set of offsets. Flight can still be the
