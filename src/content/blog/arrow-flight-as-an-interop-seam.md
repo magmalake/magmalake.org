@@ -181,7 +181,7 @@ cache, p50 of five full reads after a discarded warm-up.
 | how the rows arrive | time | vs in-process |
 | --- | --- | --- |
 | in this process, over the C Data Interface | 89 ms | 1.0× |
-| Arrow Flight, TCP on loopback | 149 ms | 1.7× |
+| Arrow Flight, TCP on loopback | 152 ms | 1.7× |
 | Arrow Flight, `flight.mojo`'s own server | 384 ms | 4.3× |
 | shared memory, between two processes | 238 ms | 2.7× |
 | Arrow Flight, Unix domain socket | 581 ms | 6.5× |
@@ -220,7 +220,7 @@ half is not, because the rows have to reach the mapping — writing them is a
 full copy of the column, and those writes overlap far worse than a stream
 does. Across 24 endpoints the mapping path speeds up 1.3× on threads where
 streaming manages 2.4×, and that is the whole of the difference between
-238 ms and 148 ms. Getting rid of the producer's copy as well means
+238 ms and 152 ms. Getting rid of the producer's copy as well means
 *allocating* the Arrow buffers inside the mapping to begin with — in this
 stack, `arrow-mlake`'s `ArrayArena` backed by a mapped segment — which is a
 change to the reader rather than to the protocol. Until then, the thing that

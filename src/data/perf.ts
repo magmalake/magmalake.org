@@ -240,7 +240,7 @@ export const perfGroups: Group[] = [
       {
         op: "Arrow Flight, TCP on loopback",
         note: "pyarrow's own Flight server over the same Parquet files",
-        result: "149 ms — 1.7× the in-process read",
+        result: "152 ms — 1.7× the in-process read",
         lead: true,
         reference:
           "crossing a process costs 1.7×, not an order of magnitude: a fair price for a crash boundary, a retry boundary, or a credential that should not leave a service",
@@ -248,9 +248,16 @@ export const perfGroups: Group[] = [
       {
         op: "Arrow Flight, flight.mojo's own server",
         note: "the same protocol, our implementation",
-        result: "391 ms — 2.6× pyarrow's server",
+        result: "384 ms — 2.5× pyarrow's server",
         reference:
           "12.1 s before four fixes: byte-at-a-time copies in four places, gzip applied to an Arrow payload the client merely said it would accept, a full table scan on every call to learn the schema, and a quadratic in HTTP/2 flow control that copied about 6 GB to send 28 MB",
+      },
+      {
+        op: "Shared memory, between two processes",
+        note: "the same Flight plan, but DoGet answers with the name of a mapping and the client maps it",
+        result: "238 ms — 1.6× the loopback stream",
+        reference:
+          "the consumer's half is nearly free — 1.9 ms to map one endpoint and fold every value against 12 ms to stream it — but the producer has to write the rows into the mapping, and those writes overlap far worse than a stream does (1.3× across 24 endpoints against 2.4×)",
       },
       {
         op: "Arrow Flight, Unix domain socket",
