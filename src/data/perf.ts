@@ -229,40 +229,47 @@ export const perfGroups: Group[] = [
     id: "boundary",
     title: "Crossing the boundary",
     blurb:
-      "One column of a 79,478,796-row Iceberg table, read by the same engine — Daft — with nothing changing but how the rows arrive. Measured 17 September 2026 with pyarrow-flight.example's `pixi run transports`, p50 of five full reads after a discarded warm-up, every leg asserting the same row count.",
+      "One column of a 79,478,796-row table, read by the same engine — Daft — with nothing changing but how the rows arrive. Every row but one is pyarrow doing the reading, so the ratios are the boundary rather than two readers; the exception says so. Measured 19 September 2026 with pyarrow-flight.example's `pixi run transports`, p50 of five full reads after a discarded warm-up, every leg asserting the same row count.",
     rows: [
       {
-        op: "In this process, Arrow C Data Interface",
-        note: "iceberg.mojo scanning into Daft's buffers, nothing encoded or sent",
-        result: "89 ms",
+        op: "In this process, no boundary at all",
+        note: "the control: pyarrow reading the files and handing Daft the batches, which is exactly what the Flight server does minus the wire",
+        result: "62 ms",
         lead: true,
+      },
+      {
+        op: "In this process, Arrow C Data Interface",
+        note: "iceberg.mojo scanning an Iceberg table into Daft's buffers, nothing encoded or sent",
+        result: "89 ms",
+        reference:
+          "a different reader, so this is not a boundary cost — there is no boundary. It is what our Iceberg scan costs against pyarrow reading the Parquet files directly.",
       },
       {
         op: "Arrow Flight, TCP on loopback",
         note: "pyarrow's own Flight server over the same Parquet files",
-        result: "152 ms — 1.7× the in-process read",
+        result: "151 ms — 2.4× the in-process read",
         lead: true,
         reference:
-          "crossing a process costs 1.7×, not an order of magnitude: a fair price for a crash boundary, a retry boundary, or a credential that should not leave a service",
+          "crossing a process costs 2.4×, not an order of magnitude: a fair price for a crash boundary, a retry boundary, or a credential that should not leave a service",
       },
       {
         op: "Arrow Flight, flight.mojo's own server",
         note: "the same protocol, our implementation",
-        result: "384 ms — 2.5× pyarrow's server",
+        result: "377 ms — 2.5× pyarrow's server",
         reference:
           "12.1 s before four fixes: byte-at-a-time copies in four places, gzip applied to an Arrow payload the client merely said it would accept, a full table scan on every call to learn the schema, and a quadratic in HTTP/2 flow control that copied about 6 GB to send 28 MB",
       },
       {
         op: "Shared memory, between two processes",
         note: "the same Flight plan, but DoGet answers with the name of a mapping and the client maps it",
-        result: "238 ms — 1.6× the loopback stream",
+        result: "237 ms — 1.6× the loopback stream",
         reference:
           "the consumer's half is nearly free — 1.9 ms to map one endpoint and fold every value against 12 ms to stream it — but the producer has to write the rows into the mapping, and those writes overlap far worse than a stream does (1.3× across 24 endpoints against 2.4×)",
       },
       {
         op: "Arrow Flight, Unix domain socket",
         note: "pyarrow's server again, gRPC over a socket instead of loopback",
-        result: "581 ms",
+        result: "573 ms",
         reference:
           "the obvious same-machine optimisation, measured twice either side of the TCP run, and four times worse than loopback on macOS",
       },
