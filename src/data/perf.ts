@@ -247,7 +247,7 @@ export const perfGroups: Group[] = [
       {
         op: "Arrow Flight, TCP on loopback",
         note: "pyarrow's own Flight server over the same Parquet files",
-        result: "151 ms — 2.4× the in-process read",
+        result: "149 ms — 2.4× the in-process read",
         lead: true,
         reference:
           "crossing a process costs 2.4×, not an order of magnitude: a fair price for a crash boundary, a retry boundary, or a credential that should not leave a service",
@@ -261,10 +261,18 @@ export const perfGroups: Group[] = [
       },
       {
         op: "Shared memory, between two processes",
-        note: "the same Flight plan, but DoGet answers with the name of a mapping and the client maps it",
-        result: "237 ms — 1.6× the loopback stream",
+        note: "the same Flight plan, but DoGet answers with the name of a mapping and the client maps it — pyarrow on both sides",
+        result: "228 ms — 1.5× the loopback stream",
         reference:
-          "the consumer's half is nearly free — 1.9 ms to map one endpoint and fold every value against 12 ms to stream it — but the producer has to write the rows into the mapping, and those writes overlap far worse than a stream does (1.3× across 24 endpoints against 2.4×)",
+          "the consumer's half is nearly free; the producer has to materialise a whole split before the consumer may touch it, and both sides fault every page, where a stream overlaps the two and writes into kernel buffers that are already resident",
+      },
+      {
+        op: "Shared memory, our own producer",
+        note: "iceberg.mojo writing Arrow buffers into one mapping per split, publishing each batch as it lands, read by a pool of processes",
+        result: "115 ms — faster than the same column over Flight",
+        lead: true,
+        reference:
+          "not comparable to the rows above: a decoder 1.4× slower than pyarrow's and a process pool rather than one threaded server, so two things move at once. It was 288 ms when each batch got a mapping of its own — a mapping's create/size/map/unmap/unlink cycle is 4.01 ms per 8 MB batch against 3.05 ms for the copy inside it, so the lifecycle was the larger half all along.",
       },
       {
         op: "Arrow Flight, Unix domain socket",

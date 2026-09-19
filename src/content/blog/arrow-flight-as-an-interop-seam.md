@@ -181,8 +181,8 @@ cache, p50 of five full reads after a discarded warm-up.
 | how the rows arrive | time | vs in-process |
 | --- | --- | --- |
 | in this process, no boundary at all | 62 ms | 1.0× |
-| Arrow Flight, TCP on loopback | 151 ms | 2.4× |
-| shared memory, between two processes | 237 ms | 3.8× |
+| Arrow Flight, TCP on loopback | 149 ms | 2.4× |
+| shared memory, between two processes | 228 ms | 3.7× |
 | Arrow Flight, Unix domain socket | 573 ms | 9.2× |
 
 Every row is **pyarrow** reading the same Parquet files, and that is
@@ -217,13 +217,24 @@ can express because it is opaque bytes.
 
 Reading from the mapping is nearly free: the consumer points at the buffers
 instead of decoding them. Getting the rows _into_ it is not. The producer has
-to write the whole column out first, and those writes pile up on each other
-where a stream would have overlapped — which is the difference between 237 ms
-and 151 ms.
+to materialise a whole split before the consumer may touch any of it, and both
+sides fault every page, where a stream overlaps the two and writes into kernel
+buffers that are already resident.
 
-That copy is avoidable, but not by changing the protocol. The reader would
-have to build its Arrow buffers inside the mapping from the start, so that
-there is nothing left to copy when it hands them over.
+So the copy is not what costs. I went looking for it: publishing a split runs
+10 ms against 18 ms for the scan, and inside that 10 ms a mapping's
+create/size/map/unmap/unlink cycle is 4.01 ms per 8 MB batch against 3.05 ms
+for the copy inside it. The lifecycle is the larger half, and paying it per
+batch rather than per split is worth more than removing the copy would be.
+
+Doing that, and handing each batch over as it lands rather than after the
+split, takes a producer of my own — `iceberg.mojo` writing Arrow buffers
+straight into one mapping per split — to **115 ms**, faster than the same
+column over Flight. That number is not in the table on purpose: it changes two
+things at once, a decoder 1.4× slower than pyarrow's and a pool of processes
+rather than one threaded server, so it says something about my stack rather
+than about the transport. It is on the [performance page](/performance), where
+that is the question.
 
 ## Running it
 
