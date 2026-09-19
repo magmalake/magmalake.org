@@ -170,7 +170,7 @@ from there. Ray Data and Spark have a similar design. One caveat worth keeping
 in mindg: a ticket is opaque, so there is no field in which to
 send a predicate. Only the limit pushes down, and filters run after the read.
 
-## Communication costs
+## Local communication costs
 
 Here is an experiment measuring the  column of the same 79.5M-row Iceberg table, read
 by the same engine — Daft, through the connectors in
@@ -216,7 +216,7 @@ changes, from "here are 28 MiB" to "here is where they are", which a ticket
 can express because it is opaque bytes.
 
 Reading from the mapping is nearly free: the consumer points at the buffers
-instead of decoding them. Getting the rows *into* it is not. The producer has
+instead of decoding them. Getting the rows _into_ it is not. The producer has
 to write the whole column out first, and those writes pile up on each other
 where a stream would have overlapped — which is the difference between 237 ms
 and 151 ms.
