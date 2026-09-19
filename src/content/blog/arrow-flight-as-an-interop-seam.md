@@ -6,6 +6,7 @@ date: 2026-09-16
 sourceUrl: https://github.com/magmalake/flight.mojo
 sourceLabel: flight.mojo
 related:
+  - arrow-through-shared-memory
   - parquet-mojo-against-pyarrow
 unlisted: false
 draft: false
@@ -228,13 +229,11 @@ for the copy inside it. The lifecycle is the larger half, and paying it per
 batch rather than per split is worth more than removing the copy would be.
 
 Doing that, and handing each batch over as it lands rather than after the
-split, takes a producer of my own — `iceberg.mojo` writing Arrow buffers
-straight into one mapping per split — to **115 ms**, faster than the same
-column over Flight. That number is not in the table on purpose: it changes two
-things at once, a decoder 1.4× slower than pyarrow's and a pool of processes
-rather than one threaded server, so it says something about my stack rather
-than about the transport. It is on the [performance page](/performance), where
-that is the question.
+split, takes a producer of my own to **112 ms** — faster than the same column
+over Flight. That is a different question from this one, so it has a post of
+its own: [Arrow through shared
+memory](/blog/arrow-through-shared-memory), which is also where the two tins
+and a working producer and consumer are.
 
 ## Running it
 
