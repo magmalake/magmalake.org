@@ -211,17 +211,15 @@ they lie. Flight still divides the work and names the unit; only `DoGet`
 changes, from "here are 28 MiB" to "here is where they are", which a ticket
 can express because it is opaque bytes.
 
-The consumer's half really is nearly free: **1.9 ms** to map one endpoint and
-fold every value in it, against 12 ms to stream the same rows. The producer's
-half is not, because the rows have to reach the mapping — writing them is a
-full copy of the column, and those writes overlap far worse than a stream
-does. Across 24 endpoints the mapping path speeds up 1.3× on threads where
-streaming manages 2.4×, and that is the whole of the difference between
-238 ms and 152 ms. Getting rid of the producer's copy as well means
-_allocating_ the Arrow buffers inside the mapping to begin with — in this
-stack, `arrow-mlake`'s `ArrayArena` backed by a mapped segment — which is a
-change to the reader rather than to the protocol. Until then, the thing that
-looks like it should win by avoiding a copy pays for a different one.
+Reading from the mapping is nearly free: the consumer points at the buffers
+instead of decoding them. Getting the rows *into* it is not. The producer has
+to write the whole column out first, and those writes pile up on each other
+where a stream would have overlapped — which is the difference between 238 ms
+and 152 ms.
+
+That copy is avoidable, but not by changing the protocol. The reader would
+have to build its Arrow buffers inside the mapping from the start, so that
+there is nothing left to copy when it hands them over.
 
 ## Running it
 
