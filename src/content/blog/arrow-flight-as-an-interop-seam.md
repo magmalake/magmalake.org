@@ -180,22 +180,26 @@ cache, p50 of five full reads after a discarded warm-up.
 
 | how the rows arrive | time | vs in-process |
 | --- | --- | --- |
-| in this process, over the C Data Interface | 89 ms | 1.0× |
-| Arrow Flight, TCP on loopback | 152 ms | 1.7× |
-| Arrow Flight, `flight.mojo`'s own server | 384 ms | 4.3× |
-| shared memory, between two processes | 238 ms | 2.7× |
-| Arrow Flight, Unix domain socket | 581 ms | 6.5× |
+| in this process, no boundary at all | 62 ms | 1.0× |
+| Arrow Flight, TCP on loopback | 151 ms | 2.4× |
+| shared memory, between two processes | 237 ms | 3.8× |
+| Arrow Flight, Unix domain socket | 573 ms | 9.2× |
 
-The loopback and Unix-socket rows are **pyarrow's** Flight server reading the
-same Parquet files, and that is deliberate: timing a client against my own
-server alone would add the protocol and my encoder together and print the sum
-under the heading "Flight", which is not a fact about Flight. 
+Every row is **pyarrow** reading the same Parquet files, and that is
+deliberate. Timing my own server here would add the protocol and my encoder
+together and print the sum under the heading "Flight", which is not a fact
+about Flight — that measurement belongs on the
+[performance page](/performance), where the question is how fast my stack is
+rather than what a transport costs.
 
-**Crossing a process costs 1.7×, not an order of magnitude.** A stream of
+The first row is the control: the identical read, in the same process, with
+nothing between it and the engine. Everything below it is that same work plus
+a boundary, so the ratios are the boundary and nothing else.
+
+**Crossing a process costs 2.4×, not an order of magnitude.** A stream of
 Arrow record batches over gRPC is about as cheap as moving that many bytes
-between two processes can be.
-The 1.7× price may be worth paying for a retry boundary, a crash boundary, or a
-credential that should not leave a service.
+between two processes can be. That price may be worth paying for a retry
+boundary, a crash boundary, or a credential that should not leave a service.
 
 **A Unix socket is worse.** Taking
 the loopback stack out of the path is the obvious same-machine optimisation
@@ -214,8 +218,8 @@ can express because it is opaque bytes.
 Reading from the mapping is nearly free: the consumer points at the buffers
 instead of decoding them. Getting the rows *into* it is not. The producer has
 to write the whole column out first, and those writes pile up on each other
-where a stream would have overlapped — which is the difference between 238 ms
-and 152 ms.
+where a stream would have overlapped — which is the difference between 237 ms
+and 151 ms.
 
 That copy is avoidable, but not by changing the protocol. The reader would
 have to build its Arrow buffers inside the mapping from the start, so that
