@@ -161,13 +161,13 @@ that. It is also the part where distributed engines are actually hard — spill,
 backpressure, skew — so the absence is worth being explicit about rather than
 discovering later.
 
-The way out is to borrow one rather than write one. An engine that already has
-a shuffle can take the endpoints as its task list and keep its own scheduler:
+Very likely your engine already has
+a shuffle that can take the endpoints as its task list and keep its own scheduler:
 [`daft_flight/`](https://github.com/magmalake/pyarrow-flight.example/tree/main/daft_flight)
 is that handoff, and it is small — `GetFlightInfo` becomes Daft's task list,
 `DoGet` becomes a task's batches, and joins and group-bys are Daft's problem
-from there. Ray Data and Spark take the same shape. One caveat worth knowing
-before you reach for it: a ticket is opaque, so there is no field in which to
+from there. Ray Data and Spark have a similar design. One caveat worth keeping
+in mindg: a ticket is opaque, so there is no field in which to
 send a predicate. Only the limit pushes down, and filters run after the read.
 
 ## Communication costs
@@ -191,24 +191,21 @@ same Parquet files, and that is deliberate: timing a client against my own
 server alone would add the protocol and my encoder together and print the sum
 under the heading "Flight", which is not a fact about Flight. 
 
-**Crossing a process costs 1.7× here, not an order of magnitude.** A stream of
+**Crossing a process costs 1.7×, not an order of magnitude.** A stream of
 Arrow record batches over gRPC is about as cheap as moving that many bytes
-between two processes can be, and the earlier advice — use the C Data
-Interface when you share a process, Flight when you do not — is a smaller
-difference in practice than "serialisation versus a function call" suggests.
-1.7× is a price worth paying for a retry boundary, a crash boundary, or a
+between two processes can be.
+The 1.7× price may be worth paying for a retry boundary, a crash boundary, or a
 credential that should not leave a service.
 
-**A Unix socket is worse, which is the opposite of what I expected.** Taking
+**A Unix socket is worse.** Taking
 the loopback stack out of the path is the obvious same-machine optimisation
-and it makes this transfer nearly four times slower on macOS. Measured twice,
-either side of the TCP run, on the same server process. Whatever gRPC does
+and it makes this transfer nearly four times slower on macOS. Whatever gRPC does
 with a Unix socket, it is not what it does with a loopback connection for a
 bulk transfer. Worth knowing before reaching for it.
 
-**Shared memory is not the free win it sounds like.** The C Data Interface
+**Shared memory is a mixed bag.** The C Data Interface
 cannot cross a process — it hands over pointers, and a pointer means nothing
-in another address space — but a mapping can, and Arrow's IPC *file* layout is
+in another address space — but a mapping can, and Arrow's IPC _file_ layout is
 the in-memory layout, so a consumer maps it and points at the buffers where
 they lie. Flight still divides the work and names the unit; only `DoGet`
 changes, from "here are 28 MiB" to "here is where they are", which a ticket
@@ -221,7 +218,7 @@ full copy of the column, and those writes overlap far worse than a stream
 does. Across 24 endpoints the mapping path speeds up 1.3× on threads where
 streaming manages 2.4×, and that is the whole of the difference between
 238 ms and 152 ms. Getting rid of the producer's copy as well means
-*allocating* the Arrow buffers inside the mapping to begin with — in this
+_allocating_ the Arrow buffers inside the mapping to begin with — in this
 stack, `arrow-mlake`'s `ArrayArena` backed by a mapped segment — which is a
 change to the reader rather than to the protocol. Until then, the thing that
 looks like it should win by avoiding a copy pays for a different one.
