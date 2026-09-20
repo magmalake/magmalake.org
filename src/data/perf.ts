@@ -18,6 +18,9 @@ export interface Group {
 /**
  * Apple M4 — 10 cores, four of them performance — macOS, stable Mojo 1.0.0.
  * Re-measured on 5 September 2026, with nothing else building on the machine.
+ * The toolchain moved to 1.1.0 on 20 September 2026; these numbers were not
+ * re-taken for it, so the line above is the toolchain they were measured on
+ * rather than the one the tins build with today.
  *
  * Every row says how many cores it used. "Single core" is no longer a property
  * of the stack: `ParquetReader.num_workers` and `ScanOptions.num_workers` both
