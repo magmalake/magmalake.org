@@ -12,43 +12,44 @@ draft: false
 ---
 
 Arrow's C Data Interface hands a consumer **pointers**, so it stops at the
-process boundary: a pointer means nothing in another address space. A mapping
-does not. Arrow's buffers are already in their final layout, so a consumer that
-maps them can point at them where they lie — no decode, no copy.
+process boundary: a pointer means nothing in another address space. A shared memory
+mapping allows you to use different processed on the same machine. Since Arrow's buffers are already in their final layout, 
+a consumer that maps them can use them directly.
 
-## Which one to use
+## Performance characteristics
 
-One column of a 79,478,796-row Iceberg table, read by Daft. Apple M4, warm
-cache, p50 of five reads.
+Let's use Daft to read one column of a 79,478,796-row Iceberg table. 
+These are run on an Apple M4, warm cache, p50 of five reads.
 
 | where your consumer is | use | |
 |---|---|---|
 | the same process | the C Data Interface | 89 ms |
-| another process, same machine | a shared mapping | 112 ms |
+| another process, same machine | shared memory | 112 ms |
 | another machine | Arrow Flight | 149 ms on loopback |
 
-Crossing a process costs about 1.3× staying in one. Flight costs about 1.7×,
+Crossing a process on the same machine costs about 1.3×. Flight costs about 1.7×,
 and buys a crash boundary, a retry boundary and a network you can point
 somewhere else.
 
-A mapping is only worth it when both ends are on one machine **and** the
+A shared memory mapping is only worth it when both ends are on one machine **and** the
 producer writes Arrow buffers into it. Writing Arrow IPC into a mapping — the
 obvious shortcut, since the file format is the memory format — measures 228 ms
 here, slower than streaming the same bytes over Flight.
 
-## What the handover itself costs
+## Communication costs
 
-The same column, already Arrow, with no Parquet in the path:
+Let's look just at the communication costs for one column, already Arrow, with no Parquet in the path:
 
 | | |
 |---|---|
 | mapped, read where it lies | 25 ms |
 | read into the heap | 56 ms |
 
-The gap is one copy of 636 MB. That is the whole prize, and it is the
-consumer's half — nearly free. The producer's half is not: it has to get the
+This is good news for the consumer. The producer has to do more work: it has to get the
 rows into the mapping, and a mapping's create, size, map, unmap and unlink
-cycle costs 4.01 ms per 8 MB batch against 3.05 ms for the copy inside it. Use
+cycle costs 4.01 ms per 8 MB batch against 3.05 ms for the copy inside it. 
+
+To really unlock the benefits you have to use
 one mapping per unit of work, not one per batch.
 
 ## How
