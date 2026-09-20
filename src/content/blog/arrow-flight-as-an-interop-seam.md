@@ -6,6 +6,7 @@ date: 2026-09-16
 sourceUrl: https://github.com/magmalake/flight.mojo
 sourceLabel: flight.mojo
 related:
+  - arrow-through-shared-memory
   - parquet-mojo-against-pyarrow
 unlisted: false
 draft: false
@@ -181,8 +182,8 @@ cache, p50 of five full reads after a discarded warm-up.
 | how the rows arrive | time | vs in-process |
 | --- | --- | --- |
 | in this process, no boundary at all | 62 ms | 1.0× |
-| Arrow Flight, TCP on loopback | 151 ms | 2.4× |
-| shared memory, between two processes | 237 ms | 3.8× |
+| Arrow Flight, TCP on loopback | 149 ms | 2.4× |
+| shared memory, between two processes | 228 ms | 3.7× |
 | Arrow Flight, Unix domain socket | 573 ms | 9.2× |
 
 Every row is **pyarrow** reading the same Parquet files, and that is
@@ -217,13 +218,22 @@ can express because it is opaque bytes.
 
 Reading from the mapping is nearly free: the consumer points at the buffers
 instead of decoding them. Getting the rows _into_ it is not. The producer has
-to write the whole column out first, and those writes pile up on each other
-where a stream would have overlapped — which is the difference between 237 ms
-and 151 ms.
+to materialise a whole split before the consumer may touch any of it, and both
+sides fault every page, where a stream overlaps the two and writes into kernel
+buffers that are already resident.
 
-That copy is avoidable, but not by changing the protocol. The reader would
-have to build its Arrow buffers inside the mapping from the start, so that
-there is nothing left to copy when it hands them over.
+So the copy is not what costs. I went looking for it: publishing a split runs
+10 ms against 18 ms for the scan, and inside that 10 ms a mapping's
+create/size/map/unmap/unlink cycle is 4.01 ms per 8 MB batch against 3.05 ms
+for the copy inside it. The lifecycle is the larger half, and paying it per
+batch rather than per split is worth more than removing the copy would be.
+
+Doing that, and handing each batch over as it lands rather than after the
+split, takes a producer of my own to **112 ms** — faster than the same column
+over Flight. That is a different question from this one, so it has a post of
+its own: [Arrow through shared
+memory](/blog/arrow-through-shared-memory), which is also where the two tins
+and a working producer and consumer are.
 
 ## Running it
 
