@@ -30,7 +30,7 @@ export const tins: Tin[] = [
     name: "iceberg",
     pkg: "iceberg-mojo",
     repo: "https://github.com/magmalake/iceberg.mojo",
-    version: "0.6.0",
+    version: "0.8.2",
     tier: "table",
     what:
       "Native Apache Iceberg. Read a table's metadata.json, pick a snapshot, decode its manifests, plan a scan and read the rows — then create, append, delete, overwrite and expire. No JVM, no Python, no Rust in the path.",
@@ -47,7 +47,7 @@ export const tins: Tin[] = [
     pkg: "parquet-mojo",
     repo: "https://github.com/magmalake/parquet.mojo",
     benchmarks: "https://magmalake.github.io/parquet.mojo/benchmarks/",
-    version: "0.4.0",
+    version: "0.11.4",
     tier: "format",
     what:
       "The first native Apache Parquet reader and writer in Mojo. It decodes the footer, the page headers, the levels and the values itself, and hands the result back in Arrow memory layout, exportable over the Arrow C Data Interface. That interface is the boundary, not a full Arrow library: there are no compute kernels, no IPC and no Flight.",
@@ -65,7 +65,7 @@ export const tins: Tin[] = [
     pkg: "avro-mojo",
     repo: "https://github.com/magmalake/avro.mojo",
     benchmarks: "https://magmalake.github.io/avro.mojo/benchmarks/",
-    version: "0.3.1",
+    version: "0.4.3",
     tier: "format",
     what:
       "Pure-Mojo Apache Avro: schema parsing, the binary encoding, Object Container Files both ways, and schema resolution. The core has no dependencies at all — not even FFI.",
@@ -81,7 +81,7 @@ export const tins: Tin[] = [
     name: "objectstore",
     pkg: "objectstore-mojo",
     repo: "https://github.com/magmalake/objectstore.mojo",
-    version: "0.3.0",
+    version: "0.3.3",
     tier: "format",
     what:
       "Storage and HTTP for Iceberg tables: a FileIO abstraction over local files, HTTP(S) range reads and S3, with the pooled HTTP transport the rest of the stack was missing.",
@@ -97,7 +97,7 @@ export const tins: Tin[] = [
     name: "sqlite",
     pkg: "sqlite-mojo",
     repo: "https://github.com/magmalake/sqlite.mojo",
-    version: "0.3.1",
+    version: "0.3.4",
     tier: "format",
     what:
       "An embedded SQL database: connections, prepared statements, typed columns and RAII transactions over libsqlite3. A fork of ehsanmok/sqlite, made dependency-free so it installs from the registry with no external git repos.",
@@ -113,7 +113,7 @@ export const tins: Tin[] = [
     name: "postgres",
     pkg: "postgres-mojo",
     repo: "https://github.com/magmalake/postgres.mojo",
-    version: "0.2.0",
+    version: "0.3.2",
     tier: "format",
     what:
       "A PostgreSQL client over libpq: parameterized statements, typed text-format results, transactions with savepoints and COPY, every error carrying its SQLSTATE — and, in a module of its own, a connection pool for a threaded service. A fork of dvirarad/mojo-postgres, rewritten for the 1.x toolchain.",
@@ -132,7 +132,7 @@ export const tins: Tin[] = [
     pkg: "roaring-mojo",
     repo: "https://github.com/magmalake/roaring.mojo",
     benchmarks: "https://magmalake.github.io/roaring.mojo/benchmarks/",
-    version: "0.1.0",
+    version: "0.1.3",
     tier: "format",
     what:
       "Pure-Mojo Roaring bitmaps, 32- and 64-bit, implementing the portable RoaringFormatSpec serialization plus Iceberg's deletion-vector v1 blob framing.",
@@ -149,7 +149,7 @@ export const tins: Tin[] = [
     pkg: "thrift-mojo",
     repo: "https://github.com/magmalake/thrift.mojo",
     benchmarks: "https://magmalake.github.io/thrift.mojo/benchmarks/",
-    version: "0.1.0",
+    version: "0.1.3",
     tier: "primitive",
     what:
       "Apache Thrift serialization in pure Mojo — compact and binary protocols — plus every struct, union and enum of the Parquet metadata schema, generated ahead of time.",
@@ -166,7 +166,7 @@ export const tins: Tin[] = [
     pkg: "zstd-mojo",
     repo: "https://github.com/magmalake/zstd.mojo",
     benchmarks: "https://magmalake.github.io/zstd.mojo/benchmarks/",
-    version: "0.1.1",
+    version: "0.1.4",
     tier: "primitive",
     what:
       "A Mojo binding to libzstd — one-shot and streaming, both directions — through a small C shim loaded at runtime, so consumers need no link flags.",
@@ -183,7 +183,7 @@ export const tins: Tin[] = [
     pkg: "lz4-mojo",
     repo: "https://github.com/magmalake/lz4.mojo",
     benchmarks: "https://magmalake.github.io/lz4.mojo/benchmarks/",
-    version: "0.1.1",
+    version: "0.1.3",
     tier: "primitive",
     what:
       "A Mojo binding to liblz4 covering the block format, the frame format and the legacy Hadoop framing that older Parquet files still use.",
@@ -200,7 +200,7 @@ export const tins: Tin[] = [
     pkg: "brotli-mojo",
     repo: "https://github.com/magmalake/brotli.mojo",
     benchmarks: "https://magmalake.github.io/brotli.mojo/benchmarks/",
-    version: "0.1.0",
+    version: "0.1.3",
     tier: "primitive",
     what:
       "A Mojo binding to libbrotli, the last of the seven Parquet page codecs. Bound rather than written: RFC 7932 needs two prefix-code forms, context maps, block-type switching, a distance cache and a 122 KB static dictionary with 121 word transforms that are part of the format itself.",
@@ -217,7 +217,7 @@ export const tins: Tin[] = [
     pkg: "snappy-mojo",
     repo: "https://github.com/magmalake/snappy.mojo",
     benchmarks: "https://magmalake.github.io/snappy.mojo/benchmarks/",
-    version: "0.1.1",
+    version: "0.1.4",
     tier: "primitive",
     what:
       "Snappy in pure Mojo — the raw block format and the CRC-32C-checksummed framing format. No FFI, no C dependency.",
@@ -234,7 +234,7 @@ export const tins: Tin[] = [
     pkg: "hashes-mojo",
     repo: "https://github.com/magmalake/hashes.mojo",
     benchmarks: "https://magmalake.github.io/hashes.mojo/benchmarks/",
-    version: "0.1.0",
+    version: "0.1.3",
     tier: "primitive",
     what:
       "The three hashes Iceberg and Parquet actually need — CRC-32, MurmurHash3 x86-32 and XXH64 — in pure Mojo, with no dependencies and no FFI.",
@@ -250,7 +250,7 @@ export const tins: Tin[] = [
     name: "restate",
     pkg: "restate-mojo",
     repo: "https://github.com/magmalake/restate.mojo",
-    version: "0.3.2",
+    version: "0.4.1",
     tier: "primitive",
     what:
       "Durable execution in Mojo, via Restate. A Rust shim embeds the official Restate SDK — Rust owns the HTTP/2 endpoint, the event loop and the journal — while your handlers are Mojo, driven by a synchronous loop where every durable operation crosses one C-ABI call.",
@@ -267,7 +267,7 @@ export const tins: Tin[] = [
     name: "threads",
     pkg: "threads-mojo",
     repo: "https://github.com/magmalake/threads.mojo",
-    version: "0.4.0",
+    version: "0.6.1",
     tier: "primitive",
     what:
       "Minimal OS threads for Mojo: spawn and join pthreads, share state through atomics and a mutex, and fan a loop out over cores with parallel_for. A stopgap, distilled from flare, until the language ships its own.",
@@ -284,7 +284,7 @@ export const tins: Tin[] = [
     name: "iceberg-rs",
     pkg: "iceberg-rs-mojo",
     repo: "https://github.com/magmalake/iceberg-rs.mojo",
-    version: "0.1.0",
+    version: "0.1.2",
     tier: "oracle",
     what:
       "Apache Iceberg over a thin Rust cdylib wrapping iceberg-rust behind a C ABI. Superseded — no longer required for any operation — and kept only as a third independent implementation to check the native one against.",
