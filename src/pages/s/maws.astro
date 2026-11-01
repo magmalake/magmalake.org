@@ -6,6 +6,7 @@ const description =
 
 const repo = "https://github.com/magmalake/maws";
 const releases = `${repo}/releases`;
+const script = "https://raw.githubusercontent.com/magmalake/maws/main/install.sh";
 ---
 
 <Base title="maws" description={description}>
@@ -80,15 +81,18 @@ const releases = `${repo}/releases`;
 
       <h3 class="install__head">Install</h3>
       <p class="install__text">
-        Download the tarball for your platform (<code>macos-arm64</code> or
-        <code>linux-x64</code>) from the <a href={releases} rel="noopener">releases page</a>,
-        unpack it, and link <code>bin/maws</code> onto your <code>PATH</code>:
+        On macOS arm64 or Linux x64, use the install script. Read it first: it downloads
+        the latest release, checks its SHA-256 against the published checksum, unpacks it to
+        <code>~/.local/share/maws</code> and links <code>~/.local/bin/maws</code>. No sudo.
       </p>
-      <pre class="install__code"><code>v=0.1.0; p=macos-arm64
-curl -fsSL "https://github.com/magmalake/maws/releases/download/v$v/maws-$v-$p.tar.gz" \
-  | tar -C ~/.local/share -xz
-ln -sf ~/.local/share/maws-$v-$p/bin/maws ~/.local/bin/maws
+      <pre class="install__code"><code>curl -fsSL {script} | less</code></pre>
+      <p class="install__text">Once you have read it:</p>
+      <pre class="install__code"><code>curl -fsSL {script} | bash
 maws --profile my-profile</code></pre>
+      <p class="install__text install__text--fine">
+        Or download a tarball and its <code>.sha256</code> from the
+        <a href={releases} rel="noopener">releases page</a> yourself.
+      </p>
     </div>
   </section>
 </Base>
@@ -168,6 +172,11 @@ maws --profile my-profile</code></pre>
   .install__text {
     color: var(--text-muted);
     font-size: 0.9375rem;
+  }
+  .install__text--fine {
+    margin-top: 0.9rem;
+    font-size: 0.8125rem;
+    color: var(--text-faint);
   }
   .install__code {
     margin-top: 0.75rem;
