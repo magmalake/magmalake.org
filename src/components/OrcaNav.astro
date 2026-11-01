@@ -1,0 +1,95 @@
+---
+// orca's own header, in place of magmalake's: the magmalake mark, a bar,
+// then orca and its sections. The orca pages pass `chrome={false}` to
+// Base, so this is the only header they have. A copy of DistaNav.
+import Logo from "./Logo.astro";
+import { ORCA_REPO } from "../data/orca";
+
+const links = [
+  { href: "/s/orca", label: "Overview" },
+  { href: "/s/orca/docs", label: "Docs" },
+  { href: "/s/orca/roadmap", label: "Roadmap" },
+];
+const path = Astro.url.pathname.replace(/\/$/, "");
+---
+
+<header class="ohead">
+  <div class="wrap wrap--wide ohead__inner">
+    <div class="ohead__brand">
+      <a class="ohead__mark" href="/" aria-label="magmalake home"><Logo size={22} /></a>
+      <span class="ohead__bar" aria-hidden="true">|</span>
+      <a class="ohead__name" href="/s/orca">orca</a>
+    </div>
+    <nav class="ohead__links" aria-label="orca">
+      {
+        links.map((l) => (
+          <a class="ohead__link" href={l.href} aria-current={path === l.href ? "page" : undefined}>
+            {l.label}
+          </a>
+        ))
+      }
+      <a class="ohead__link ohead__link--ext" href={ORCA_REPO} rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .ohead {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    border-bottom: 1px solid var(--rule);
+  }
+  .ohead__inner {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    min-height: 4rem;
+    flex-wrap: wrap;
+  }
+  .ohead__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .ohead__mark { display: flex; }
+  .ohead__bar {
+    color: var(--border-strong);
+    font-size: 1.25rem;
+    line-height: 1;
+  }
+  .ohead__name {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.125rem;
+    letter-spacing: -0.025em;
+    color: var(--text);
+    text-decoration: none;
+  }
+  .ohead__links {
+    display: flex;
+    align-items: center;
+    gap: 1.35rem;
+    margin-left: auto;
+    font-size: 0.875rem;
+  }
+  .ohead__link {
+    color: var(--text-muted);
+    text-decoration: none;
+    white-space: nowrap;
+    padding-block: 0.35rem;
+    border-bottom: 1.5px solid transparent;
+  }
+  .ohead__link:hover { color: var(--text); border-bottom-color: var(--ember); }
+  .ohead__link[aria-current="page"] {
+    color: var(--text);
+    border-bottom-color: var(--ember);
+  }
+  @media (max-width: 640px) {
+    .ohead__inner { padding-block: 0.6rem; gap: 0.5rem 1rem; }
+    .ohead__links { margin-left: 0; gap: 1rem; }
+  }
+</style>

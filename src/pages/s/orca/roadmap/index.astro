@@ -1,0 +1,165 @@
+---
+import Base from "../../../../layouts/Base.astro";
+import OrcaNav from "../../../../components/OrcaNav.astro";
+import OrcaFooter from "../../../../components/OrcaFooter.astro";
+import { phases, phase1Prs, testingPr, asOf, ORCA_REPO, ORCA_PRS } from "../../../../data/orca";
+
+const description =
+  "orca's five phases, from DAGs and runs to schedules, a web UI, lineage and Kubernetes, each with the gate that ends it, and phase 1's pull requests with what is merged and what is in review.";
+
+const prLabel = { merged: "merged", review: "in review", planned: "next" } as const;
+---
+
+<Base title="Roadmap · orca" description={description} bare chrome={false}>
+  <OrcaNav />
+
+  <section class="section section--flush">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">Roadmap</p>
+      <h1 class="section-title">Five phases, each ending at a gate</h1>
+      <p class="lede">
+        A gate is something that works, not a feature list: a phase is done when its gate
+        passes. orca is in phase 1. Phases 2 to 5 are planned, not built; what's written here
+        about them is the design, and it changes as the earlier phases teach something. The
+        detail is in the repository's
+        <a href={`${ORCA_REPO}/blob/main/VISION.md`} rel="noopener">VISION.md</a> and
+        <a href={`${ORCA_REPO}/blob/main/DESIGN.md`} rel="noopener">DESIGN.md</a>.
+        As of {asOf}.
+      </p>
+
+      <ol class="phases">
+        {
+          phases.map((p) => (
+            <li class={`phase${p.status === "in progress" ? " phase--now" : ""}`} id={`phase-${p.n}`}>
+              <div class="phase__head">
+                <span class="phase__n num">{p.n}</span>
+                <h2 class="phase__title"><a href={`#phase-${p.n}`}>{p.title}</a></h2>
+                <span class="phase__status">{p.status}</span>
+              </div>
+              <p class="phase__summary">{p.summary}</p>
+              <p class="phase__gate"><strong>Gate:</strong> {p.gate}</p>
+
+              {p.n === 1 ? (
+                <div class="table-scroll phase__prs">
+                  <table>
+                    <thead>
+                      <tr><th class="num">#</th><th>Pull request</th><th>Its gate</th><th>State</th></tr>
+                    </thead>
+                    <tbody>
+                      {phase1Prs.map((r) => (
+                        <tr>
+                          <td class="num">{r.n}</td>
+                          <td>
+                            {r.pr ? <a href={`${ORCA_PRS}/${r.pr}`} rel="noopener">{r.title}</a> : r.title}
+                          </td>
+                          <td class="ref">{r.gate}</td>
+                          <td class={`pr-state pr-state--${r.state}`}>{prLabel[r.state]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <ul class="phase__items">{p.items.map((i) => <li>{i}</li>)}</ul>
+              )}
+            </li>
+          ))
+        }
+      </ol>
+
+      <aside class="callout roadmap-testing" id="testing">
+        <h3 class="callout__title">
+          Alongside phase 1: <a href={`${ORCA_PRS}/${testingPr.pr}`} rel="noopener">{testingPr.title}</a> (in review)
+        </h3>
+        {testingPr.body.map((b) => <p>{b}</p>)}
+        <p><strong>What it found:</strong></p>
+        <ul class="phase__items">{testingPr.found.map((f) => <li>{f}</li>)}</ul>
+        <p class="callout__fine">
+          The PR numbers in the table are the design's; the repository's pull requests have
+          their own numbers, so this one is GitHub's #{testingPr.pr} while the taxi pipeline is
+          the design's 6.
+        </p>
+      </aside>
+
+      <p class="roadmap-next">
+        <strong>No benchmark numbers yet.</strong> The first measured run is phase 1's gate:
+        the 2023–2024 NYC taxi load, 79,478,796 rows, checked against taxibench's table.
+      </p>
+    </div>
+  </section>
+  <OrcaFooter />
+</Base>
+
+<style>
+  .phases {
+    list-style: none;
+    padding: 0;
+    margin: 2.5rem 0 0;
+    display: grid;
+    gap: 1.25rem;
+  }
+  .phase {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.4rem 1.6rem;
+    scroll-margin-top: 5rem;
+  }
+  .phase--now { border-left: 3px solid var(--ember); }
+  .phase__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem 0.9rem;
+  }
+  .phase__n {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--text-faint);
+  }
+  .phase__title { font-size: 1.2rem; margin: 0; }
+  .phase__title a { color: inherit; text-decoration: none; }
+  .phase__status {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .phase--now .phase__status { color: var(--ember); }
+  .phase__summary,
+  .phase__gate,
+  .phase__items {
+    max-width: var(--measure);
+    font-size: 0.9375rem;
+  }
+  .phase__summary { margin-top: 0.7rem; color: var(--text-muted); }
+  .phase__gate { margin-top: 0.5rem; }
+  .phase__items {
+    margin: 0.8rem 0 0;
+    padding-left: 1.2rem;
+    display: grid;
+    gap: 0.3rem;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+  }
+  .phase__prs { margin-top: 1rem; }
+  .phase__prs table { min-width: 0; }
+  .pr-state {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+  .pr-state--merged { color: var(--lake); }
+  .pr-state--review { color: var(--ember); }
+  .pr-state--planned { color: var(--text-faint); }
+  .roadmap-testing { margin-top: 2.5rem; max-width: 44rem; }
+  .roadmap-testing .phase__items { font-size: 0.875rem; }
+  .roadmap-next {
+    margin-top: 2rem;
+    max-width: var(--measure);
+    color: var(--text-muted);
+    font-size: 0.9375rem;
+  }
+</style>

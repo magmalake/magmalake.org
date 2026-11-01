@@ -1,0 +1,45 @@
+---
+// orca's footer, in place of magmalake's. A copy of DistaFooter.
+import Logo from "./Logo.astro";
+import { ORCA_REPO } from "../data/orca";
+---
+
+<footer class="ofoot">
+  <div class="wrap wrap--wide ofoot__inner">
+    <a class="ofoot__mark" href="/"><Logo size={18} /><span>A magmalake project</span></a>
+    <nav class="ofoot__links" aria-label="orca links">
+      <a href="/s/orca/docs">Docs</a>
+      <a href="/s/orca/roadmap">Roadmap</a>
+      <a href={ORCA_REPO} rel="noopener">GitHub</a>
+      <a href={`${ORCA_REPO}/issues`} rel="noopener">Issues</a>
+    </nav>
+    <p class="ofoot__fine">Apache 2.0 · © 2026 Marius Seritan</p>
+  </div>
+</footer>
+
+<style>
+  .ofoot {
+    border-top: 1px solid var(--rule);
+    padding-block: 2rem;
+    margin-top: 2rem;
+    font-size: 0.8125rem;
+    color: var(--text-faint);
+  }
+  .ofoot__inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.5rem;
+  }
+  .ofoot__mark {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+  .ofoot__links { display: flex; gap: 1.1rem; }
+  .ofoot__links a { color: var(--text-muted); text-decoration: none; }
+  .ofoot__links a:hover { color: var(--text); }
+  .ofoot__fine { margin: 0 0 0 auto; }
+</style>
