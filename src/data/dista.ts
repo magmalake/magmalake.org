@@ -55,6 +55,21 @@ export const distributed: Table = {
   ],
 };
 
+export const matrix: Table = {
+  id: "scaling",
+  title: "Distributed, 3, 6 and 12 nodes",
+  columns: ["dista", "Rust", "Ray"],
+  unit: "ms, median of 5 passes",
+  source: "matrix-2026-11-01",
+  caption:
+    "The same queries on 3, 6 and 12 worker nodes, after the read path. Every answer identical across the nine runs. At 12 nodes, dista's planning of each query on the driver (0.31 s, reading the table's manifests again every time) is about 40% of a pass; iceberg-rust caches manifests between plans. Ray is slower on 12 nodes than on 6.",
+  rows: [
+    { label: "3 nodes", values: [11040, 18377, 21275] },
+    { label: "6 nodes", values: [7184, 10267, 12737] },
+    { label: "12 nodes", values: [5941, 6682, 15703] },
+  ],
+};
+
 export const earlierMatrix: Table = {
   id: "matrix",
   title: "Distributed, 3 and 6 nodes, before the read path",
@@ -62,7 +77,7 @@ export const earlierMatrix: Table = {
   unit: "ms, median of 5 passes",
   source: "2026-11",
   caption:
-    "The first matrix, before the read path. dista was the slowest of the three here; the table above is what changed. A 12-node dista run failed its answer check (fixed since, not re-run yet), so it isn't shown.",
+    "The first matrix, before the read path. dista was the slowest of the three here. A 12-node dista run failed its answer check then (fixed since); the table above has the 12-node runs.",
   rows: [
     { label: "3 nodes", values: [53548, 21966, 30140] },
     { label: "6 nodes", values: [35613, 10264, 16140] },
