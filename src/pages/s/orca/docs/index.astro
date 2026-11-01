@@ -1,0 +1,342 @@
+---
+import Base from "../../../../layouts/Base.astro";
+import OrcaNav from "../../../../components/OrcaNav.astro";
+import OrcaFooter from "../../../../components/OrcaFooter.astro";
+import { ORCA_REPO, ORCA_PRS } from "../../../../data/orca";
+
+const description =
+  "How to use orca: declaring steps and pipelines, the command line every pipeline binary gets, runs in Postgres and resuming them, pinned Iceberg reads and recognised commits.";
+
+const env = [
+  ["ORCA_DATABASE_URL", "the Postgres database runs are recorded in; unset, run runs in memory", "unset"],
+  ["ORCA_STALE_SECONDS", "how old a run's heartbeat must be before another process may resume it", "30"],
+  ["ORCA_WORKERS", "the local dista workers a run forks (in review, #5)", "4"],
+  ["ORCA_LOGS", "the directory attempts' logs and the run's timeline go in (in review, #5)", "unset"],
+  ["DISTA_ROLE", "head or worker: the binary runs as that dista process instead (in review, #5)", "unset"],
+  ["DISTA_HEAD", "host:port of a dista head to join instead of forking workers (in review, #5)", "local mode"],
+];
+
+const rules = [
+  "A first mapped step takes Month, the partition key; a first gather step takes Seq[Month].",
+  "A mapped step takes the output of the mapped step it follows, and can't follow a gather step.",
+  "A gather step after a mapped step takes a Seq of its output; after a gather step, its output.",
+  "Steps are listed in run order, a step after the step it follows, with unique names.",
+  "A step's after is the pipeline's own step of that name, compared by function.",
+];
+
+const exits = [
+  ["0", "the run succeeded"],
+  ["1", "a step didn't"],
+  ["2", "a usage error"],
+  ["3", "anything else: the database, a run that can't be resumed"],
+];
+---
+
+<Base title="Docs · orca" description={description} bare chrome={false}>
+  <OrcaNav />
+
+  <section class="section section--flush">
+    <div class="wrap wrap--wide docs">
+      <p class="eyebrow">Docs</p>
+      <h1 class="section-title">Using orca</h1>
+      <p class="lede">
+        orca turns a Mojo file of steps into a pipeline binary with a command line. This page
+        covers what works on the main branch today: declaring steps and pipelines, running
+        them, recording and resuming runs in Postgres, and reading and writing Iceberg tables
+        from a step. What is still in review is marked as such. The plan is in the
+        repository's <a href={`${ORCA_REPO}/blob/main/DESIGN.md`} rel="noopener">DESIGN.md</a>.
+      </p>
+
+      <nav class="docs-toc" aria-label="On this page">
+        <a href="#build">Build it</a>
+        <a href="#steps">Steps</a>
+        <a href="#pipelines">Pipelines</a>
+        <a href="#cli">The command line</a>
+        <a href="#state">Runs in Postgres</a>
+        <a href="#tables">Iceberg tables</a>
+        <a href="#dista">dista inside steps</a>
+        <a href="#logs">Logs</a>
+        <a href="#env">Environment</a>
+        <a href="#failures">When things fail</a>
+      </nav>
+
+      <h2 id="build">Build it</h2>
+      <p>
+        orca isn't published as a package yet. It builds from source with pixi, and compiles
+        dista from a checkout beside it:
+      </p>
+      <pre><code>{`git clone ${ORCA_REPO}
+git clone https://github.com/magmalake/dista.mojo
+cd orca.mojo
+pixi run test          # unit, CLI, compile-fail, state and kill tests
+pixi run toy           # builds examples/toy.mojo to build/toy
+./build/toy run --partitions 2024-01..2024-03`}</code></pre>
+      <p>
+        It targets Mojo 1.2.0, with a nightly environment alongside. Its state goes through
+        postgres-mojo, which loads libpq; the tests start a throwaway Postgres server of
+        their own. <code>orca.tables</code>, the Iceberg part, builds in the
+        <code>data</code> environment (<code>pixi run -e data test-tables</code>), with
+        iceberg and its siblings checked out beside it as well.
+      </p>
+
+      <h2 id="steps">Steps</h2>
+      <p>
+        A step is a top-level <code>def</code> that takes a <code>Ctx</code> and one input
+        and returns one output. It's declared once, with its name, its input and output
+        types, the function, its kind, and the step it follows:
+      </p>
+      <pre><code>{`from dista import Seq
+from orca import Ctx, Gather, Mapped, Month, Pipeline, Step, orca_main
+
+@fieldwise_init
+struct Measured(Copyable, Movable):
+    var month: Month
+    var days: Int
+
+def days(mut ctx: Ctx, m: Month) raises -> Measured: ...
+def measure(mut ctx: Ctx, m: Measured) raises -> Measured: ...
+def total(mut ctx: Ctx, ms: Seq[Measured]) raises -> Int: ...
+
+comptime Days = Step["days", Month, Measured, days, Mapped]
+comptime Measure = Step["measure", Measured, Measured, measure, Mapped, after=Days]
+comptime Total = Step["total", Seq[Measured], Int, total, Gather, after=Measure]`}</code></pre>
+      <p>
+        A run is over a list of partition keys, months for now. A <code>Mapped</code> step
+        runs once per month; a <code>Gather</code> step runs once per run and takes every
+        month's output as a <code>Seq</code>. <code>retries=2</code> in the declaration
+        retries a failing step twice, and <code>ctx.attempt</code> says which attempt this
+        is. <code>ctx.log</code> writes a line tagged with the step and partition: to standard
+        output on main, and to the attempt's log file once <a href="#logs">logs</a> land.
+      </p>
+      <p>
+        Step outputs should be small values, such as paths, snapshot IDs and counts. They're
+        stored in Postgres through dista's codec, so a resumed run hands a step exactly the
+        input its first attempt had. The data itself goes in tables.
+      </p>
+
+      <h2 id="pipelines">Pipelines</h2>
+      <p>A pipeline is a name and its steps, and the binary's <code>main</code> hands it to <code>orca_main</code>:</p>
+      <pre><code>{`comptime Toy = Pipeline["toy", Days, Measure, Total]
+
+def main() raises:
+    orca_main[Toy]()`}</code></pre>
+      <p>
+        <code>Step</code> and <code>Pipeline</code> check their edges with
+        <code>comptime assert</code>s, so a pipeline that breaks one of these rules doesn't
+        compile, and the compiler says which:
+      </p>
+      <ul class="docs-list">{rules.map((r) => <li>{r}</li>)}</ul>
+      <p>
+        The repository's <code>tests/compile_fail/</code> holds one pipeline per rule, each
+        checked to fail with its message. A pipeline's registry hash, over its steps'
+        functions, kinds and edges, identifies the code a run ran.
+      </p>
+
+      <h2 id="cli">The command line</h2>
+      <p>Every pipeline binary gets the same four commands:</p>
+      <pre><code>{`toy describe                              the DAG as JSON
+toy run --partitions 2024-01..2024-03     starts a run and runs it
+toy resume <run> [--allow-new-code]       continues a run at what's unfinished
+toy status [<run>]                        the latest runs, or one run's steps`}</code></pre>
+      <p>
+        <code>--partitions</code> takes months and ranges of months, separated by commas.
+        <code>run</code> and <code>resume</code> print one line per step and partition, then
+        the run's status. Without <code>ORCA_DATABASE_URL</code>, <code>run</code> runs in
+        memory and records nothing, and <code>resume</code> and <code>status</code> aren't
+        available. The exit code says how it went:
+      </p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Exit</th><th>When</th></tr></thead>
+          <tbody>
+            {exits.map(([k, v]) => (
+              <tr><td><code>{k}</code></td><td>{v}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="state">Runs in Postgres</h2>
+      <p>
+        With <code>ORCA_DATABASE_URL</code> set, the binary creates and migrates an
+        <code>orca</code> schema at start-up and records every run, every step of every
+        partition, and every attempt, with the inputs and outputs of each. Each change of
+        state is one transaction.
+      </p>
+      <pre><code>{`ORCA_DATABASE_URL=postgresql:///orca ./build/toy run --partitions 2024-01..2024-03
+./build/toy status          # the latest runs
+./build/toy status 7        # run 7's steps and attempts
+./build/toy resume 7`}</code></pre>
+      <p>
+        <code>resume</code> reruns every step that hasn't succeeded, in order, with its
+        recorded input; steps that succeeded are read back, not run again. A run started by a
+        binary with a different registry hash is refused unless
+        <code>--allow-new-code</code> is passed.
+      </p>
+      <p>
+        One process owns a run at a time. It holds the run with a heartbeat, written from a
+        thread with its own connection, and <code>resume</code> refuses a run whose heartbeat
+        is younger than <code>ORCA_STALE_SECONDS</code>. A run whose process was killed goes
+        stale and can be resumed; a run that ended can be resumed at once. Each attempt also
+        checks that its process still owns the run, so a process that lost its run stops at
+        its next step rather than racing the new owner. <code>tests/kill.sh</code> kills a
+        run at a random step with <code>kill -9</code>, resumes it, and checks every step
+        ran to success exactly once.
+      </p>
+      <p>
+        Postgres must keep <code>synchronous_commit</code> on: with it off, an immediate
+        restart of the server can lose commits it already acknowledged. The chaos test in
+        <a href={`${ORCA_PRS}/6`} rel="noopener">PR #6</a> found this when a run's row
+        vanished.
+      </p>
+
+      <h2 id="tables">Iceberg tables</h2>
+      <p>
+        A step reads and writes Iceberg tables through <code>orca.tables</code>, which is
+        what makes a rerun safe:
+      </p>
+      <pre><code>{`from orca.tables import append, scan
+
+def load(mut ctx: Ctx, raw: RawFile) raises -> Loaded:
+    var src = Table.load_local(raw.table)
+    var batches = scan(ctx, src).to_batches()
+    var dst = Table.load_local(OUT)
+    var id = append(ctx, dst, transform(batches))
+    return Loaded(raw.month, id)`}</code></pre>
+      <p>
+        <strong><code>scan</code></strong> reads a table at a pinned snapshot: its current
+        one on the step's first attempt, which is recorded, and the same one on every retry
+        and resume, whatever was committed in between. A table that had no snapshot when the
+        step first read it stays empty for that step.
+      </p>
+      <p>
+        <strong><code>append</code></strong> writes batches as one <code>append</code>
+        snapshot, and <strong><code>commit</code></strong> commits data files already
+        written, added and removed, as a snapshot of any operation, such as
+        <code>replace</code> for a compaction. Both put <code>orca.*</code> properties in
+        the snapshot's summary: pipeline, run, step, partition, attempt, commit number, code,
+        and the snapshots read. Before writing anything they look for a snapshot this step
+        already committed in this run. If an attempt committed and was killed before Postgres
+        heard of it, the retry finds that snapshot and returns it, so a month isn't loaded
+        twice. A table is known by its location.
+      </p>
+      <p>
+        Reads and commits are recorded in Postgres as they happen, not when the attempt ends.
+        A run in memory has no run number of its own, so it pins reads across its retries but
+        recognises no commits.
+      </p>
+
+      <h2 id="dista">dista inside steps</h2>
+      <p class="docs-note">
+        In review: <a href={`${ORCA_PRS}/5`} rel="noopener">PR #5</a>.
+      </p>
+      <p>
+        A step runs in the run's driver process and calls dista for anything distributed.
+        The pipeline names the dista tasks its steps use, and a step gets the run's
+        runtime from its <code>Ctx</code>:
+      </p>
+      <pre><code>{`from dista import ObjectRef, Task
+from orca import Tasks
+
+comptime Trips = Task[Day, Int, trips]
+comptime FanoutTasks = Tasks[Trips]
+
+def month_trips(mut ctx: Ctx, m: Month) raises -> Int:
+    ref rt = ctx.runtime[FanoutTasks]()
+    var refs = List[ObjectRef[Int]]()
+    for d in range(1, days_in(m) + 1):
+        refs.append(rt.remote[Trips](Day(m.copy(), d)))
+    var total = 0
+    for r in refs:
+        total += rt.get(r)
+    return total
+
+comptime Fanout = Pipeline["fanout", MonthTrips, AllTrips, tasks=FanoutTasks]`}</code></pre>
+      <p>
+        Each run gets one dista runtime, started before anything else so that the head and
+        workers it forks inherit no database connection or thread. Locally it forks
+        <code>ORCA_WORKERS</code> workers; with <code>DISTA_HEAD</code> set it joins that
+        cluster instead, and with <code>DISTA_ROLE</code> set the pipeline binary is itself a
+        dista head or worker. Asking for a runtime of tasks the pipeline didn't declare is
+        refused. The tasks are part of <code>describe</code> and the registry hash.
+      </p>
+
+      <h2 id="logs">Logs</h2>
+      <p class="docs-note">
+        In review: <a href={`${ORCA_PRS}/5`} rel="noopener">PR #5</a>.
+      </p>
+      <p>
+        With <code>ORCA_LOGS</code> set to a directory, each attempt writes
+        <code>&lt;pipeline&gt;/&lt;run&gt;/&lt;step&gt;/&lt;partition&gt;/&lt;attempt&gt;.log</code>:
+        its start, its end, its error, and its <code>ctx.log</code> lines with UTC
+        timestamps. The path is recorded with the attempt and shown by
+        <code>status &lt;run&gt;</code>. A run with dista tasks writes the runtime's timeline
+        beside them as <code>timeline.json</code>, in Chrome's trace format, which Perfetto
+        opens. Logs in S3 come with phase 5.
+      </p>
+
+      <h2 id="env">Environment</h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Variable</th><th>What it sets</th><th>Default</th></tr></thead>
+          <tbody>
+            {env.map(([k, v, d]) => (
+              <tr><td><code>{k}</code></td><td>{v}</td><td class="ref">{d}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="failures">When things fail</h2>
+      <p>
+        <strong>A step that raises</strong> is retried up to its <code>retries</code>, then
+        fails. The steps downstream of it are skipped, while other partitions' steps that
+        don't depend on it carry on, so one bad month doesn't stop the others; the run ends
+        failed and can be resumed. <strong>A process that dies</strong> leaves its run
+        running with a stale heartbeat; <code>resume</code> marks the interrupted attempt
+        failed and continues from there. <strong>A commit that landed before the crash</strong>
+        is found by the retry rather than made again. Fuzzing and a chaos test, which kills
+        runs, restarts Postgres and races two resumes over many seeds, are
+        <a href={`${ORCA_PRS}/6`} rel="noopener">in review</a>.
+      </p>
+    </div>
+  </section>
+  <OrcaFooter />
+</Base>
+
+<style>
+  .docs h2 {
+    font-size: 1.35rem;
+    margin: 2.75rem 0 0.8rem;
+    scroll-margin-top: 5rem;
+  }
+  .docs p,
+  .docs pre,
+  .docs .table-scroll,
+  .docs .docs-list {
+    max-width: var(--measure);
+  }
+  .docs p + p { margin-top: 0.6rem; }
+  .docs pre { margin: 1rem 0 1.1rem; }
+  .docs .table-scroll { margin: 1rem 0 1.1rem; }
+  .docs table { min-width: 0; }
+  .docs-list {
+    margin: 0.8rem 0 1rem;
+    padding-left: 1.2rem;
+    display: grid;
+    gap: 0.35rem;
+  }
+  .docs-note {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--text-faint);
+  }
+  .docs-toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    margin-top: 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+</style>

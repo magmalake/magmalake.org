@@ -1,0 +1,171 @@
+---
+import Base from "../../../layouts/Base.astro";
+import OrcaNav from "../../../components/OrcaNav.astro";
+import OrcaFooter from "../../../components/OrcaFooter.astro";
+import { worksToday, inReview, notYet, phases, ORCA_REPO, DISTA_SECTION } from "../../../data/orca";
+
+const description =
+  "orca orchestrates data pipelines written in Mojo: DAGs declared in Mojo and checked by the compiler, steps that run on dista, datasets in Iceberg tables and state in Postgres. Early, open source, phase 1 of five.";
+---
+
+<Base title="orca: orchestration for Mojo data pipelines" description={description} bare chrome={false}>
+  <OrcaNav />
+
+  <section class="section section--flush">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">orca</p>
+      <h1 class="section-title">Data pipelines, declared in Mojo</h1>
+      <p class="lede">
+        orca is the layer that decides when work runs, in what order, and what happens when
+        a step fails. A pipeline is a DAG of steps written in Mojo, and the compiler checks
+        that each step takes what the step before it produces. The heavy work inside a step
+        runs on <a href={DISTA_SECTION}>dista</a>, the data it reads and writes lives in
+        Iceberg tables, and orca's own record of runs lives in Postgres. Schedules and a web
+        UI come later; today a pipeline is a binary you run.
+      </p>
+
+      <div class="two-col orca-intro">
+        <div class="prose">
+          <pre><code>{`from dista import Seq
+from orca import Ctx, Gather, Mapped, Month, Pipeline, Step, orca_main
+
+def size(mut ctx: Ctx, m: Month) raises -> Int:
+    return m.month * 100
+
+def total(mut ctx: Ctx, sizes: Seq[Int]) raises -> Int:
+    var t = 0
+    for i in range(len(sizes)):
+        t += sizes[i]
+    return t
+
+comptime Size = Step["size", Month, Int, size, Mapped]
+comptime Total = Step["total", Seq[Int], Int, total, Gather, after=Size]
+comptime Sizes = Pipeline["sizes", Size, Total]
+
+def main() raises:
+    orca_main[Sizes]()`}</code></pre>
+          <p>
+            <code>Size</code> runs once per month of the run; <code>Total</code> runs once and
+            gets all of their outputs as a <code>Seq</code>. Declaring <code>Total</code> with
+            an input that isn't a <code>Seq[Int]</code> doesn't compile. The binary gets a
+            command line: <code>./sizes run --partitions 2024-01..2024-03</code> runs it, and
+            with <code>ORCA_DATABASE_URL</code> set, every step and attempt is recorded so a
+            run that was killed can be resumed where it stopped.
+          </p>
+        </div>
+
+        <aside class="callout">
+          <h3 class="callout__title">Who it's for</h3>
+          <p>
+            <strong>People building data pipelines in Mojo</strong> on a data lake, who want
+            them run in order, observed and rerunnable without a Python orchestrator in front
+            of compiled code.
+          </p>
+          <p>
+            <strong>Dataset builds</strong>: ingest raw data by partition, clean and join it
+            into Iceberg tables, publish a new version. The NYC taxi load that dista's
+            benchmarks read is the first one.
+          </p>
+          <p>
+            <strong>Multi-stage processing</strong>, where each stage is a distributed job
+            reading the previous stage's table, such as detection, then tracking, then
+            lifting to 3D over driving logs.
+          </p>
+          <p class="callout__fine">
+            <a href="/s/orca/docs">Read the docs</a> ·
+            <a href={ORCA_REPO} rel="noopener">source on GitHub</a>
+          </p>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--alt">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">Why</p>
+      <h2 class="section-title">An orchestrator that knows the data lake</h2>
+      <p class="lede">
+        Dagster and Airflow are Python. A Mojo step runs behind a Python definition, and the
+        compiler checks neither against the other. They track runs of code, not which
+        Iceberg snapshot a step read or wrote. orca is built from the same tins as the rest
+        of magmalake, and keeps track of the data as well as the code.
+      </p>
+      <div class="orca-points">
+        <div class="panel">
+          <h3 class="panel__title">Edges are type checks</h3>
+          <p>
+            A step's input type must match what its upstream produces, checked with
+            <code>comptime assert</code>s when the pipeline is built. There is no YAML and no
+            templating.
+          </p>
+        </div>
+        <div class="panel">
+          <h3 class="panel__title">Reruns read the same data</h3>
+          <p>
+            A step's reads are pinned to the snapshot its first attempt saw, so a retry or a
+            resume sees the same rows whatever was committed in between.
+          </p>
+        </div>
+        <div class="panel">
+          <h3 class="panel__title">Commits are recognised</h3>
+          <p>
+            Every snapshot a step commits carries the run, step, partition and attempt in its
+            summary. A retry after a crash finds its own commit instead of loading the month
+            again.
+          </p>
+        </div>
+        <div class="panel">
+          <h3 class="panel__title">Small</h3>
+          <p>
+            One binary per pipeline, which is also its dista driver and workers, and one
+            Postgres database. The scheduler, when it arrives, is one more process.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">Status</p>
+      <h2 class="section-title">Phase 1 of {phases.length}: DAGs and runs</h2>
+      <p class="lede">
+        orca is in its first phase, DAGs and runs. Steps, pipelines, state in Postgres and
+        pinned Iceberg reads are merged; dista inside steps, logs, and fuzzing and chaos
+        testing are in review. The phase ends when the 2023–2024 NYC taxi load runs as a
+        pipeline and a run killed halfway resumes at the month that failed.
+        The <a href="/s/orca/roadmap">roadmap</a> has every phase and its gate.
+      </p>
+      <div class="status-grid">
+        <div class="status-col status-col--yes">
+          <h3 class="status-col__head">Works today</h3>
+          <ul>{worksToday.map((w) => <li>{w}</li>)}</ul>
+        </div>
+        <div class="status-col status-col--no">
+          <h3 class="status-col__head">Not yet</h3>
+          <ul>
+            {inReview.map((r) => <li>In review: {r}</li>)}
+            {notYet.map((n) => <li>{n}</li>)}
+          </ul>
+        </div>
+      </div>
+      <p class="panel__fine orca-fine">
+        No benchmark numbers yet: the first measured run is the taxi pipeline at the end of
+        phase 1.
+      </p>
+    </div>
+  </section>
+  <OrcaFooter />
+</Base>
+
+<style>
+  .orca-intro { margin-top: 2rem; }
+  .orca-intro pre { margin-bottom: 1.25rem; }
+  .orca-points {
+    margin-top: 2rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: 1rem;
+  }
+  .orca-fine { margin-top: 1rem; max-width: var(--measure); }
+</style>
