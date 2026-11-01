@@ -1,0 +1,172 @@
+---
+import Base from "../../../layouts/Base.astro";
+import DistaNav from "../../../components/DistaNav.astro";
+import { headline, setup, worksToday, notYet, DISTA_REPO } from "../../../data/dista";
+
+const description =
+  "dista runs Mojo functions across a cluster: declare a task, call it, and the work spreads over the machines, with results staying where they were computed. Early, open source, and measured against Ray and Rust.";
+---
+
+<Base title="dista: distributed tasks for Mojo" description={description}>
+  <DistaNav />
+
+  <section class="section section--flush">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">dista</p>
+      <h1 class="section-title">Mojo functions, across a cluster</h1>
+      <p class="lede">
+        dista is for developers who have written fast Mojo and now need more than one
+        machine. A task is an ordinary Mojo function. The program that calls it runs
+        unchanged on a laptop, where dista starts its own workers, and on a Kubernetes
+        cluster, where every node runs the same small image. There is no Python in the
+        path and no second language to learn.
+      </p>
+
+      <div class="two-col dista-intro">
+        <div class="prose">
+          <pre><code>{`from dista import Runtime, Task
+
+def square(x: Int) -> Int:
+    return x * x
+
+comptime Square = Task[Int, Int, square]
+
+def main() raises:
+    var rt = Runtime[Square](workers=4)
+    var r = rt.remote[Square](7)   # an ObjectRef[Int]
+    print(rt.get(r))               # 49`}</code></pre>
+          <p>
+            Results that are large stay on the worker that computed them. A task on the same
+            host maps them from shared memory, and one elsewhere fetches them from that
+            worker directly, without going through the head. A task can take other tasks'
+            results as its input, so a pipeline is a graph of calls rather than a sequence of
+            round trips to the driver.
+          </p>
+        </div>
+
+        <aside class="callout">
+          <h3 class="callout__title">Who it's for</h3>
+          <p>
+            <strong>Mojo developers</strong> whose code has outgrown one machine, and who want
+            to keep it compiled and typed rather than wrap it for a Python scheduler.
+          </p>
+          <p>
+            <strong>Data engineers</strong> scanning Parquet and Iceberg in object storage:
+            dista ships with magmalake's native Iceberg reader, and moves Arrow batches
+            between tasks.
+          </p>
+          <p>
+            <strong>Teams evaluating Ray</strong> for compiled workloads, who want a smaller
+            runtime: one binary, a 32 MB image, and a head whose state rebuilds itself after
+            a restart.
+          </p>
+          <p class="callout__fine">
+            <a href="/s/dista/docs">Read the docs</a> ·
+            <a href={DISTA_REPO} rel="noopener">source on GitHub</a>
+          </p>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--alt">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">Performance so far</p>
+      <h2 class="section-title">
+        {headline.dista} s a pass, against {headline.rust} s for Rust and {headline.ray} s for Ray
+      </h2>
+      <p class="lede">
+        The same eight queries over 1.4 billion taxi trips in an Iceberg table in S3, on
+        three worker nodes, with the answers checked against each other.
+        A day earlier dista took {headline.before} s on the same run; rewriting how it reads
+        from object storage made it the fastest of the three.
+        The <a href="/s/dista/performance">performance page</a> has every query, the
+        before-and-after timeline, the earlier runs where dista lost, and how to reproduce
+        each number.
+      </p>
+      <div class="dista-bars" role="img" aria-label={`dista ${headline.dista} s, Rust ${headline.rust} s, Ray ${headline.ray} s`}>
+        {
+          [
+            { name: "dista", s: headline.dista },
+            { name: "Rust", s: headline.rust },
+            { name: "Ray", s: headline.ray },
+          ].map((b) => (
+            <div class="dista-bar">
+              <span class="dista-bar__name">{b.name}</span>
+              <span class="dista-bar__track">
+                <span
+                  class={`dista-bar__fill${b.name === "dista" ? " dista-bar__fill--lead" : ""}`}
+                  style={`width: ${(b.s / headline.ray) * 100}%`}
+                />
+              </span>
+              <span class="dista-bar__value num">{b.s} s</span>
+            </div>
+          ))
+        }
+      </div>
+      <p class="panel__fine dista-fine">
+        Median pass of the eight queries, 3 × {setup.machine.split(",")[0]}, {setup.date}. Lower is better.
+        One run on one day: the comparison frameworks varied about 10% between runs.
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">Status</p>
+      <h2 class="section-title">Early, and measured as it goes</h2>
+      <p class="lede">
+        dista is in its third phase: tasks, results and a head that restarts are done;
+        stateful actors arrived this week and are being made to survive restarts. What it
+        doesn't do yet is listed here rather than left to be found out.
+      </p>
+      <div class="status-grid">
+        <div class="status-col status-col--yes">
+          <h3 class="status-col__head">Works today</h3>
+          <ul>{worksToday.map((w) => <li>{w}</li>)}</ul>
+        </div>
+        <div class="status-col status-col--no">
+          <h3 class="status-col__head">Not yet</h3>
+          <ul>{notYet.map((n) => <li>{n}</li>)}</ul>
+        </div>
+      </div>
+      <p class="panel__fine dista-fine">
+        A longer write-up, with the design and the measurements behind it, follows when the
+        actor work is complete.
+      </p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .dista-intro { margin-top: 2rem; }
+  .dista-intro pre { margin-bottom: 1.25rem; }
+  .dista-bars {
+    margin-top: 2rem;
+    display: grid;
+    gap: 0.7rem;
+    max-width: 44rem;
+  }
+  .dista-bar {
+    display: grid;
+    grid-template-columns: 4rem 1fr 4.5rem;
+    align-items: center;
+    gap: 0.9rem;
+  }
+  .dista-bar__name { font-family: var(--font-mono); font-size: 0.8125rem; }
+  .dista-bar__track {
+    height: 0.85rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .dista-bar__fill {
+    display: block;
+    height: 100%;
+    background: var(--text-faint);
+  }
+  .dista-bar__fill--lead { background: var(--ember); }
+  .dista-bar__value { text-align: right; }
+  .dista-fine { margin-top: 1rem; max-width: var(--measure); }
+</style>

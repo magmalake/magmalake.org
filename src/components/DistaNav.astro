@@ -1,0 +1,62 @@
+---
+// The sub-navigation of the dista pages under /s/dista.
+import { DISTA_REPO } from "../data/dista";
+
+const links = [
+  { href: "/s/dista", label: "Overview" },
+  { href: "/s/dista/docs", label: "Docs" },
+  { href: "/s/dista/performance", label: "Performance" },
+];
+const path = Astro.url.pathname.replace(/\/$/, "");
+---
+
+<nav class="dnav" aria-label="dista">
+  <div class="wrap wrap--wide dnav__inner">
+    <a class="dnav__name" href="/s/dista">dista</a>
+    {
+      links.map((l) => (
+        <a class="dnav__link" href={l.href} aria-current={path === l.href ? "page" : undefined}>
+          {l.label}
+        </a>
+      ))
+    }
+    <a class="dnav__link dnav__link--ext" href={DISTA_REPO} rel="noopener">Source ↗</a>
+  </div>
+</nav>
+
+<style>
+  .dnav {
+    border-bottom: 1px solid var(--rule);
+    background: var(--bg-alt);
+  }
+  .dnav__inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 1.25rem;
+    padding-block: 0.7rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+  .dnav__name {
+    font-weight: 600;
+    color: var(--ember);
+    margin-right: 0.5rem;
+    text-decoration: none;
+  }
+  .dnav__link {
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+  .dnav__link:hover,
+  .dnav__link[aria-current="page"] {
+    color: var(--text);
+  }
+  .dnav__link[aria-current="page"] {
+    text-decoration: underline;
+    text-underline-offset: 0.3em;
+  }
+  .dnav__link--ext {
+    margin-left: auto;
+  }
+</style>

@@ -1,0 +1,254 @@
+---
+import Base from "../../../../layouts/Base.astro";
+import DistaNav from "../../../../components/DistaNav.astro";
+import { DISTA_REPO } from "../../../../data/dista";
+
+const description =
+  "How to use dista: declaring tasks and actors, passing results between them, running locally and on Kubernetes, and reading the task timeline.";
+
+const env = [
+  ["DISTA_ROLE", "head or worker; unset, the process is a driver", "driver"],
+  ["DISTA_HEAD", "host:port of the head, for a driver or a worker in a cluster", "local mode"],
+  ["DISTA_PORT", "the port a head listens on", "6390"],
+  ["DISTA_CONNECT_TIMEOUT", "seconds a driver or worker keeps retrying the head", "60"],
+  ["DISTA_ADVERTISE", "the address a worker gives peers to fetch its results from", "its outgoing IP"],
+  ["DISTA_STORE_DIR", "where a worker writes large results for its host to map", "/dev/shm, else $TMPDIR"],
+  ["DISTA_SHM", "0 keeps large results in the worker's memory instead", "on"],
+  ["DISTA_DEBUG", "1 logs each task's inputs as a worker assembles them", "off"],
+];
+---
+
+<Base title="dista docs" description={description}>
+  <DistaNav />
+
+  <section class="section section--flush">
+    <div class="wrap wrap--wide docs">
+      <p class="eyebrow">Docs</p>
+      <h1 class="section-title">Using dista</h1>
+      <p class="lede">
+        dista turns ordinary Mojo functions into tasks that run across a cluster. This page
+        covers what a program needs: declaring tasks and actors, passing results around,
+        and running the same binary locally and on Kubernetes. The design itself is in the
+        repository's <a href={`${DISTA_REPO}/blob/main/DESIGN.md`} rel="noopener">DESIGN.md</a>.
+      </p>
+
+      <nav class="docs-toc" aria-label="On this page">
+        <a href="#install">Install</a>
+        <a href="#tasks">Tasks</a>
+        <a href="#results">Results</a>
+        <a href="#graphs">Tasks on results</a>
+        <a href="#types">What crosses the wire</a>
+        <a href="#actors">Actors</a>
+        <a href="#running">Running it</a>
+        <a href="#timeline">The timeline</a>
+        <a href="#failures">When things fail</a>
+      </nav>
+
+      <h2 id="install">Install</h2>
+      <p>
+        dista isn't published as a package yet. A pixi project depends on it from source, at
+        a pinned commit, since a git dependency without a revision never updates:
+      </p>
+      <pre><code>{`[dependencies]
+dista-mojo = { git = "${DISTA_REPO}", rev = "<commit>" }`}</code></pre>
+      <p>
+        It targets Mojo 1.2 and tracks the nightly toolchain. Reading Parquet and Iceberg
+        tables uses magmalake's <code>parquet-mojo</code> and <code>iceberg-mojo</code>
+        alongside it.
+      </p>
+
+      <h2 id="tasks">Tasks</h2>
+      <p>
+        A task is a top-level <code>def</code> taking one argument, declared once with its
+        argument and result types, and registered in the runtime's parameter list:
+      </p>
+      <pre><code>{`from dista import Runtime, Task
+
+def square(x: Int) -> Int:
+    return x * x
+
+def describe(x: Int) raises -> String:
+    if x < 0:
+        raise Error("negative")
+    return String("x = ", x)
+
+comptime Square = Task[Int, Int, square]
+comptime Describe = Task[Int, String, describe]
+
+def main() raises:
+    var rt = Runtime[Square, Describe](workers=4)
+    var r = rt.remote[Square](7)
+    print(rt.get(r))  # 49`}</code></pre>
+      <p>
+        <code>rt.remote</code> returns at once with an <code>ObjectRef</code>;
+        <code>rt.get</code> waits for the result, or raises the task's error.
+        <code>rt.ready(r)</code> asks without waiting. Every process in a cluster runs the
+        same binary, so tasks are named on the wire by a hash of the function, and a process
+        built with different tasks is refused when it connects.
+      </p>
+
+      <h2 id="results">Results</h2>
+      <p>
+        A small result (up to 64 KB) comes back to the driver through the head. A larger one
+        stays on the worker that computed it: in a shared-memory file on that host, which a
+        reader on the same host maps without copying, or in the worker's memory, which a
+        reader elsewhere fetches from that worker directly. <code>rt.location(r)</code> says
+        where a result lives.
+      </p>
+      <p>
+        The head counts references to every result: the driver's own, until
+        <code>rt.release(r)</code>, and one for every pending task that takes it as input.
+        At zero the result is deleted wherever it is. <code>rt.stats()</code> reports what
+        the head holds.
+      </p>
+
+      <h2 id="graphs">Tasks on results</h2>
+      <p>
+        A task can take another task's result instead of a value. The head runs it once the
+        input exists, and the worker running it fetches the input from wherever it lives. A
+        list of refs is gathered, in order, into a <code>Seq</code>:
+      </p>
+      <pre><code>{`from dista import Seq
+
+def total(xs: Seq[Int]) -> Int:
+    var t = 0
+    for i in range(len(xs)):
+        t += xs[i]
+    return t
+
+comptime Total = Task[Seq[Int], Int, total]
+
+var squares = List[ObjectRef[Int]]()
+for i in range(100):
+    squares.append(rt.remote[Square](i))
+var sum = rt.remote[Total](squares)   # runs once all 100 exist
+var next = rt.remote[Square](sum)     # a task on a task's result`}</code></pre>
+      <p>If an input fails, every task that depends on it fails with that error.</p>
+
+      <h2 id="types">What crosses the wire</h2>
+      <p>
+        Arguments and results are encoded by type, at compile time. Scalars,
+        <code>Bool</code> and <code>String</code> have fixed encodings. Any struct is
+        encoded field by field. Arrow <code>RecordBatch</code>es travel as Arrow IPC, so
+        columnar data keeps its format between tasks. A type that needs its own encoding
+        implements the <code>Codec</code> trait. A bare <code>List</code> doesn't encode:
+        send <code>Seq</code>, a struct, or Arrow instead.
+      </p>
+
+      <h2 id="actors">Actors</h2>
+      <p>
+        An actor is state that lives on one worker between calls: a type, the function that
+        builds it, and methods that take it <code>mut</code>. Each actor gets a worker of its
+        own, and its calls run one at a time, in the order they were made. A method's
+        result is an <code>ObjectRef</code> like a task's, so a task can take it as input.
+      </p>
+      <pre><code>{`from dista import Actor, Method
+
+@fieldwise_init
+struct Counter(Movable):
+    var total: Int
+
+def new_counter(start: Int) -> Counter:
+    return Counter(start)
+
+def add(mut c: Counter, n: Int) -> Int:
+    c.total += n
+    return c.total
+
+comptime CounterActor = Actor[Counter, Int, new_counter]
+comptime Add = Method[CounterActor, Int, Int, add]
+
+var rt = Runtime[CounterActor, Add, Square](workers=2)
+var c = rt.create[CounterActor](0)
+var n = rt.call[Add](c, 5)            # ObjectRef[Int]
+print(rt.get(rt.remote[Square](n)))   # 25
+rt.kill(c)                             # after its earlier calls; frees the worker`}</code></pre>
+      <p>
+        Calling a method on the wrong actor's handle is a compile error. Actors are new:
+        today an actor is lost if its worker or the head restarts. Restarting it from its
+        constructor, and then from checkpoints, comes next.
+      </p>
+
+      <h2 id="running">Running it</h2>
+      <p>
+        <strong>Locally,</strong> <code>Runtime(workers=n)</code> forks a head and
+        <code>n</code> workers and drives them from the same process, which is how tests
+        and laptops run. <strong>On a cluster,</strong> the same binary takes its role from
+        the environment: one head, any number of workers, and drivers that connect to the
+        head.
+      </p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Variable</th><th>What it sets</th><th>Default</th></tr></thead>
+          <tbody>
+            {env.map(([k, v, d]) => (
+              <tr><td><code>{k}</code></td><td>{v}</td><td class="ref">{d}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The repository's <code>deploy/</code> folder builds one distroless image, 32 MB
+        compressed, for every role. <code>tests/kind.sh</code> runs a cluster on kind, and
+        <code>bench/cloud/</code> runs one on EC2 with k3s. Give the workers'
+        <code>/dev/shm</code> room for the large results they keep.
+      </p>
+      <p>
+        <code>Runtime(pipeline=n)</code> sets how many tasks the head keeps in flight per
+        worker (default 2).
+      </p>
+
+      <h2 id="timeline">The timeline</h2>
+      <p>
+        The head stamps each task's submission, dispatch and completion, and the worker its
+        start and end. <code>rt.timeline(path)</code> writes every finished task, in
+        Chrome's trace format, which <a href="https://ui.perfetto.dev" rel="noopener">Perfetto</a>
+        and the browser's trace viewer open. Each worker is a track, with a second track for
+        time spent waiting for inputs. The driver can add its own work, so a gap between
+        tasks says what it was:
+      </p>
+      <pre><code>{`var t = rt.clock()
+var tasks = scan.plan_files()
+rt.span("plan", t)          # from t to now, on the driver's track
+...
+_ = rt.timeline("trace.json")`}</code></pre>
+
+      <h2 id="failures">When things fail</h2>
+      <p>
+        <strong>A task that raises</strong> fails its <code>ObjectRef</code> with the error,
+        and the tasks that depend on it. <strong>A worker that dies</strong> fails the tasks
+        it was running and loses the results it held. <strong>A head that dies</strong> is
+        rebuilt from its peers when it comes back: workers rejoin and report what they hold,
+        and drivers reconnect under their old number and resubmit what they still need. A
+        task running at that moment may run twice, so tasks should be safe to repeat, as a
+        pure function is. A chaos test kills the head at random throughout a run and checks
+        every answer.
+      </p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .docs h2 {
+    font-size: 1.35rem;
+    margin: 2.75rem 0 0.8rem;
+    scroll-margin-top: 5rem;
+  }
+  .docs p,
+  .docs pre,
+  .docs .table-scroll {
+    max-width: var(--measure);
+  }
+  .docs p + p { margin-top: 0.6rem; }
+  .docs pre { margin: 1rem 0 1.1rem; }
+  .docs .table-scroll { margin: 1rem 0 1.1rem; }
+  .docs table { min-width: 0; }
+  .docs-toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    margin-top: 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+</style>
