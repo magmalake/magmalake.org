@@ -5,7 +5,8 @@ import {
   setup,
   distributed,
   earlierMatrix,
-  singleProcess,
+  singleThreads,
+  singleThread,
   timeline,
   images,
   runtime,
@@ -22,7 +23,7 @@ const best = (t: Table, row: number[]) => {
   const vals = row.filter((v) => v !== null) as number[];
   return Math.min(...vals);
 };
-const tables = [distributed, earlierMatrix, singleProcess];
+const tables = [distributed, singleThreads, singleThread, earlierMatrix];
 ---
 
 <Base title="dista performance" description={description}>
@@ -183,10 +184,10 @@ bench/cloud/bench matrix      # 3, 6 and 12 nodes`}</code></pre>
       </aside>
 
       <p class="perf-next">
-        <strong>Next:</strong> the one-process references with all three frameworks on 16
-        threads and on one thread with the same reads in flight, the 6 and 12 node matrix on
-        the new read path, and a second benchmark that spends its time in user code and in a
-        shuffle rather than in reading Parquet.
+        <strong>Next:</strong> the 6 and 12 node matrix on the new read path; the two places
+        dista trails here (q5 on 16 threads, and a single thread's decode); and a second
+        benchmark that spends its time in user code and in a shuffle rather than in reading
+        Parquet.
       </p>
     </div>
   </section>

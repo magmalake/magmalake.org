@@ -69,21 +69,45 @@ export const earlierMatrix: Table = {
   ],
 };
 
-export const singleProcess: Table = {
-  id: "single",
-  title: "One process, one thread, reading one file at a time",
-  columns: ["Rust", "Ray (PyIceberg + pyarrow)"],
+export const singleThreads: Table = {
+  id: "single-16",
+  title: "One process, 16 threads",
+  columns: ["dista", "Rust", "Ray (PyIceberg + pyarrow)"],
   unit: "ms, the eight queries",
-  source: "local-2026-11-01-t1-unequal",
+  source: "local-2026-11-01-best-t16",
   caption:
-    "The head node alone, no workers. Rust and Ray read one file after another here, which is what their one-thread settings did until now. dista's one-thread run read eight files at once, so it isn't comparable and isn't shown; the next run gives all three one thread with eight files' reads in flight, and on 16 threads.",
+    "The head node alone, no workers, every framework on its 16 cores: dista's scan with 16 workers, Rust's multi-threaded tokio runtime, pyarrow's default thread pools. Answers identical across the three. dista's q5 is the outlier: about 2.5× its other full scans, which it isn't on one thread.",
   rows: [
-    { label: "q1_scan_count", values: [204843, 159595] },
-    { label: "q3_payment_sum", values: [279566, 233990] },
-    { label: "q4_tip_ratio", values: [278104, 312178] },
-    { label: "q5_top_zones", values: [296348, 235335] },
-    { label: "q8_selective", values: [311926, 350230] },
-    { label: "total (all eight)", values: [1384366, 1305694] },
+    { label: "q1_scan_count", values: [9095, 34582, 9125] },
+    { label: "q2_month_range", values: [331, 785, 459] },
+    { label: "q3_payment_sum", values: [10309, 38275, 14959] },
+    { label: "q4_tip_ratio", values: [11138, 39172, 22783] },
+    { label: "q5_top_zones", values: [26788, 44131, 16699] },
+    { label: "q6_zone_revenue", values: [1067, 1324, 1236] },
+    { label: "q7_wide", values: [880, 1114, 649] },
+    { label: "q8_selective", values: [12048, 35681, 29609] },
+    { label: "total", values: [71656, 195064, 95519] },
+  ],
+};
+
+export const singleThread: Table = {
+  id: "single-1",
+  title: "One process, one thread, 8 files' reads in flight",
+  columns: ["dista", "Rust", "Ray (PyIceberg + pyarrow)"],
+  unit: "ms, the eight queries",
+  source: "local-2026-11-01-best-t1",
+  caption:
+    "One decoding thread each, with the best settings that allows: up to 8 files' reads in flight (dista's files_at_once, iceberg-rust's concurrency limits on a current-thread runtime, pyarrow's I/O pool next to one CPU thread). Here dista is the slowest of the three; its single-threaded decode is the next thing being profiled. Reading one file at a time instead, Rust took 1,384 s and Ray 1,306 s.",
+  rows: [
+    { label: "q1_scan_count", values: [29197, 34419, 17651] },
+    { label: "q2_month_range", values: [424, 880, 543] },
+    { label: "q3_payment_sum", values: [40182, 40171, 30402] },
+    { label: "q4_tip_ratio", values: [50980, 42438, 44675] },
+    { label: "q5_top_zones", values: [53475, 45878, 32555] },
+    { label: "q6_zone_revenue", values: [2118, 1646, 1959] },
+    { label: "q7_wide", values: [1148, 1119, 1191] },
+    { label: "q8_selective", values: [52705, 43286, 59019] },
+    { label: "total", values: [230229, 209837, 187995] },
   ],
 };
 
