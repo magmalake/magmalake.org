@@ -1,0 +1,183 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const description =
+  "maws: what is running in an AWS account, what it costs per hour, and the month-to-date bill, in one terminal screen. Written in Mojo.";
+
+const repo = "https://github.com/magmalake/maws";
+const releases = `${repo}/releases`;
+---
+
+<Base title="maws" description={description}>
+  <section class="section">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">Software</p>
+      <h1 class="section-title">maws</h1>
+      <p class="lede">
+        What is running in my AWS account, what is it costing me per hour, and what have I
+        been billed so far this month? One terminal screen, refreshed every minute, written
+        in Mojo.
+      </p>
+
+      <div class="actions">
+        <a class="btn btn--primary" href={repo} rel="noopener">GitHub</a>
+        <a class="btn" href={releases} rel="noopener">Releases</a>
+      </div>
+
+      <figure class="shot">
+        <a href="/s/maws/maws-tui.svg" aria-label="Open the screenshot full size">
+        <img
+          src="/s/maws/maws-tui.svg"
+          width="1143"
+          height="400"
+          alt="The maws terminal UI: an account header, the burn rate per hour and per day, month-to-date and projected spend, a table of EC2 instances, NAT gateways, EBS volumes and Elastic IPs with their hourly cost, and the month-to-date bill by service."
+          loading="lazy"
+        />
+        </a>
+        <figcaption>Sample data, rendered by maws's own formatting code.</figcaption>
+      </figure>
+
+      <div class="cols">
+        <div class="col">
+          <h3>What it shows</h3>
+          <ul>
+            <li>
+              <strong>$/hr</strong> for every running EC2 instance, EBS volume, NAT gateway and
+              public IPv4 address, at the on-demand list price from the AWS Pricing API.
+            </li>
+            <li>
+              <strong>Month-to-date</strong> from Cost Explorer, by service, cached for an
+              hour, since every call is billed at $0.01.
+            </li>
+            <li>
+              <strong>Projected</strong>: month-to-date plus the current burn for the rest of
+              the month.
+            </li>
+            <li>The account name and ID, so a $0 for the wrong account is obvious.</li>
+          </ul>
+        </div>
+        <div class="col">
+          <h3>How it is built</h3>
+          <ul>
+            <li>
+              No AWS SDK and no C shim: requests are signed with
+              <a href="https://github.com/magmalake/sigv4.mojo" rel="noopener">sigv4.mojo</a>,
+              EC2's XML is read with
+              <a href="https://github.com/magmalake/xml.mojo" rel="noopener">xml.mojo</a>, and
+              libcurl is called directly from Mojo.
+            </li>
+            <li>
+              Credentials from the environment, <code>~/.aws/credentials</code>, or the AWS
+              CLI for <code>aws login</code>, SSO and role profiles.
+            </li>
+            <li>
+              A Python reference (boto3 + Textual) in the same repository, held to the same
+              numbers.
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <h3 class="install__head">Install</h3>
+      <p class="install__text">
+        Download the tarball for your platform (<code>macos-arm64</code> or
+        <code>linux-x64</code>) from the <a href={releases} rel="noopener">releases page</a>,
+        unpack it, and link <code>bin/maws</code> onto your <code>PATH</code>:
+      </p>
+      <pre class="install__code"><code>v=0.1.0; p=macos-arm64
+curl -fsSL "https://github.com/magmalake/maws/releases/download/v$v/maws-$v-$p.tar.gz" \
+  | tar -C ~/.local/share -xz
+ln -sf ~/.local/share/maws-$v-$p/bin/maws ~/.local/bin/maws
+maws --profile my-profile</code></pre>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 1.75rem;
+  }
+
+  .shot {
+    margin: 2.5rem 0 0;
+  }
+  .shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+  .shot figcaption {
+    margin-top: 0.6rem;
+    font-size: 0.8125rem;
+    color: var(--text-faint);
+  }
+
+  .cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+    margin-top: 2.5rem;
+  }
+  @media (max-width: 820px) {
+    .cols { grid-template-columns: 1fr; }
+  }
+  .col {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem 1.6rem;
+  }
+  .col h3 {
+    font-size: 0.9375rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.7rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .col ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .col li {
+    position: relative;
+    padding-left: 1.4rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+  }
+  .col li::before {
+    content: "+";
+    position: absolute;
+    left: 0;
+    color: var(--lake);
+    font-family: var(--font-mono);
+  }
+
+  .install__head {
+    margin-top: 2.5rem;
+    font-size: 1.0625rem;
+  }
+  .install__text {
+    color: var(--text-muted);
+    font-size: 0.9375rem;
+  }
+  .install__code {
+    margin-top: 0.75rem;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+  }
+</style>
