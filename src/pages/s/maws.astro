@@ -84,10 +84,19 @@ const script = "https://raw.githubusercontent.com/magmalake/maws/main/install.sh
         the latest release, checks its SHA-256 against the published checksum, unpacks it to
         <code>~/.local/share/maws</code> and links <code>~/.local/bin/maws</code>. No sudo.
       </p>
-      <pre class="install__code"><code>curl -fsSL {script} | less</code></pre>
+      <div class="install__code">
+        <pre><code>curl -fsSL {script} | less</code></pre>
+        <button type="button" class="copy" aria-label="Copy command">Copy</button>
+      </div>
       <p class="install__text">Once you have read it:</p>
-      <pre class="install__code"><code>curl -fsSL {script} | bash
-maws --profile my-profile</code></pre>
+      <div class="install__code">
+        <pre><code>curl -fsSL {script} | bash</code></pre>
+        <button type="button" class="copy" aria-label="Copy command">Copy</button>
+      </div>
+      <p class="install__text">
+        Then run <code>maws</code>, or <code>maws --profile &lt;name&gt;</code> for another
+        AWS profile.
+      </p>
       <p class="install__text install__text--fine">
         Or download a tarball and its <code>.sha256</code> from the
         <a href={releases} rel="noopener">releases page</a> yourself.
@@ -178,14 +187,70 @@ maws --profile my-profile</code></pre>
     color: var(--text-faint);
   }
   .install__code {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
     margin-top: 0.75rem;
-    padding: 1rem 1.2rem;
-    overflow-x: auto;
+    padding: 0.55rem 0.6rem 0.55rem 1.2rem;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
+  }
+  .install__code pre {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    padding: 0.45rem 0;
+    overflow-x: auto;
     font-family: var(--font-mono);
     font-size: 0.8125rem;
     line-height: 1.6;
   }
+  .copy {
+    flex: none;
+    padding: 0.35rem 0.8rem;
+    font: inherit;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 4px);
+    cursor: pointer;
+  }
+  .copy:hover,
+  .copy:focus-visible {
+    color: var(--text);
+    border-color: var(--text-muted);
+  }
+  .copy[data-copied] {
+    color: var(--lake);
+    border-color: var(--lake);
+  }
 </style>
+
+<script>
+  // Copy buttons for the install commands. The command is read from the
+  // box's own <code>, so what is copied is exactly what is shown.
+  for (const button of document.querySelectorAll<HTMLButtonElement>(".copy")) {
+    button.addEventListener("click", async () => {
+      const code = button.parentElement?.querySelector("code")?.textContent ?? "";
+      try {
+        await navigator.clipboard.writeText(code);
+      } catch {
+        // Clipboard API unavailable (insecure context, old browser):
+        // select the text so the reader can copy it by hand.
+        const range = document.createRange();
+        range.selectNodeContents(button.parentElement!.querySelector("code")!);
+        getSelection()?.removeAllRanges();
+        getSelection()?.addRange(range);
+        return;
+      }
+      button.textContent = "Copied";
+      button.dataset.copied = "";
+      setTimeout(() => {
+        button.textContent = "Copy";
+        delete button.dataset.copied;
+      }, 1500);
+    });
+  }
+</script>
