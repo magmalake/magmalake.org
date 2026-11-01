@@ -1,0 +1,235 @@
+---
+import Base from "../../../../layouts/Base.astro";
+import DistaNav from "../../../../components/DistaNav.astro";
+import {
+  setup,
+  distributed,
+  earlierMatrix,
+  singleThreads,
+  singleThread,
+  timeline,
+  images,
+  runtime,
+  RESULTS,
+  DISTA_REPO,
+  type Table,
+} from "../../../../data/dista";
+
+const description =
+  "dista measured against Ray and Rust on 1.4 billion taxi trips in S3: distributed runs before and after the read path, a task timeline, single-process references, image sizes, and how to reproduce every number.";
+
+const fmt = (v: number | null) => (v === null ? "–" : v.toLocaleString("en-US"));
+const best = (t: Table, row: number[]) => {
+  const vals = row.filter((v) => v !== null) as number[];
+  return Math.min(...vals);
+};
+const tables = [distributed, singleThreads, singleThread, earlierMatrix];
+---
+
+<Base title="dista performance" description={description}>
+  <DistaNav />
+
+  <section class="section section--flush">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">Performance</p>
+      <h1 class="section-title">Measured against Ray and Rust, including the runs it lost</h1>
+      <p class="lede">
+        Every number here comes from runs on AWS, never a laptop, with the answers of all
+        three frameworks checked against each other. The workload is {setup.queries}, over
+        {" "}{setup.table}. Machines: {setup.machine}, {setup.slots} task slots per node.
+        Runs from {setup.date}.
+      </p>
+      <p class="lede">
+        <strong>Rust</strong> is iceberg-rust 0.10 with parquet and tokio, distributed by a
+        small driver that hands each worker one file at a time. <strong>Ray</strong> is Ray
+        with PyIceberg and pyarrow, one Ray task per file. Each is written the way its users
+        would write it, and each gets the same nodes. The numbers are early: one run per
+        configuration, on one day, and the comparison frameworks moved by about 10% between
+        two runs of the same thing.
+      </p>
+
+      {
+        tables.map((t) => (
+          <div class="perf-block" id={t.id}>
+            <h2 class="perf-block__title">
+              <a href={`#${t.id}`}>{t.title}</a>
+              <span class="perf-block__unit">{t.unit}</span>
+            </h2>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Query</th>
+                    {t.columns.map((c) => <th class="num">{c}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {t.rows.map((r) => {
+                    const low = best(t, r.values as number[]);
+                    return (
+                      <tr class={r.label.startsWith("total") ? "perf-total" : undefined}>
+                        <td><code>{r.label}</code></td>
+                        {r.values.map((v, i) => (
+                          <td class="num">
+                            {v === low && t.columns[i] !== "dista, before" ? <strong>{fmt(v)}</strong> : fmt(v)}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p class="perf-block__caption">
+              {t.caption}{" "}
+              <a href={`${RESULTS}/${t.source}`} rel="noopener">Results: <code>{t.source}</code></a>
+            </p>
+          </div>
+        ))
+      }
+
+      <div class="perf-block" id="timeline">
+        <h2 class="perf-block__title"><a href="#timeline">Where the time went</a></h2>
+        <p class="perf-block__caption perf-block__caption--lead">
+          dista records a timeline of every task, which opens in Perfetto. Before the read
+          path, a file task waited on S3 for about 95% of its time: decoding the same file
+          from local disk takes 12 to 40 ms. Planning each query read the table's 168
+          manifests one after another, and every task re-read the table's metadata. Now the
+          footer comes in one read, a file's column chunks and a plan's manifests are fetched
+          at once, and the metadata goes out with the task. Rust's iceberg-rust reader
+          already did the first two.
+        </p>
+        <div class="two-col two-col--wide perf-pair">
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>From the timeline</th><th class="num">before</th><th class="num">after</th></tr></thead>
+              <tbody>
+                {timeline.rows.map((r) => (
+                  <tr><td>{r.label}</td><td class="num">{r.before}</td><td class="num"><strong>{r.after}</strong></td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>S3 requests, one-column read</th><th>before</th><th>after</th></tr></thead>
+              <tbody>
+                {timeline.requests.map((r) => (
+                  <tr><td>{r.label}</td><td class="ref">{r.before}</td><td>{r.after}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <p class="perf-block__caption">
+          <a href={`${RESULTS}/${timeline.source}`} rel="noopener">Results and the trace: <code>{timeline.source}</code></a>
+        </p>
+      </div>
+
+      <div class="perf-block" id="images">
+        <h2 class="perf-block__title"><a href="#images">Building and shipping</a><span class="perf-block__unit">cold build on the head node</span></h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Image</th><th class="num">whole build (s)</th><th class="num">dependencies (s)</th><th class="num">compile (s)</th><th class="num">unpacked (MB)</th><th class="num">gzip (MB)</th></tr>
+            </thead>
+            <tbody>
+              {images.rows.map((r) => (
+                <tr>
+                  <td>{r.label}</td>
+                  <td class="num">{fmt(r.build)}</td>
+                  <td class="num">{fmt(r.deps)}</td>
+                  <td class="num">{fmt(r.compile)}</td>
+                  <td class="num">{fmt(r.unpacked)}</td>
+                  <td class="num">{r.label === "dista" ? <strong>{r.gzip}</strong> : r.gzip}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="perf-block__caption">
+          dista's image is distroless: the binary and the libraries it links, one image for
+          head, workers and driver. Ray's needs no compile and is the largest.
+        </p>
+      </div>
+
+      <div class="perf-block" id="runtime">
+        <h2 class="perf-block__title"><a href="#runtime">The runtime itself</a></h2>
+        <div class="runtime-grid">
+          {runtime.map((r) => (
+            <div class="panel">
+              <h3 class="panel__title">{r.label}</h3>
+              <p><strong>{r.value}</strong></p>
+              <p class="panel__fine">{r.note}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <aside class="callout perf-repro" id="reproduce">
+        <h3 class="callout__title">Reproducing these</h3>
+        <p>
+          Everything runs from one command in the repository, against an AWS account with the
+          vCPU quota for the nodes. Each run brings its cluster up, runs, and tears it down,
+          and writes a results folder with every log, the answers and the timeline.
+        </p>
+        <pre class="callout__code"><code>{`bench/cloud/bench data load   # the table, once
+bench/cloud/bench gate        # 3 nodes, ~15 minutes
+bench/cloud/bench local       # one process, 16 and 1 threads
+bench/cloud/bench matrix      # 3, 6 and 12 nodes`}</code></pre>
+        <p class="callout__fine">
+          The benchmark's code, the Rust and Ray versions included, is in
+          <a href={`${DISTA_REPO}/tree/main/bench`} rel="noopener"><code>bench/</code></a>.
+        </p>
+      </aside>
+
+      <p class="perf-next">
+        <strong>Next:</strong> the 6 and 12 node matrix on the new read path; the two places
+        dista trails here (q5 on 16 threads, and a single thread's decode); and a second
+        benchmark that spends its time in user code and in a shuffle rather than in reading
+        Parquet.
+      </p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .perf-block { margin-top: 3rem; scroll-margin-top: 5rem; }
+  .perf-block__title {
+    font-size: 1.2rem;
+    margin-bottom: 0.9rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem 0.9rem;
+  }
+  .perf-block__title a { color: inherit; text-decoration: none; }
+  .perf-block__unit {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    font-weight: 400;
+  }
+  .perf-block__caption {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin-top: 0.8rem;
+    max-width: var(--measure);
+  }
+  .perf-block__caption--lead { margin: 0 0 1rem; }
+  .perf-total td { font-weight: 600; }
+  .perf-pair { margin-top: 0; gap: 1rem; }
+  .perf-pair table { min-width: 0; }
+  .runtime-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: 1rem;
+  }
+  .perf-repro { margin-top: 3rem; max-width: 44rem; }
+  .perf-next {
+    margin-top: 2rem;
+    max-width: var(--measure);
+    color: var(--text-muted);
+    font-size: 0.9375rem;
+  }
+</style>
