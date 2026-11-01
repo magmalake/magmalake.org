@@ -186,9 +186,8 @@ bench/cloud/bench matrix      # 3, 6 and 12 nodes`}</code></pre>
       </aside>
 
       <p class="perf-next">
-        <strong>Next:</strong> caching manifests between plans, which limits dista at 12
-        nodes; the two places it trails on one machine (q5 on 16 threads, and a single
-        thread's decode); and a second
+        <strong>Next:</strong> dista's decode speed on a single core, where it trails Ray;
+        and a second
         benchmark that spends its time in user code and in a shuffle rather than in reading
         Parquet.
       </p>

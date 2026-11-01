@@ -62,11 +62,13 @@ export const matrix: Table = {
   unit: "ms, median of 5 passes",
   source: "matrix-2026-11-01",
   caption:
-    "The same queries on 3, 6 and 12 worker nodes, after the read path. Every answer identical across the nine runs. At 12 nodes, dista's planning of each query on the driver (0.31 s, reading the table's manifests again every time) is about 40% of a pass; iceberg-rust caches manifests between plans. Ray is slower on 12 nodes than on 6.",
+    "The same queries on 3, 6 and 12 worker nodes, after the read path; answers identical across every run. Two changes since, measured on 12 nodes: dista's driver keeps one manifest cache across queries (iceberg-rust's object cache does the same), and a query planning fewer than 64 files has its files split at row-group boundaries, so the wide query's one file runs as four tasks. The Rust and Ray benchmarks don't split files. Ray's 12-node result moves by up to 50% between runs.",
   rows: [
     { label: "3 nodes", values: [11040, 18377, 21275] },
     { label: "6 nodes", values: [7184, 10267, 12737] },
     { label: "12 nodes", values: [5941, 6682, 15703] },
+    { label: "12 nodes, manifest cache", values: [4446, 6745, 9955] },
+    { label: "12 nodes, + row-group splitting", values: [3751, 6691, 15395] },
   ],
 };
 
@@ -89,19 +91,19 @@ export const singleThreads: Table = {
   title: "One process, 16 threads",
   columns: ["dista", "Rust", "Ray (PyIceberg + pyarrow)"],
   unit: "ms, the eight queries",
-  source: "local-2026-11-01-best-t16",
+  source: "local-2026-11-01",
   caption:
-    "The head node alone, no workers, every framework on its 16 cores: dista's scan with 16 workers, Rust's multi-threaded tokio runtime, pyarrow's default thread pools. Answers identical across the three. dista's q5 is the outlier: about 2.5× its other full scans, which it isn't on one thread.",
+    "The head node alone, no workers, every framework on its 16 cores: dista's scan with 16 workers, Rust's multi-threaded tokio runtime with one task per core, pyarrow's default thread pools. Answers identical across the three. Before this run, dista's integer column copies got about 4× faster (q5 26.8 → 15.3 s), and the Rust benchmark was fixed to decode on every core rather than on the one task polling iceberg-rust's stream (195 → 96 s). Rust's row is from local-2026-11-01-2, a re-run.",
   rows: [
-    { label: "q1_scan_count", values: [9095, 34582, 9125] },
-    { label: "q2_month_range", values: [331, 785, 459] },
-    { label: "q3_payment_sum", values: [10309, 38275, 14959] },
-    { label: "q4_tip_ratio", values: [11138, 39172, 22783] },
-    { label: "q5_top_zones", values: [26788, 44131, 16699] },
-    { label: "q6_zone_revenue", values: [1067, 1324, 1236] },
-    { label: "q7_wide", values: [880, 1114, 649] },
-    { label: "q8_selective", values: [12048, 35681, 29609] },
-    { label: "total", values: [71656, 195064, 95519] },
+    { label: "q1_scan_count", values: [7828, 15597, 9192] },
+    { label: "q2_month_range", values: [315, 830, 446] },
+    { label: "q3_payment_sum", values: [9229, 18365, 14937] },
+    { label: "q4_tip_ratio", values: [10663, 18360, 22689] },
+    { label: "q5_top_zones", values: [15309, 19907, 16625] },
+    { label: "q6_zone_revenue", values: [747, 919, 1233] },
+    { label: "q7_wide", values: [888, 1026, 706] },
+    { label: "q8_selective", values: [11401, 21229, 28676] },
+    { label: "total", values: [56380, 96233, 94504] },
   ],
 };
 
@@ -110,19 +112,19 @@ export const singleThread: Table = {
   title: "One process, one thread, 8 files' reads in flight",
   columns: ["dista", "Rust", "Ray (PyIceberg + pyarrow)"],
   unit: "ms, the eight queries",
-  source: "local-2026-11-01-best-t1",
+  source: "local-2026-11-01",
   caption:
-    "One decoding thread each, with the best settings that allows: up to 8 files' reads in flight (dista's files_at_once, iceberg-rust's concurrency limits on a current-thread runtime, pyarrow's I/O pool next to one CPU thread). Here dista is the slowest of the three; its single-threaded decode is the next thing being profiled. Reading one file at a time instead, Rust took 1,384 s and Ray 1,306 s.",
+    "One decoding thread each, with the best settings that allows: up to 8 files' reads in flight (dista's files_at_once, with the next files fetched on a second thread while one decodes; iceberg-rust's concurrency limits on a current-thread runtime; pyarrow's I/O pool next to one CPU thread). dista is level with Rust and 15% behind Ray; overlapping the fetch helped only 8%, so what's left is decode speed on one core. Reading one file at a time instead, Rust took 1,384 s and Ray 1,306 s.",
   rows: [
-    { label: "q1_scan_count", values: [29197, 34419, 17651] },
-    { label: "q2_month_range", values: [424, 880, 543] },
-    { label: "q3_payment_sum", values: [40182, 40171, 30402] },
-    { label: "q4_tip_ratio", values: [50980, 42438, 44675] },
-    { label: "q5_top_zones", values: [53475, 45878, 32555] },
-    { label: "q6_zone_revenue", values: [2118, 1646, 1959] },
-    { label: "q7_wide", values: [1148, 1119, 1191] },
-    { label: "q8_selective", values: [52705, 43286, 59019] },
-    { label: "total", values: [230229, 209837, 187995] },
+    { label: "q1_scan_count", values: [28022, 34318, 17537] },
+    { label: "q2_month_range", values: [391, 834, 533] },
+    { label: "q3_payment_sum", values: [38329, 39690, 29969] },
+    { label: "q4_tip_ratio", values: [50365, 42206, 44095] },
+    { label: "q5_top_zones", values: [41525, 46057, 31709] },
+    { label: "q6_zone_revenue", values: [1718, 1696, 1945] },
+    { label: "q7_wide", values: [1132, 1097, 1211] },
+    { label: "q8_selective", values: [50405, 42443, 57328] },
+    { label: "total", values: [211887, 208341, 184327] },
   ],
 };
 
