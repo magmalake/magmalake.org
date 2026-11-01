@@ -1,5 +1,5 @@
 ---
-import type { Tin } from "../data/tins";
+import { statusOf, STATUS_LABEL, type Tin } from "../data/tins";
 
 interface Props {
   tin: Tin;
@@ -7,6 +7,7 @@ interface Props {
 }
 
 const { tin, featured = false } = Astro.props;
+const status = statusOf(tin);
 ---
 
 <article class:list={["tin", featured && "tin--featured"]}>
@@ -14,7 +15,9 @@ const { tin, featured = false } = Astro.props;
     <h3 class="tin__name">
       <a href={tin.repo} rel="noopener">{tin.name}</a>
     </h3>
-    <span class="tin__version">{tin.version}</span>
+    <span class="tin__version">
+      {status === "planned" ? STATUS_LABEL.planned : tin.version}
+    </span>
   </header>
 
   <p class="tin__what">{tin.what}</p>
@@ -29,7 +32,11 @@ const { tin, featured = false } = Astro.props;
   </div>
 
   <footer class="tin__foot">
-    <code class="tin__install">shelf add {tin.pkg}</code>
+    {status === "shelf" ? (
+      <code class="tin__install">shelf add {tin.pkg}</code>
+    ) : (
+      <span class="tin__status">{STATUS_LABEL[status]}</span>
+    )}
     <span class="tin__links">
       {tin.benchmarks && (
         <a class="tin__repo" href={tin.benchmarks} rel="noopener">
@@ -52,6 +59,11 @@ const { tin, featured = false } = Astro.props;
 </article>
 
 <style>
+  .tin__status {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-faint);
+  }
   .tin {
     display: flex;
     flex-direction: column;

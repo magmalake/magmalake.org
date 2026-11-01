@@ -1,11 +1,11 @@
 ---
-import { tins } from "../data/tins";
+import { tins, statusOf } from "../data/tins";
 
-const tinCount = tins.filter((t) => t.tier !== "oracle").length;
+const tinCount = tins.filter((t) => t.tier !== "oracle" && statusOf(t) === "shelf").length;
 
 const highlights = [
   { value: String(tinCount), label: "tins on mojoshelf" },
-  { value: "v1–v3", label: "Iceberg formats read" },
+  { value: "3.8 s", label: "1.4B rows in S3, 12 nodes, dista" },
   { value: "211M", label: "Parquet rows/s, one core" },
   { value: "0", label: "JVM or Python in the path" },
 ];
@@ -14,19 +14,19 @@ const highlights = [
 <section class="hero">
   <div class="hero__glow" aria-hidden="true"></div>
   <div class="wrap wrap--wide hero__inner">
-    <p class="hero__kicker">Data infrastructure for Mojo, version 0.x</p>
+    <p class="hero__kicker">magmalake · version 0.x · built in the open</p>
 
     <h1 class="hero__title">
-      A data lake that lives<br />
-      <span class="hero__accent">natively in Mojo</span>
+      The data ecosystem<br />
+      <span class="hero__accent">for Mojo</span>
     </h1>
 
     <p class="hero__lede">
-      Mojo can open an Apache Iceberg table today without reaching back through Python
-      or the JVM. magmalake is the set of tins that makes that true — Iceberg and
-      everything underneath it, each independently usable and each checked against the
-      reference implementation of the format it speaks. It is early, and it is meant to
-      grow into the data layer the language does not have yet.
+      Everything a data platform needs, written in Mojo, layer by layer: distributed
+      execution and orchestration at the top, Iceberg tables and their catalogs, the file
+      formats beneath them, object storage and databases, and the primitives and utilities
+      everything shares. No Python or JVM in the path. Each tin is independently usable,
+      and each is checked against the reference implementation of what it speaks.
     </p>
 
     <div class="hero__code">

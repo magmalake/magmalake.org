@@ -1,4 +1,15 @@
-export type Tier = "table" | "format" | "primitive" | "oracle";
+export type Tier =
+  | "execution"
+  | "table"
+  | "format"
+  | "storage"
+  | "primitive"
+  | "utility"
+  | "oracle";
+
+/** shelf: published on mojoshelf. source: built from its repository. planned:
+ * designed, not built yet. */
+export type Status = "shelf" | "source" | "planned";
 
 export interface Tin {
   /** Short display name, as it appears in the stack diagram. */
@@ -8,6 +19,10 @@ export interface Tin {
   repo: string;
   version: string;
   tier: Tier;
+  /** Unset means "shelf". */
+  status?: Status;
+  /** A few words for its box in the stack diagram. */
+  short: string;
   /** One sentence: what it is. */
   what: string;
   /** The correctness oracle — what gates it in CI. */
@@ -19,15 +34,72 @@ export interface Tin {
 }
 
 export const TIER_LABEL: Record<Tier, string> = {
-  table: "Table format",
-  format: "File formats & storage",
+  execution: "Execution",
+  table: "Tables & catalogs",
+  format: "File formats",
+  storage: "Storage & databases",
   primitive: "Primitives",
+  utility: "Utilities",
   oracle: "Cross-implementation oracle",
 };
 
+/** Top to bottom, as the stack is drawn. */
+export const TIERS: Tier[] = [
+  "execution",
+  "table",
+  "format",
+  "storage",
+  "primitive",
+  "utility",
+];
+
+export const STATUS_LABEL: Record<Status, string> = {
+  shelf: "on mojoshelf",
+  source: "from source",
+  planned: "planned",
+};
+
+export const statusOf = (t: Tin): Status => t.status ?? "shelf";
+
 export const tins: Tin[] = [
   {
+    name: "dista",
+    pkg: "dista-mojo",
+    repo: "https://github.com/magmalake/dista.mojo",
+    version: "0.0.1",
+    tier: "execution",
+    status: "source",
+    short: "distributed tasks · actors · results that stay on workers",
+    what:
+      "Distributed tasks for Mojo: declare a function as a task, call it, and the work runs across a cluster, with large results staying on the worker that computed them. One binary for every role, on a laptop or on Kubernetes.",
+    oracle: "Ray and Rust on the same queries: answers identical on 3, 6 and 12 nodes",
+    bullets: [
+      "Tasks on other tasks' results, gathers, Arrow batches between tasks",
+      "A head that restarts: workers rejoin, drivers resume",
+      "Actors: state on a worker of its own, calls in order",
+      "1.4 billion taxi rows in S3: 3.8 s a pass on 12 nodes, against 6.7 s for Rust and 15.4 s for Ray",
+    ],
+  },
+  {
+    name: "orca",
+    pkg: "orca-mojo",
+    repo: "https://github.com/magmalake/orca.mojo",
+    version: "vision",
+    tier: "execution",
+    status: "planned",
+    short: "pipelines as DAGs · cron schedules · a web UI",
+    what:
+      "Orchestration for data pipelines written in Mojo: DAGs declared in Mojo and checked by the compiler, schedules in cron syntax, and a web UI for runs, reruns and backfills. Steps run on dista over Iceberg tables.",
+    oracle: "Not built yet: its vision is in the repository",
+    bullets: [
+      "Assets and partitions, not just tasks",
+      "One dista cluster per run",
+      "Lineage in each Iceberg snapshot it commits",
+    ],
+  },
+  {
     name: "iceberg",
+    short: "metadata · scan planning · read · write · REST, SQL and filesystem catalogs",
     pkg: "iceberg-mojo",
     repo: "https://github.com/magmalake/iceberg.mojo",
     version: "0.8.2",
@@ -44,6 +116,7 @@ export const tins: Tin[] = [
   },
   {
     name: "parquet",
+    short: "read · write · every encoding · Arrow out",
     pkg: "parquet-mojo",
     repo: "https://github.com/magmalake/parquet.mojo",
     benchmarks: "https://magmalake.github.io/parquet.mojo/benchmarks/",
@@ -62,6 +135,7 @@ export const tins: Tin[] = [
   },
   {
     name: "avro",
+    short: "object container files, both ways",
     pkg: "avro-mojo",
     repo: "https://github.com/magmalake/avro.mojo",
     benchmarks: "https://magmalake.github.io/avro.mojo/benchmarks/",
@@ -79,10 +153,11 @@ export const tins: Tin[] = [
   },
   {
     name: "objectstore",
+    short: "local · HTTP · S3 · GCS · Azure · concurrent reads",
     pkg: "objectstore-mojo",
     repo: "https://github.com/magmalake/objectstore.mojo",
     version: "0.3.3",
-    tier: "format",
+    tier: "storage",
     what:
       "Storage and HTTP for Iceberg tables: a FileIO abstraction over local files, HTTP(S) range reads and S3, with the pooled HTTP transport the rest of the stack was missing.",
     oracle: "AWS SigV4 suite 37/37, and S3 verified end-to-end against MinIO in CI",
@@ -95,10 +170,11 @@ export const tins: Tin[] = [
   },
   {
     name: "sqlite",
+    short: "embedded SQL · the catalog store",
     pkg: "sqlite-mojo",
     repo: "https://github.com/magmalake/sqlite.mojo",
     version: "0.3.4",
-    tier: "format",
+    tier: "storage",
     what:
       "An embedded SQL database: connections, prepared statements, typed columns and RAII transactions over libsqlite3. A fork of ehsanmok/sqlite, made dependency-free so it installs from the registry with no external git repos.",
     oracle: "round-tripped against the sqlite3 shell in both directions",
@@ -111,10 +187,11 @@ export const tins: Tin[] = [
   },
   {
     name: "postgres",
+    short: "libpq · params · COPY",
     pkg: "postgres-mojo",
     repo: "https://github.com/magmalake/postgres.mojo",
     version: "0.3.2",
-    tier: "format",
+    tier: "storage",
     what:
       "A PostgreSQL client over libpq: parameterized statements, typed text-format results, transactions with savepoints and COPY, every error carrying its SQLSTATE — and, in a module of its own, a connection pool for a threaded service. A fork of dvirarad/mojo-postgres, rewritten for the 1.x toolchain.",
     oracle: "psycopg 3 and psql — cell-exact, both directions",
@@ -129,6 +206,7 @@ export const tins: Tin[] = [
   },
   {
     name: "roaring",
+    short: "32/64-bit · deletion vectors",
     pkg: "roaring-mojo",
     repo: "https://github.com/magmalake/roaring.mojo",
     benchmarks: "https://magmalake.github.io/roaring.mojo/benchmarks/",
@@ -146,6 +224,7 @@ export const tins: Tin[] = [
   },
   {
     name: "thrift",
+    short: "compact + binary protocol",
     pkg: "thrift-mojo",
     repo: "https://github.com/magmalake/thrift.mojo",
     benchmarks: "https://magmalake.github.io/thrift.mojo/benchmarks/",
@@ -163,6 +242,7 @@ export const tins: Tin[] = [
   },
   {
     name: "zstd",
+    short: "libzstd",
     pkg: "zstd-mojo",
     repo: "https://github.com/magmalake/zstd.mojo",
     benchmarks: "https://magmalake.github.io/zstd.mojo/benchmarks/",
@@ -180,6 +260,7 @@ export const tins: Tin[] = [
   },
   {
     name: "lz4",
+    short: "liblz4",
     pkg: "lz4-mojo",
     repo: "https://github.com/magmalake/lz4.mojo",
     benchmarks: "https://magmalake.github.io/lz4.mojo/benchmarks/",
@@ -197,6 +278,7 @@ export const tins: Tin[] = [
   },
   {
     name: "brotli",
+    short: "libbrotli",
     pkg: "brotli-mojo",
     repo: "https://github.com/magmalake/brotli.mojo",
     benchmarks: "https://magmalake.github.io/brotli.mojo/benchmarks/",
@@ -214,6 +296,7 @@ export const tins: Tin[] = [
   },
   {
     name: "snappy",
+    short: "pure Mojo",
     pkg: "snappy-mojo",
     repo: "https://github.com/magmalake/snappy.mojo",
     benchmarks: "https://magmalake.github.io/snappy.mojo/benchmarks/",
@@ -231,6 +314,7 @@ export const tins: Tin[] = [
   },
   {
     name: "hashes",
+    short: "CRC-32 · murmur3 · XXH64",
     pkg: "hashes-mojo",
     repo: "https://github.com/magmalake/hashes.mojo",
     benchmarks: "https://magmalake.github.io/hashes.mojo/benchmarks/",
@@ -248,10 +332,11 @@ export const tins: Tin[] = [
   },
   {
     name: "restate",
+    short: "durable execution",
     pkg: "restate-mojo",
     repo: "https://github.com/magmalake/restate.mojo",
     version: "0.4.1",
-    tier: "primitive",
+    tier: "execution",
     what:
       "Durable execution in Mojo, via Restate. A Rust shim embeds the official Restate SDK — Rust owns the HTTP/2 endpoint, the event loop and the journal — while your handlers are Mojo, driven by a synchronous loop where every durable operation crosses one C-ABI call.",
     oracle:
@@ -265,6 +350,7 @@ export const tins: Tin[] = [
   },
   {
     name: "threads",
+    short: "pthreads · atomics · parallel_for",
     pkg: "threads-mojo",
     repo: "https://github.com/magmalake/threads.mojo",
     version: "0.6.1",
@@ -281,7 +367,37 @@ export const tins: Tin[] = [
     ],
   },
   {
+    name: "xml",
+    pkg: "xml-mojo",
+    repo: "https://github.com/magmalake/xml.mojo",
+    version: "0.1.0",
+    tier: "utility",
+    status: "source",
+    short: "pull parser · path queries",
+    what:
+      "A small pure-Mojo XML parser for API responses (EC2, S3, Azure Blob): a pull parser, and a flat read-only tree that answers path queries. No dependencies, no FFI.",
+    oracle: "Its own test suite on stable and nightly Mojo",
+    bullets: [
+      "Entities, numeric references, CDATA; malformed input is an error with its byte offset",
+      "Paths match local names, with * and fan-out over every match",
+    ],
+  },
+  {
+    name: "k8s",
+    pkg: "k8s-mojo",
+    repo: "https://github.com/magmalake",
+    version: "soon",
+    tier: "utility",
+    status: "planned",
+    short: "the Kubernetes API from Mojo",
+    what:
+      "A Kubernetes API client for Mojo, so dista and orca can start, scale and stop the clusters they run on.",
+    oracle: "Coming soon",
+    bullets: ["Create and watch pods, jobs and deployments"],
+  },
+  {
     name: "iceberg-rs",
+    short: "iceberg-rust behind a C ABI",
     pkg: "iceberg-rs-mojo",
     repo: "https://github.com/magmalake/iceberg-rs.mojo",
     version: "0.1.2",
