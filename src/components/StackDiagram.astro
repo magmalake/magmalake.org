@@ -1,89 +1,61 @@
 ---
 /**
- * The layering, drawn in CSS grid rather than SVG so the labels stay readable
- * at every width and the whole thing reflows to a single column on a phone.
+ * The layering, drawn from src/data/tins.ts in CSS grid rather than SVG, so
+ * the labels stay readable at every width, the whole thing reflows to a
+ * single column on a phone, and a new tin appears by adding it to the data.
  */
+import { tins, TIERS, TIER_LABEL, statusOf, STATUS_LABEL } from "../data/tins";
+
+const bands = TIERS.map((tier) => ({
+  tier,
+  label: TIER_LABEL[tier],
+  tins: tins.filter((t) => t.tier === tier),
+}));
 ---
 
 <figure class="stack">
-  <div class="stack__band stack__band--top">
-    <span class="stack__tier">Table format</span>
-    <div class="stack__row stack__row--1">
-      <a class="box box--lead" href="https://github.com/magmalake/iceberg.mojo" rel="noopener">
-        <span class="box__name">iceberg</span>
-        <span class="box__sub">metadata &middot; scan planning &middot; read &middot; write &middot; commit</span>
-        <span class="box__meta">v1–v3 &middot; deletes &middot; deletion vectors &middot; schema evolution</span>
-      </a>
-    </div>
-  </div>
-
-  <div class="joins joins--4" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-
-  <div class="stack__band">
-    <span class="stack__tier">File formats &amp; storage</span>
-    <div class="stack__row stack__row--2">
-      <a class="box" href="https://github.com/magmalake/parquet.mojo" rel="noopener">
-        <span class="box__name">parquet</span>
-        <span class="box__sub">read &middot; write &middot; Arrow C Data out</span>
-      </a>
-      <a class="box" href="https://github.com/magmalake/avro.mojo" rel="noopener">
-        <span class="box__name">avro</span>
-        <span class="box__sub">object container files, both ways</span>
-      </a>
-      <a class="box" href="https://github.com/magmalake/roaring.mojo" rel="noopener">
-        <span class="box__name">roaring</span>
-        <span class="box__sub">32/64-bit &middot; DV blob framing</span>
-      </a>
-      <a class="box" href="https://github.com/magmalake/objectstore.mojo" rel="noopener">
-        <span class="box__name">objectstore</span>
-        <span class="box__sub">local &middot; HTTP &middot; S3 &middot; GCS &middot; Azure &middot; SigV4</span>
-      </a>
-      <a class="box" href="https://github.com/magmalake/sqlite.mojo" rel="noopener">
-        <span class="box__name">sqlite</span>
-        <span class="box__sub">embedded SQL &middot; the catalog store</span>
-      </a>
-      <a class="box" href="https://github.com/magmalake/postgres.mojo" rel="noopener">
-        <span class="box__name">postgres</span>
-        <span class="box__sub">libpq &middot; params &middot; COPY &middot; SQLSTATE</span>
-      </a>
-    </div>
-  </div>
-
-  <div class="joins joins--3" aria-hidden="true"><i></i><i></i><i></i></div>
-
-  <div class="stack__band">
-    <span class="stack__tier">Primitives</span>
-    <div class="stack__row stack__row--3">
-      <a class="box box--small" href="https://github.com/magmalake/thrift.mojo" rel="noopener">
-        <span class="box__name">thrift</span>
-        <span class="box__sub">compact + binary protocol</span>
-      </a>
-      <div class="box box--small box--group">
-        <span class="box__name">
-          <a href="https://github.com/magmalake/zstd.mojo" rel="noopener">zstd</a>
-          <a href="https://github.com/magmalake/lz4.mojo" rel="noopener">lz4</a>
-          <a href="https://github.com/magmalake/brotli.mojo" rel="noopener">brotli</a>
-          <a href="https://github.com/magmalake/snappy.mojo" rel="noopener">snappy</a>
-        </span>
-        <span class="box__sub">compression codecs</span>
-      </div>
-      <a class="box box--small" href="https://github.com/magmalake/hashes.mojo" rel="noopener">
-        <span class="box__name">hashes</span>
-        <span class="box__sub">CRC-32 &middot; murmur3 &middot; XXH64 &middot; SHA-256</span>
-      </a>
-    </div>
-  </div>
-
-  <a class="box box--aside" href="https://github.com/magmalake/threads.mojo" rel="noopener">
-    <span class="box__name">threads</span>
-    <span class="box__sub">pthreads &middot; atomics &middot; parallel_for</span>
-    <span class="box__meta">alongside every layer — a stopgap until Mojo ships its own</span>
-  </a>
+  {
+    bands.map((band, i) => (
+      <>
+        {i > 0 && <div class="joins" aria-hidden="true"><i /><i /><i /></div>}
+        <div class:list={["stack__band", band.tier === "execution" && "stack__band--top"]}>
+          <span class="stack__tier">{band.label}</span>
+          <div class:list={["stack__row", band.tins.length === 1 && "stack__row--1"]}>
+            {band.tins.map((t) => {
+              const status = statusOf(t);
+              return (
+                <a
+                  class:list={[
+                    "box",
+                    band.tier === "table" && "box--lead",
+                    status === "planned" && "box--planned",
+                  ]}
+                  href={t.repo}
+                  rel="noopener"
+                >
+                  <span class="box__name">
+                    {t.name}
+                    {status !== "shelf" && (
+                      <span class="box__status">{STATUS_LABEL[status]}</span>
+                    )}
+                  </span>
+                  <span class="box__sub">{t.short}</span>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      </>
+    ))
+  }
 
   <figcaption>
-    Each box is an independently usable tin with its own repository, its own tests and its
-    own release cadence. Nothing above depends on anything outside this diagram except
-    libzstd, liblz4, libbrotli, libcurl and the system pthreads.
+    Each box is a tin with its own repository, its own tests and its own release cadence,
+    and each layer uses only the ones below it. Outside the diagram there is only libzstd,
+    liblz4, libbrotli, libcurl, libpq, SQLite, the Restate Rust SDK and the system
+    pthreads. Boxes marked
+    <em>from source</em> work today but aren't on mojoshelf yet; <em>planned</em> ones are
+    designed, not built.
   </figcaption>
 </figure>
 
@@ -108,10 +80,9 @@
   .stack__row {
     display: grid;
     gap: var(--gap);
+    grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
   }
   .stack__row--1 { grid-template-columns: 1fr; }
-  .stack__row--2 { grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); }
-  .stack__row--3 { grid-template-columns: minmax(0, 1fr) minmax(0, 2.09fr) minmax(0, 1fr); }
 
   .box {
     display: flex;
@@ -142,11 +113,32 @@
   }
   .box--lead .box__name { font-size: 1.2rem; color: var(--ember); }
 
+  .stack__band--top .box {
+    border-color: color-mix(in srgb, var(--lake) 45%, var(--border));
+  }
+
+  .box--planned {
+    border-style: dashed;
+    background: var(--surface-2);
+  }
+
   .box__name {
     font-family: var(--font-mono);
     font-weight: 600;
     font-size: 0.9375rem;
     letter-spacing: -0.01em;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0 0.5rem;
+  }
+
+  .box__status {
+    font-weight: 400;
+    font-size: 0.625rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
   }
 
   .box__sub {
@@ -155,41 +147,14 @@
     line-height: 1.45;
   }
 
-  .box__meta {
-    font-size: 0.7rem;
-    color: var(--text-faint);
-    margin-top: 0.15rem;
-  }
-
-  .box--group { gap: 0.25rem; }
-  .box--group .box__name {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0 0.85rem;
-  }
-  .box--group .box__name a {
-    color: var(--text);
-    text-decoration: none;
-  }
-  .box--group .box__name a:hover { color: var(--ember); }
-
-  .box--aside {
-    margin-top: 1.4rem;
-    border-style: dashed;
-    border-color: var(--border-strong);
-    background: var(--surface-2);
-  }
-  .box--aside .box__name { color: var(--lake); }
-
   /* connector ticks between bands */
   .joins {
     display: grid;
     height: 1.5rem;
     gap: var(--gap);
     margin-block: 0.15rem 0.6rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .joins--4 { grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); }
-  .joins--3 { grid-template-columns: minmax(0, 1fr) minmax(0, 2.09fr) minmax(0, 1fr); }
   .joins i {
     display: block;
     width: 1px;
@@ -210,15 +175,13 @@
   }
 
   @media (max-width: 880px) {
-    .stack__row--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .stack__row--3 { grid-template-columns: 1fr; }
-    /* Bands stack vertically; the connector ticks no longer line up with
-       anything, so drop them and separate the bands with space instead. */
+    .stack__row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stack__row--1 { grid-template-columns: 1fr; }
     .joins { display: none; }
     .stack__band { margin-bottom: 1.5rem; }
   }
 
   @media (max-width: 520px) {
-    .stack__row--2 { grid-template-columns: 1fr; }
+    .stack__row { grid-template-columns: 1fr; }
   }
 </style>

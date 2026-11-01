@@ -3,12 +3,12 @@ import Base from "../layouts/Base.astro";
 import Hero from "../components/Hero.astro";
 import StackDiagram from "../components/StackDiagram.astro";
 import TakeATinCta from "../components/TakeATinCta.astro";
-import { tins, tinsByTier, TIER_LABEL } from "../data/tins";
+import { tins, tinsByTier, TIER_LABEL, TIERS, statusOf } from "../data/tins";
 
 const description =
   "Data infrastructure for Mojo: a native Apache Iceberg stack — Parquet, Avro, Thrift, codecs, Roaring bitmaps, object storage, SQL catalogs and threads — published as tins on mojoshelf and gated against the reference implementation of every format.";
 
-const tinTiers = ["table", "format", "primitive", "oracle"] as const;
+const tinTiers = [...TIERS, "oracle" as const];
 ---
 
 <Base title="Data lake building blocks in Mojo" description={description} bare={false}>
@@ -18,7 +18,7 @@ const tinTiers = ["table", "format", "primitive", "oracle"] as const;
   <section class="section section--alt" id="what">
     <div class="wrap wrap--wide">
       <p class="eyebrow">What this is</p>
-      <h2 class="section-title">The start of a data ecosystem for Mojo</h2>
+      <h2 class="section-title">From a table format to a platform</h2>
 
       <div class="two-col">
         <div class="prose">
@@ -34,6 +34,14 @@ const tinTiers = ["table", "format", "primitive", "oracle"] as const;
             HTTP and TLS, and <strong>pthreads</strong> for the threads the language does not
             yet provide. What is gone is the Python and JVM layer that every other route from
             Mojo to Iceberg has to go through.
+          </p>
+          <p>
+            Then it grew upward. <a href="/s/dista">dista</a> runs Mojo functions across a
+            cluster, with results that stay on the worker that made them; on 1.4 billion taxi
+            rows in S3 it now beats both Ray and a Rust implementation of the same queries.
+            orca, designed and not yet built, is the orchestration layer above it: pipelines as
+            DAGs in Mojo, cron schedules and a UI. Small utilities, an XML parser and soon a
+            Kubernetes client, fill the gaps those need.
           </p>
           <p>
             Where it stands today: native Parquet decode is <em>faster</em> than pyarrow on a
@@ -85,9 +93,12 @@ const tinTiers = ["table", "format", "primitive", "oracle"] as const;
       <p class="eyebrow">The stack</p>
       <h2 class="section-title">How they layer</h2>
       <p class="lede" style="margin-bottom: 2.5rem;">
-        Iceberg sits on Parquet, Avro, Roaring and objectstore; those sit on Thrift, the
-        compression codecs and the hashes; threads runs alongside all of it. I kept them
-        separate, so you can take just the one you need.
+        At the top, execution: dista runs Mojo functions across a cluster, orca will
+        schedule pipelines of them, and restate makes a flow durable. Beneath it, Iceberg
+        tables and their catalogs; then the file formats a table is made of, and the
+        storage and databases it lives in; then the codecs, hashes and threads they all
+        share, and small utilities beside them. I kept every piece separate, so you can
+        take just the one you need.
       </p>
       <StackDiagram />
     </div>
@@ -99,8 +110,9 @@ const tinTiers = ["table", "format", "primitive", "oracle"] as const;
       <p class="eyebrow">The tins</p>
       <h2 class="section-title">Tins at a glance</h2>
       <p class="lede">
-        {tins.filter((t) => t.tier !== "oracle").length} tins, each independently usable and
-        checked against the reference implementation of the format it speaks. What each one is
+        {tins.filter((t) => t.tier !== "oracle" && statusOf(t) !== "planned").length} tins
+        today, each independently usable and checked against the reference implementation
+        of what it speaks, and more on the way. What each one is
         and what proves it lives on <a href="/tins">the tins page</a>.
       </p>
 
