@@ -1,5 +1,8 @@
 ---
-// The sub-navigation of the dista pages under /s/dista.
+// dista's own header, in place of magmalake's: the magmalake mark, a bar,
+// then dista and its sections. The dista pages pass `chrome={false}` to
+// Base, so this is the only header they have.
+import Logo from "./Logo.astro";
 import { DISTA_REPO } from "../data/dista";
 
 const links = [
@@ -10,53 +13,83 @@ const links = [
 const path = Astro.url.pathname.replace(/\/$/, "");
 ---
 
-<nav class="dnav" aria-label="dista">
-  <div class="wrap wrap--wide dnav__inner">
-    <a class="dnav__name" href="/s/dista">dista</a>
-    {
-      links.map((l) => (
-        <a class="dnav__link" href={l.href} aria-current={path === l.href ? "page" : undefined}>
-          {l.label}
-        </a>
-      ))
-    }
-    <a class="dnav__link dnav__link--ext" href={DISTA_REPO} rel="noopener">Source ↗</a>
+<header class="dhead">
+  <div class="wrap wrap--wide dhead__inner">
+    <div class="dhead__brand">
+      <a class="dhead__mark" href="/" aria-label="magmalake home"><Logo size={22} /></a>
+      <span class="dhead__bar" aria-hidden="true">|</span>
+      <a class="dhead__name" href="/s/dista">dista</a>
+    </div>
+    <nav class="dhead__links" aria-label="dista">
+      {
+        links.map((l) => (
+          <a class="dhead__link" href={l.href} aria-current={path === l.href ? "page" : undefined}>
+            {l.label}
+          </a>
+        ))
+      }
+      <a class="dhead__link dhead__link--ext" href={DISTA_REPO} rel="noopener">GitHub ↗</a>
+    </nav>
   </div>
-</nav>
+</header>
 
 <style>
-  .dnav {
+  .dhead {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
     border-bottom: 1px solid var(--rule);
-    background: var(--bg-alt);
   }
-  .dnav__inner {
+  .dhead__inner {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 0.25rem 1.25rem;
-    padding-block: 0.7rem;
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
+    gap: 1.5rem;
+    min-height: 4rem;
+    flex-wrap: wrap;
   }
-  .dnav__name {
-    font-weight: 600;
-    color: var(--ember);
-    margin-right: 0.5rem;
+  .dhead__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .dhead__mark { display: flex; }
+  .dhead__bar {
+    color: var(--border-strong);
+    font-size: 1.25rem;
+    line-height: 1;
+  }
+  .dhead__name {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.125rem;
+    letter-spacing: -0.025em;
+    color: var(--text);
     text-decoration: none;
   }
-  .dnav__link {
+  .dhead__links {
+    display: flex;
+    align-items: center;
+    gap: 1.35rem;
+    margin-left: auto;
+    font-size: 0.875rem;
+  }
+  .dhead__link {
     color: var(--text-muted);
     text-decoration: none;
+    white-space: nowrap;
+    padding-block: 0.35rem;
+    border-bottom: 1.5px solid transparent;
   }
-  .dnav__link:hover,
-  .dnav__link[aria-current="page"] {
+  .dhead__link:hover { color: var(--text); border-bottom-color: var(--ember); }
+  .dhead__link[aria-current="page"] {
     color: var(--text);
+    border-bottom-color: var(--ember);
   }
-  .dnav__link[aria-current="page"] {
-    text-decoration: underline;
-    text-underline-offset: 0.3em;
-  }
-  .dnav__link--ext {
-    margin-left: auto;
+  @media (max-width: 640px) {
+    .dhead__inner { padding-block: 0.6rem; gap: 0.5rem 1rem; }
+    .dhead__links { margin-left: 0; gap: 1rem; }
   }
 </style>

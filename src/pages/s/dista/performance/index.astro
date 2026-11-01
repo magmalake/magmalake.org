@@ -1,6 +1,7 @@
 ---
 import Base from "../../../../layouts/Base.astro";
 import DistaNav from "../../../../components/DistaNav.astro";
+import DistaFooter from "../../../../components/DistaFooter.astro";
 import {
   setup,
   distributed,
@@ -27,7 +28,7 @@ const best = (t: Table, row: number[]) => {
 const tables = [distributed, matrix, singleThreads, singleThread, earlierMatrix];
 ---
 
-<Base title="dista performance" description={description}>
+<Base title="Performance · dista" description={description} bare chrome={false}>
   <DistaNav />
 
   <section class="section section--flush">
@@ -193,6 +194,7 @@ bench/cloud/bench matrix      # 3, 6 and 12 nodes`}</code></pre>
       </p>
     </div>
   </section>
+  <DistaFooter />
 </Base>
 
 <style>

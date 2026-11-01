@@ -1,0 +1,45 @@
+---
+// dista's footer, in place of magmalake's.
+import Logo from "./Logo.astro";
+import { DISTA_REPO } from "../data/dista";
+---
+
+<footer class="dfoot">
+  <div class="wrap wrap--wide dfoot__inner">
+    <a class="dfoot__mark" href="/"><Logo size={18} /><span>A magmalake project</span></a>
+    <nav class="dfoot__links" aria-label="dista links">
+      <a href="/s/dista/docs">Docs</a>
+      <a href="/s/dista/performance">Performance</a>
+      <a href={DISTA_REPO} rel="noopener">GitHub</a>
+      <a href={`${DISTA_REPO}/issues`} rel="noopener">Issues</a>
+    </nav>
+    <p class="dfoot__fine">Apache 2.0 · © 2026 Marius Seritan</p>
+  </div>
+</footer>
+
+<style>
+  .dfoot {
+    border-top: 1px solid var(--rule);
+    padding-block: 2rem;
+    margin-top: 2rem;
+    font-size: 0.8125rem;
+    color: var(--text-faint);
+  }
+  .dfoot__inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.5rem;
+  }
+  .dfoot__mark {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+  .dfoot__links { display: flex; gap: 1.1rem; }
+  .dfoot__links a { color: var(--text-muted); text-decoration: none; }
+  .dfoot__links a:hover { color: var(--text); }
+  .dfoot__fine { margin: 0 0 0 auto; }
+</style>

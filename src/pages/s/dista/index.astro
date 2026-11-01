@@ -1,13 +1,14 @@
 ---
 import Base from "../../../layouts/Base.astro";
 import DistaNav from "../../../components/DistaNav.astro";
+import DistaFooter from "../../../components/DistaFooter.astro";
 import { headline, setup, worksToday, notYet, DISTA_REPO } from "../../../data/dista";
 
 const description =
   "dista runs Mojo functions across a cluster: declare a task, call it, and the work spreads over the machines, with results staying where they were computed. Early, open source, and measured against Ray and Rust.";
 ---
 
-<Base title="dista: distributed tasks for Mojo" description={description}>
+<Base title="dista: distributed tasks for Mojo" description={description} bare chrome={false}>
   <DistaNav />
 
   <section class="section section--flush">
@@ -136,6 +137,7 @@ def main() raises:
       </p>
     </div>
   </section>
+  <DistaFooter />
 </Base>
 
 <style>
