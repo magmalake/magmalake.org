@@ -9,9 +9,12 @@ interface Props {
   description: string;
   /** Omit the site-name suffix when the page title already carries it. */
   bare?: boolean;
+  /** Leave out magmalake's header and footer: a sub-site (dista) brings
+   * its own, in the page. */
+  chrome?: boolean;
 }
 
-const { title, description, bare = false } = Astro.props;
+const { title, description, bare = false, chrome = true } = Astro.props;
 const fullTitle = bare ? title : `${title} — magmalake`;
 const canonical = new URL(Astro.url.pathname, Astro.site ?? "https://magmalake.dev");
 const posthogEnabled = POSTHOG_KEY.startsWith("phc_");
@@ -86,11 +89,11 @@ const posthogEnabled = POSTHOG_KEY.startsWith("phc_");
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
-    <Nav />
+    {chrome && <Nav />}
     <main id="main">
       <slot />
     </main>
-    <Footer />
+    {chrome && <Footer />}
 
     <style>
       .skip {

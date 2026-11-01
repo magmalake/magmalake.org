@@ -1,6 +1,7 @@
 ---
 import Base from "../../../../layouts/Base.astro";
 import DistaNav from "../../../../components/DistaNav.astro";
+import DistaFooter from "../../../../components/DistaFooter.astro";
 import { DISTA_REPO } from "../../../../data/dista";
 
 const description =
@@ -18,7 +19,7 @@ const env = [
 ];
 ---
 
-<Base title="dista docs" description={description}>
+<Base title="Docs · dista" description={description} bare chrome={false}>
   <DistaNav />
 
   <section class="section section--flush">
@@ -226,6 +227,7 @@ _ = rt.timeline("trace.json")`}</code></pre>
       </p>
     </div>
   </section>
+  <DistaFooter />
 </Base>
 
 <style>
