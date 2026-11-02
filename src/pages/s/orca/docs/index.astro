@@ -5,7 +5,7 @@ import OrcaFooter from "../../../../components/OrcaFooter.astro";
 import { ORCA_REPO, ORCA_PRS } from "../../../../data/orca";
 
 const description =
-  "How to use Orca: declaring steps and pipelines, partitions and schedules, the command line every pipeline binary gets, the scheduler and backfills, the web UI, runs in Postgres and resuming them, pinned Iceberg reads and recognised commits.";
+  "How to use Orca: declaring steps and pipelines, partitions and schedules, the command line every pipeline binary gets, the scheduler and backfills, the web UI, runs in Postgres and resuming them, pinned Iceberg reads and recognised commits, datasets and lineage, sensors and rebuilds.";
 
 const env = [
   ["ORCA_DATABASE_URL", "the Postgres database runs are recorded in; unset, run runs in memory", "unset"],
@@ -14,6 +14,8 @@ const env = [
   ["ORCA_LOGS", "the directory attempts' logs and the run's timeline go in; the scheduler's runs log there too", "unset"],
   ["ORCA_RETRY_SECONDS", "the scheduler's first wait before retrying a failed run, doubled with each start", "60"],
   ["ORCA_UI_ADDR", "host:port orca ui listens on", "127.0.0.1:8270"],
+  ["ORCA_WAREHOUSE", "the root of the filesystem catalog datasets are found in: ns.table is <warehouse>/ns/table", "unset"],
+  ["ORCA_SENSE_SECONDS", "how often the scheduler asks a sensor's binary for its datasets' current snapshots", "60"],
   ["ORCA_NOW", "fixes the clock of fires and the scheduler, as 2024-03-10T07:00Z or epoch seconds, for tests", "the clock"],
   ["ORCA_ZONEINFO", "where time zones' TZif files are read from", "/usr/share/zoneinfo"],
   ["DISTA_ROLE", "head or worker: the binary runs as that Dista process instead", "unset"],
@@ -33,6 +35,8 @@ const schedulerCmds = [
   ["orca backfill <pipeline> KEYS", "queues one run per partition that hasn't succeeded and isn't queued or running"],
   ["orca tick", "one pass: fires what's due, starts queued runs and retries up to max_runs, then exits"],
   ["orca scheduler", "a tick every second, until it's stopped"],
+  ["orca lineage <dataset> [<snapshot>]", "what a snapshot (the latest, without one) was made from, and what was made from it"],
+  ["orca rebuild <dataset> KEYS", "reruns every pipeline downstream of the dataset over the keys, in dependency order"],
 ];
 
 const uiPages = [
@@ -42,6 +46,10 @@ const uiPages = [
   ["/runs/<id>", "a run's DAG in its steps' colours, its steps and partitions, attempts, errors, reads and commits, and resume, rerun from a step and cancel"],
   ["/runs/<id>/attempts/<attempt>", "an attempt's log, its last MiB, with its error"],
   ["/runs/<id>/timeline.json", "the run's Dista timeline, for Perfetto"],
+  ["/datasets", "every dataset with its writers and readers, and the graph of pipelines and datasets"],
+  ["/datasets/<name>", "a dataset's place in that graph, its snapshots, its rebuilds and the form to start one"],
+  ["/datasets/<name>/snapshots/<id>", "a snapshot's lineage, back and forward, as a graph and as tables"],
+  ["/rebuilds/<id>", "a rebuild's pipelines by level, with their runs"],
 ];
 
 const uiActions = [
@@ -50,6 +58,7 @@ const uiActions = [
   ["Resume", "a failed, cancelled or stalled run queued again, to resume at what hasn't succeeded; a run whose code has changed asks for confirmation first"],
   ["Rerun from a step", "a new run, trigger rerun, with the steps before the chosen one copied from the old run, so only it and what follows run"],
   ["Cancel", "a queued or failed run cancelled at once; a running one stops before its next attempt, and the attempt already going finishes"],
+  ["Rebuild", "on a dataset's page: what orca rebuild does, over the partitions entered"],
 ];
 
 const exits = [
@@ -71,7 +80,8 @@ const exits = [
         Orca turns a Mojo file of steps into a pipeline binary with a command line. This page
         covers what works on the main branch today: declaring steps and pipelines, their
         partitions and schedules, running them by hand or from the scheduler, recording and
-        resuming runs in Postgres, and reading and writing Iceberg tables from a step. The
+        resuming runs in Postgres, reading and writing Iceberg tables from a step, lineage
+        across pipelines, and sensors and rebuilds. The
         plan is in the
         repository's <a href={`${ORCA_REPO}/blob/main/DESIGN.md`} rel="noopener">DESIGN.md</a>.
       </p>
@@ -86,6 +96,8 @@ const exits = [
         <a href="#ui">The UI</a>
         <a href="#state">Runs in Postgres</a>
         <a href="#tables">Iceberg tables</a>
+        <a href="#datasets">Datasets and lineage</a>
+        <a href="#sensors">Sensors and rebuilds</a>
         <a href="#dista">Dista inside steps</a>
         <a href="#logs">Logs</a>
         <a href="#env">Environment</a>
@@ -193,12 +205,13 @@ def main() raises:
       </p>
 
       <h2 id="cli">The command line</h2>
-      <p>Every pipeline binary gets the same five commands:</p>
+      <p>Every pipeline binary gets the same six commands:</p>
       <pre><code>{`toy describe                              the DAG, partitions and schedule as JSON
 toy run --partitions 2024-01..2024-03     starts a run and runs it
 toy resume <run> [--allow-new-code]       continues a run at what's unfinished
 toy status [<run>]                        the latest runs, or one run's steps
-toy fires [<count>] [--after <time>]      the next fires and the partitions they fill`}</code></pre>
+toy fires [<count>] [--after <time>]      the next fires and the partitions they fill
+toy sense                                 the current snapshot of each dataset it reads`}</code></pre>
       <p>
         <code>--partitions</code> takes keys of the pipeline's kind, months
         (<code>2024-01</code>) or days (<code>2024-01-31</code>), and ranges of them,
@@ -244,7 +257,7 @@ toy fires [<count>] [--after <time>]      the next fires and the partitions they
         transaction, so two schedulers ticking at once, or one killed mid-tick, never fire
         twice. Fires missed while it was down are made on its next tick, once each. A queued
         run starts only while fewer than <code>max_runs</code> of the pipeline's runs are live,
-        counted under a lock on the pipeline's row. A scheduled or backfilled run that fails
+        counted under a lock on the pipeline's row. A scheduled, backfilled or sensed run that fails
         is started again after <code>ORCA_RETRY_SECONDS</code>, doubled with each start, plus
         up to a tenth as jitter, up to <code>run_retries</code> times; one whose process died
         is started again as soon as its heartbeat is stale. The scheduler holds nothing in
@@ -366,6 +379,87 @@ def load(mut ctx: Ctx, raw: RawFile) raises -> Loaded:
         Reads and commits are recorded in Postgres as they happen, not when the attempt ends.
         A run in memory has no run number of its own, so it pins reads across its retries but
         recognises no commits.
+      </p>
+
+      <h2 id="datasets">Datasets and lineage</h2>
+      <p>
+        A dataset is a table's name, <code>namespace.table</code>, that means the same table in
+        every pipeline. <code>ORCA_WAREHOUSE</code> is the root of a filesystem catalog:
+        <code>lake.clean</code> is the table at <code>&lt;warehouse&gt;/lake/clean</code>. A
+        step declares the datasets it reads and writes, and loads them through its context:
+      </p>
+      <pre><code>{`from orca.tables import append, ensure_table, scan, table
+
+def clean(mut ctx: Ctx, m: Month) raises -> Int64:
+    var src = scan(ctx, table(ctx, "lake.raw")).to_batches()
+    var dst = ensure_table(ctx, "lake.clean", SCHEMA)
+    return append(ctx, dst, transform(src))
+
+comptime Clean = Step[
+    "clean", Month, Int64, clean, Mapped,
+    reads=["lake.raw"], writes=["lake.clean"],
+]`}</code></pre>
+      <p>
+        <code>scan</code> fails the attempt on a dataset the step didn't declare in
+        <code>reads=</code>, and <code>append</code> and <code>commit</code> on one it didn't
+        declare in <code>writes=</code>, naming the step and the dataset, so the graph of
+        pipelines and datasets is known before anything runs and can't drift from what the
+        steps do. <code>describe</code> lists each step's datasets, and
+        <code>orca register</code> refuses a pipeline that would close a cycle across
+        pipelines. A table outside the warehouse is still read and written by location, and
+        isn't part of the graph.
+      </p>
+      <p>
+        Every read and commit is recorded with its dataset, so lineage is two walks over
+        them. Back from a snapshot: the run, step, partition and code that made it, the
+        snapshots that attempt read, what made each of those, and so on, to sources no Orca
+        run made. Forward: everything made from it. Both stop after 20 steps.
+      </p>
+      <pre><code>{`$ ./build/orca lineage lake.report
+lake.report@3141592653
+made from:
+  0 lake.report@3141592653 by report run 9 report code 0x5e1f... from lake.clean@2718281828
+  1 lake.clean@2718281828 by clean run 8 clean 2024-02 code 0x9a0c... from lake.raw@1618033988
+  2 lake.raw@1618033988 by ingest run 6 load 2024-02 code 0x77d2...
+made from it:
+  nothing`}</code></pre>
+
+      <h2 id="sensors">Sensors and rebuilds</h2>
+      <p>
+        <code>sensor=True</code> on a pipeline runs it when a dataset it reads, and doesn't
+        write itself, gets a new snapshot:
+      </p>
+      <pre><code>{`comptime Report = Pipeline["report", Summarise, partitions=Monthly["2024-01"], sensor=True]`}</code></pre>
+      <p>
+        The scheduler finds snapshots in two ways. A snapshot a succeeded run of another
+        pipeline committed is in Postgres, and is seen on the next tick. One that something
+        other than Orca committed is seen by polling: every
+        <code>ORCA_SENSE_SECONDS</code> the scheduler runs <code>&lt;binary&gt; sense</code>,
+        which reads each dataset's current snapshot from its table's metadata, so the
+        scheduler itself still reads no table. Each snapshot starts one run, trigger
+        <code>sensor</code>, however many ticks or schedulers see it, and a run's page names
+        the snapshots that started it. Registering a sensor records what its datasets hold
+        then as already seen, so it doesn't rebuild history; a backfill or a rebuild does that.
+      </p>
+      <p>
+        The partitions a run covers come from the snapshot: the partition of the step that
+        committed it, or the run's partitions for a gather step. A writer outside Orca can
+        say which it holds with <code>orca.partitions</code> in its snapshot's summary;
+        without that, the pipeline runs the partition its schedule would fill now, or the one
+        today falls in. A day upstream is the month that contains it downstream, and a month
+        upstream is each of its days.
+      </p>
+      <pre><code>{`$ ./build/orca rebuild raw.events 2024-03
+rebuild 1
+  level 0 clean 2024-03
+  level 1 report 2024-03`}</code></pre>
+      <p>
+        A rebuild runs every pipeline downstream of a dataset, sensor or not, over the
+        partitions given. Each pipeline is placed at its longest distance from the dataset,
+        so one that reads two rebuilt datasets runs after both, and the scheduler queues a
+        level once every run before it has succeeded. A run that fails stops the rebuild;
+        resuming it from the UI carries on. The rebuild's own commits don't also start the
+        sensors it reruns, so each pipeline runs once.
       </p>
 
       <h2 id="dista">Dista inside steps</h2>

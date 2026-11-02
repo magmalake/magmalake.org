@@ -122,6 +122,39 @@ export const phase3Gate = [
   "A POST from another site's page, or with neither Origin nor Referer, is refused and changes nothing.",
 ];
 
+/** Phase 4, as DESIGN.md splits it into pull requests. */
+export const phase4Prs: Pr[] = [
+  {
+    n: 1,
+    title: "Datasets on steps: reads= and writes=, checked when a step touches a table, and the cycle check at registration",
+    gate: "A step that scans a dataset it didn't declare fails naming both; registering a pipeline that closes a cycle is refused.",
+    state: "merged",
+    pr: 21,
+  },
+  {
+    n: 2,
+    title: "Lineage: back from a snapshot and forward from it, orca lineage, and the dataset pages with their graph",
+    gate: "Over ingest, clean and report, lineage back from a report snapshot names its run, its code and its inputs, and agrees with the snapshots' own summaries.",
+    state: "merged",
+    pr: 23,
+  },
+  {
+    n: 3,
+    title: "Sensors and rebuild: sensor=True, <binary> sense, one run per snapshot, orca rebuild and the UI's form",
+    gate: "Phase 4's gate: a snapshot committed outside Orca starts clean, whose commit starts report, and nothing else; a rebuild reruns both in order.",
+    state: "merged",
+    pr: 24,
+  },
+];
+
+/** What phase 4's gate checks, in tests/sensors.sh on PR #24. */
+export const phase4Gate = [
+  "With the scheduler running, a program that isn't an Orca pipeline commits to raw.events: the sensor clean runs for the partition the snapshot holds, its commit starts the sensor report, and a sensor over an unrelated dataset never runs.",
+  "Each snapshot starts one run, however many ticks see it, three of them racing the scheduler; what the tables held when the sensors were registered starts nothing.",
+  "orca rebuild raw.events 2024-03 reruns clean, then report once clean has ended, and its commits start no sensor: six runs in all.",
+  "Testing found two bugs: two writers creating a table at once could livelock retrying their commits, now retried with jittered backoff, and fuzzing the metadata reader found a read past the end of the text.",
+];
+
 /** What phase 1's gate measured. */
 export const phase1Gate = [
   "The 24 months of 2023–2024 load to 79,478,796 rows, and every column's sum equals taxibench's table.",
@@ -181,16 +214,11 @@ export const phases: Phase[] = [
   {
     n: 4,
     title: "Lineage and sensors",
-    status: "planned",
+    status: "done",
     summary:
-      "Queries and a graph over the reads and commits Orca already records; runs triggered by a new upstream snapshot.",
+      "Datasets declared on steps; queries and a graph over the reads and commits Orca records; runs started by a new upstream snapshot, and rebuilds downstream of a table.",
     gate: "Committing a new snapshot to a source table rebuilds exactly the tables downstream of it.",
-    items: [
-      "Datasets declared on steps (reads=, writes=), checked when a step touches a table",
-      "From a table's snapshot back to the run, the code and the inputs; from a table forward to what was built from it",
-      "Sensors that poll declared source tables' current snapshot",
-      "Rebuild downstream of a table, in dependency order",
-    ],
+    items: [],
   },
   {
     n: 5,
@@ -220,6 +248,10 @@ export const worksToday = [
   "Every month of taxi trips since 2011 backfilled four runs at a time, and the next filled by its schedule",
   "orca ui: pipelines, runs, attempts' logs and the DAG in the browser, live while a run goes on, and every page as JSON",
   "Start, resume, rerun from a step, backfill and cancel from the browser, as rows the scheduler acts on",
+  "Datasets declared on steps, reads= and writes=, checked whenever a step touches a table",
+  "Lineage: from a snapshot back to the runs, code and snapshots it was made from, and forward to what was made from it, on the command line and as a graph in the UI",
+  "Sensors: a pipeline that runs when a dataset it reads gets a snapshot, from Orca or from anything else, once per snapshot",
+  "Rebuild every pipeline downstream of a dataset, in dependency order, from the command line or the browser",
 ];
 
 export const inReview: string[] = [];
@@ -232,7 +264,6 @@ export const phase2Gate = [
 ];
 
 export const notYet = [
-  "Lineage queries and sensors (phase 4)",
   "Runs on Kubernetes, and logs in S3 (phase 5)",
   "A published package: Orca builds from source today",
 ];
