@@ -9,6 +9,9 @@ import {
   matrix,
   singleThreads,
   singleThread,
+  shuffle,
+  shuffleMatrix,
+  shuffleSingle,
   timeline,
   images,
   runtime,
@@ -18,14 +21,17 @@ import {
 } from "../../../../data/dista";
 
 const description =
-  "Dista measured against Ray and Rust on 1.4 billion taxi trips in S3: distributed runs before and after the read path, a task timeline, single-process references, image sizes, and how to reproduce every number.";
+  "Dista measured against Ray and Rust on 1.4 billion taxi trips in S3: distributed runs before and after the read path, a shuffle against Ray, a task timeline, single-process references, image sizes, and how to reproduce every number.";
 
 const fmt = (v: number | null) => (v === null ? "–" : v.toLocaleString("en-US"));
 const best = (t: Table, row: number[]) => {
   const vals = row.filter((v) => v !== null) as number[];
   return Math.min(...vals);
 };
-const tables = [distributed, matrix, singleThreads, singleThread, earlierMatrix];
+const groups = [
+  { tables: [distributed, matrix, singleThreads, singleThread, earlierMatrix] },
+  { id: "shuffle", tables: [shuffleMatrix, shuffleSingle] },
+];
 ---
 
 <Base title="Performance · Dista" description={description} bare chrome={false}>
@@ -51,7 +57,22 @@ const tables = [distributed, matrix, singleThreads, singleThread, earlierMatrix]
       </p>
 
       {
-        tables.map((t) => (
+        groups.map((g) => (
+          <>
+            {g.id === "shuffle" && (
+              <div class="perf-block" id="shuffle">
+                <h2 class="perf-block__title"><a href="#shuffle">The second benchmark: a shuffle</a></h2>
+                <p class="perf-block__caption perf-block__caption--lead">
+                  The taxi queries spend most of their time reading Parquet. This one spends it
+                  in user code and in moving data between tasks: {shuffle.query}. Map tasks read
+                  one data file each and split their groups by key into one partition per
+                  reducer; each reducer takes its partition from every map task and adds them
+                  up. Dista and Ray only, on the same table and nodes, from{" "}
+                  {shuffle.date}. <a href={shuffle.spec} rel="noopener">The query and its answer</a>.
+                </p>
+              </div>
+            )}
+            {g.tables.map((t) => (
           <div class="perf-block" id={t.id}>
             <h2 class="perf-block__title">
               <a href={`#${t.id}`}>{t.title}</a>
@@ -87,6 +108,8 @@ const tables = [distributed, matrix, singleThreads, singleThread, earlierMatrix]
               <a href={`${RESULTS}/${t.source}`} rel="noopener">Results: <code>{t.source}</code></a>
             </p>
           </div>
+            ))}
+          </>
         ))
       }
 
@@ -178,7 +201,8 @@ const tables = [distributed, matrix, singleThreads, singleThread, earlierMatrix]
         <pre class="callout__code"><code>{`bench/cloud/bench data load   # the table, once
 bench/cloud/bench gate        # 3 nodes, ~15 minutes
 bench/cloud/bench local       # one process, 16 and 1 threads
-bench/cloud/bench matrix      # 3, 6 and 12 nodes`}</code></pre>
+bench/cloud/bench matrix      # 3, 6 and 12 nodes
+JOB=shuffle bench/cloud/bench matrix   # the shuffle`}</code></pre>
         <p class="callout__fine">
           The benchmark's code, the Rust and Ray versions included, is in
           <a href={`${DISTA_REPO}/tree/main/bench`} rel="noopener"><code>bench/</code></a>.
@@ -187,9 +211,8 @@ bench/cloud/bench matrix      # 3, 6 and 12 nodes`}</code></pre>
 
       <p class="perf-next">
         <strong>Next:</strong> Dista's decode speed on a single core, where it trails Ray;
-        and a second
-        benchmark that spends its time in user code and in a shuffle rather than in reading
-        Parquet.
+        the shuffle again with Dista's faster per-row loop, and with fewer reducers on 12
+        nodes.
       </p>
     </div>
   </section>

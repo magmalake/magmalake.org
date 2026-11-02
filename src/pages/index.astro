@@ -54,6 +54,7 @@ const tinTiers = [...TIERS, "oracle" as const];
           </p>
         </div>
 
+        <div class="callout-stack">
         <aside class="callout">
           <h3 class="callout__title">Packaged on mojoshelf</h3>
           <p>
@@ -85,6 +86,32 @@ const tinTiers = [...TIERS, "oracle" as const];
             </svg>
           </a>
         </aside>
+
+        <aside class="callout" id="skills">
+          <h3 class="callout__title">Skills for coding agents</h3>
+          <p>
+            What magmalake learned making its code fast is packaged as agent skills, so an
+            agent writing a data pipeline in Mojo starts with it. Each rule carries the
+            measurement behind it.
+          </p>
+          <pre class="callout__code"><code>npx skills add magmalake/skills</code></pre>
+          <p class="callout__fine">
+            That installs both. In Claude Code you can instead run{" "}
+            <code>/plugin marketplace add magmalake/skills</code> and then{" "}
+            <code>/plugin install skills@magmalake</code>.
+          </p>
+          <p class="callout__fine">
+            <a href="https://github.com/magmalake/skills/tree/main/mojo-data-performance" rel="noopener"><code>mojo-data-performance</code></a>
+            covers a pipeline's per-row loops, and how to tell the time spent decoding from
+            the time spent on your own work without a second implementation to compare
+            against.
+          </p>
+          <p class="callout__fine">
+            <a href="https://github.com/magmalake/skills/tree/main/writing-performant-data-code" rel="noopener"><code>writing-performant-data-code</code></a>
+            covers columnar readers, writers and codecs, and how to measure them honestly.
+          </p>
+        </aside>
+        </div>
       </div>
     </div>
   </section>
