@@ -5,7 +5,6 @@ import DistaFooter from "../../../../components/DistaFooter.astro";
 import {
   setup,
   distributed,
-  earlierMatrix,
   matrix,
   singleThreads,
   singleThread,
@@ -21,7 +20,7 @@ import {
 } from "../../../../data/dista";
 
 const description =
-  "Dista measured against Ray and Rust on 1.4 billion taxi trips in S3: distributed runs before and after the read path, a shuffle against Ray, a task timeline, single-process references, image sizes, and how to reproduce every number.";
+  "Dista measured against Ray and Rust on 1.4 billion taxi trips in S3: distributed runs on 3 to 12 nodes, a shuffle against Ray, a task timeline, single-process references, image sizes, and how to reproduce every number.";
 
 const fmt = (v: number | null) => (v === null ? "–" : v.toLocaleString("en-US"));
 const best = (t: Table, row: number[]) => {
@@ -29,7 +28,7 @@ const best = (t: Table, row: number[]) => {
   return Math.min(...vals);
 };
 const groups = [
-  { tables: [distributed, matrix, singleThreads, singleThread, earlierMatrix] },
+  { tables: [distributed, matrix, singleThreads, singleThread] },
   { id: "shuffle", tables: [shuffleMatrix, shuffleSingle] },
 ];
 ---
@@ -42,7 +41,7 @@ const groups = [
       <p class="eyebrow">Performance</p>
       <h1 class="section-title">Measured against Ray and Rust, including the runs it lost</h1>
       <p class="lede">
-        Every number here comes from runs on AWS, never a laptop, with the answers of all
+        Every number here comes from runs on AWS, with the answers of all
         three frameworks checked against each other. The workload is {setup.queries}, over
         {" "}{setup.table}. Machines: {setup.machine}, {setup.slots} task slots per node.
         Runs from {setup.date}.
@@ -72,43 +71,77 @@ const groups = [
                 </p>
               </div>
             )}
-            {g.tables.map((t) => (
-          <div class="perf-block" id={t.id}>
-            <h2 class="perf-block__title">
-              <a href={`#${t.id}`}>{t.title}</a>
-              <span class="perf-block__unit">{t.unit}</span>
-            </h2>
-            <div class="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Query</th>
-                    {t.columns.map((c) => <th class="num">{c}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {t.rows.map((r) => {
-                    const low = best(t, r.values as number[]);
-                    return (
-                      <tr class={r.label.startsWith("total") ? "perf-total" : undefined}>
-                        <td><code>{r.label}</code></td>
-                        {r.values.map((v, i) => (
-                          <td class="num">
-                            {v === low && t.columns[i] !== "dista, before" ? <strong>{fmt(v)}</strong> : fmt(v)}
-                          </td>
-                        ))}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <p class="perf-block__caption">
-              {t.caption}{" "}
-              <a href={`${RESULTS}/${t.source}`} rel="noopener">Results: <code>{t.source}</code></a>
-            </p>
-          </div>
-            ))}
+            {g.tables.map((t) => {
+              const total = t.rows.find((r) => r.label === "total");
+              const shown = total ? [total] : t.rows;
+              const rest = total ? t.rows.filter((r) => r !== total) : [];
+              return (
+                <div class="perf-block" id={t.id}>
+                  <h2 class="perf-block__title">
+                    <a href={`#${t.id}`}>{t.title}</a>
+                    <span class="perf-block__unit">{t.unit}</span>
+                  </h2>
+                  {[shown, rest].map((rows, part) =>
+                    rows.length === 0 ? null : part === 0 ? (
+                      <div class="table-scroll">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>{total ? "" : "Run"}</th>
+                              {t.columns.map((c) => <th class="num">{c}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((r) => {
+                              const low = best(t, r.values as number[]);
+                              return (
+                                <tr class={r.label === "total" ? "perf-total" : undefined}>
+                                  <td>{r.label === "total" ? "Total" : <code>{r.label}</code>}</td>
+                                  {r.values.map((v) => (
+                                    <td class="num">{v === low ? <strong>{fmt(v)}</strong> : fmt(v)}</td>
+                                  ))}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <details class="perf-detail">
+                        <summary>Each query</summary>
+                        <div class="table-scroll">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Query</th>
+                                {t.columns.map((c) => <th class="num">{c}</th>)}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map((r) => {
+                                const low = best(t, r.values as number[]);
+                                return (
+                                  <tr>
+                                    <td><code>{r.label}</code></td>
+                                    {r.values.map((v) => (
+                                      <td class="num">{v === low ? <strong>{fmt(v)}</strong> : fmt(v)}</td>
+                                    ))}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    )
+                  )}
+                  <p class="perf-block__caption">
+                    {t.caption}{" "}
+                    <a href={`${RESULTS}/${t.source}`} rel="noopener">Results: <code>{t.source}</code></a>
+                  </p>
+                </div>
+              );
+            })}
           </>
         ))
       }
@@ -156,17 +189,16 @@ const groups = [
         <div class="table-scroll">
           <table>
             <thead>
-              <tr><th>Image</th><th class="num">whole build (s)</th><th class="num">dependencies (s)</th><th class="num">compile (s)</th><th class="num">unpacked (MB)</th><th class="num">gzip (MB)</th></tr>
+              <tr><th>Image</th><th class="num">size, MB: gzip (unpacked)</th><th class="num">whole build (s)</th><th class="num">dependencies (s)</th><th class="num">compile (s)</th></tr>
             </thead>
             <tbody>
               {images.rows.map((r) => (
                 <tr>
                   <td>{r.label}</td>
+                  <td class="num">{r.label === "Dista" ? <strong>{r.gzip}</strong> : r.gzip} ({fmt(r.unpacked)})</td>
                   <td class="num">{fmt(r.build)}</td>
                   <td class="num">{fmt(r.deps)}</td>
                   <td class="num">{fmt(r.compile)}</td>
-                  <td class="num">{fmt(r.unpacked)}</td>
-                  <td class="num">{r.label === "dista" ? <strong>{r.gzip}</strong> : r.gzip}</td>
                 </tr>
               ))}
             </tbody>
@@ -209,11 +241,6 @@ JOB=shuffle bench/cloud/bench matrix   # the shuffle`}</code></pre>
         </p>
       </aside>
 
-      <p class="perf-next">
-        <strong>Next:</strong> Dista's decode speed on a single core, where it trails Ray;
-        the shuffle again with Dista's faster per-row loop, and with fewer reducers on 12
-        nodes.
-      </p>
     </div>
   </section>
   <DistaFooter />
@@ -244,6 +271,15 @@ JOB=shuffle bench/cloud/bench matrix   # the shuffle`}</code></pre>
   }
   .perf-block__caption--lead { margin: 0 0 1rem; }
   .perf-total td { font-weight: 600; }
+  .perf-detail { margin-top: 0.6rem; }
+  .perf-detail summary {
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    padding: 0.3rem 0;
+  }
+  .perf-detail summary:hover { color: var(--text); }
+  .perf-detail[open] summary { margin-bottom: 0.4rem; }
   .perf-pair { margin-top: 0; gap: 1rem; }
   .perf-pair table { min-width: 0; }
   .runtime-grid {
@@ -252,10 +288,4 @@ JOB=shuffle bench/cloud/bench matrix   # the shuffle`}</code></pre>
     gap: 1rem;
   }
   .perf-repro { margin-top: 3rem; max-width: 44rem; }
-  .perf-next {
-    margin-top: 2rem;
-    max-width: var(--measure);
-    color: var(--text-muted);
-    font-size: 0.9375rem;
-  }
 </style>

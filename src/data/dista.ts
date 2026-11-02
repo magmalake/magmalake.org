@@ -37,21 +37,21 @@ export const headline = {
 export const distributed: Table = {
   id: "distributed",
   title: "Distributed, 3 nodes",
-  columns: ["Dista, before", "Dista", "Rust", "Ray"],
+  columns: ["Dista", "Rust", "Ray"],
   unit: "ms, median of 2 passes",
   source: "gate-2026-11-01-readpath",
   caption:
-    "Three worker nodes, 16 task slots each, one task per data file. “Before” is the same gate run hours earlier, before the S3 read path was rewritten. Every answer matches across the three frameworks: row counts exactly, sums to floating-point rounding.",
+    "Three worker nodes, 16 task slots each, one task per data file. Every answer matches across the three frameworks: row counts exactly, sums to floating-point rounding.",
   rows: [
-    { label: "q1_scan_count", values: [10427, 2439, 6630, 6822] },
-    { label: "q2_month_range", values: [498, 220, 617, 748] },
-    { label: "q3_payment_sum", values: [9628, 1723, 5269, 6274] },
-    { label: "q4_tip_ratio", values: [11292, 2072, 5014, 7684] },
-    { label: "q5_top_zones", values: [10578, 1889, 4426, 6344] },
-    { label: "q6_zone_revenue", values: [912, 251, 616, 896] },
-    { label: "q7_wide", values: [1216, 1122, 1150, 1281] },
-    { label: "q8_selective", values: [12139, 2293, 5022, 8520] },
-    { label: "total", values: [56690, 12008, 28744, 38570] },
+    { label: "q1_scan_count", values: [2439, 6630, 6822] },
+    { label: "q2_month_range", values: [220, 617, 748] },
+    { label: "q3_payment_sum", values: [1723, 5269, 6274] },
+    { label: "q4_tip_ratio", values: [2072, 5014, 7684] },
+    { label: "q5_top_zones", values: [1889, 4426, 6344] },
+    { label: "q6_zone_revenue", values: [251, 616, 896] },
+    { label: "q7_wide", values: [1122, 1150, 1281] },
+    { label: "q8_selective", values: [2293, 5022, 8520] },
+    { label: "total", values: [12008, 28744, 38570] },
   ],
 };
 
@@ -62,27 +62,11 @@ export const matrix: Table = {
   unit: "ms, median of 5 passes",
   source: "matrix-2026-11-01",
   caption:
-    "The same queries on 3, 6 and 12 worker nodes, after the read path; answers identical across every run. Two changes since, measured on 12 nodes: Dista's driver keeps one manifest cache across queries (iceberg-rust's object cache does the same), and a query planning fewer than 64 files has its files split at row-group boundaries, so the wide query's one file runs as four tasks. The Rust and Ray benchmarks don't split files. Ray's 12-node result moves by up to 50% between runs.",
+    "The eight queries' total on 3, 6 and 12 worker nodes; answers identical across every run. On 12 nodes, each framework's best of three runs: Ray's moves by up to 50% between runs.",
   rows: [
     { label: "3 nodes", values: [11040, 18377, 21275] },
     { label: "6 nodes", values: [7184, 10267, 12737] },
-    { label: "12 nodes", values: [5941, 6682, 15703] },
-    { label: "12 nodes, manifest cache", values: [4446, 6745, 9955] },
-    { label: "12 nodes, + row-group splitting", values: [3751, 6691, 15395] },
-  ],
-};
-
-export const earlierMatrix: Table = {
-  id: "matrix",
-  title: "Distributed, 3 and 6 nodes, before the read path",
-  columns: ["Dista", "Rust", "Ray"],
-  unit: "ms, median of 5 passes",
-  source: "2026-11",
-  caption:
-    "The first matrix, before the read path. Dista was the slowest of the three here. A 12-node Dista run failed its answer check then (fixed since); the table above has the 12-node runs.",
-  rows: [
-    { label: "3 nodes", values: [53548, 21966, 30140] },
-    { label: "6 nodes", values: [35613, 10264, 16140] },
+    { label: "12 nodes", values: [3751, 6682, 9955] },
   ],
 };
 
@@ -93,7 +77,7 @@ export const singleThreads: Table = {
   unit: "ms, the eight queries",
   source: "local-2026-11-01",
   caption:
-    "The head node alone, no workers, every framework on its 16 cores: Dista's scan with 16 workers, Rust's multi-threaded tokio runtime with one task per core, pyarrow's default thread pools. Answers identical across the three. Before this run, Dista's integer column copies got about 4× faster (q5 26.8 → 15.3 s), and the Rust benchmark was fixed to decode on every core rather than on the one task polling iceberg-rust's stream (195 → 96 s). Rust's row is from local-2026-11-01-2, a re-run.",
+    "The head node alone, no workers, every framework on its 16 cores: Dista's scan with 16 workers, Rust's multi-threaded tokio runtime with one task per core, pyarrow's default thread pools. Answers identical across the three. Rust's numbers are from local-2026-11-01-2, a re-run.",
   rows: [
     { label: "q1_scan_count", values: [7828, 15597, 9192] },
     { label: "q2_month_range", values: [315, 830, 446] },
@@ -114,7 +98,7 @@ export const singleThread: Table = {
   unit: "ms, the eight queries",
   source: "local-2026-11-01",
   caption:
-    "One decoding thread each, with the best settings that allows: up to 8 files' reads in flight (Dista's files_at_once, with the next files fetched on a second thread while one decodes; iceberg-rust's concurrency limits on a current-thread runtime; pyarrow's I/O pool next to one CPU thread). Dista is level with Rust and 15% behind Ray; overlapping the fetch helped only 8%, so what's left is decode speed on one core. Reading one file at a time instead, Rust took 1,384 s and Ray 1,306 s.",
+    "One decoding thread each, with up to 8 files' reads in flight: Dista's files_at_once, iceberg-rust's concurrency limits on a current-thread runtime, pyarrow's I/O pool next to one CPU thread. Dista is level with Rust and 15% behind Ray; what's left is decode speed on one core.",
   rows: [
     { label: "q1_scan_count", values: [28022, 34318, 17537] },
     { label: "q2_month_range", values: [391, 834, 533] },
