@@ -5,7 +5,7 @@ import DistaFooter from "../../../../components/DistaFooter.astro";
 import { DISTA_REPO } from "../../../../data/dista";
 
 const description =
-  "How to use dista: declaring tasks and actors, passing results between them, running locally and on Kubernetes, and reading the task timeline.";
+  "How to use dista: tasks and actors, passing results between them, shuffles, checkpoints, running locally and on Kubernetes, and watching a cluster.";
 
 const env = [
   ["DISTA_ROLE", "head or worker; unset, the process is a driver", "driver"],
@@ -15,6 +15,8 @@ const env = [
   ["DISTA_ADVERTISE", "the address a worker gives peers to fetch its results from", "its outgoing IP"],
   ["DISTA_STORE_DIR", "where a worker writes large results for its host to map", "/dev/shm, else $TMPDIR"],
   ["DISTA_SHM", "0 keeps large results in the worker's memory instead", "on"],
+  ["DISTA_CHECKPOINT_URI", "where actor checkpoints go: a directory, file://, or s3://bucket/prefix", "none: checkpoints fail"],
+  ["DISTA_METRICS_PORT", "the port a head or worker serves Prometheus metrics on, at /metrics", "off"],
   ["DISTA_DEBUG", "1 logs each task's inputs as a worker assembles them", "off"],
 ];
 ---
@@ -38,9 +40,12 @@ const env = [
         <a href="#tasks">Tasks</a>
         <a href="#results">Results</a>
         <a href="#graphs">Tasks on results</a>
+        <a href="#shuffles">Shuffles</a>
         <a href="#types">What crosses the wire</a>
         <a href="#actors">Actors</a>
+        <a href="#checkpoints">Checkpoints</a>
         <a href="#running">Running it</a>
+        <a href="#watching">Watching a cluster</a>
         <a href="#timeline">The timeline</a>
         <a href="#failures">When things fail</a>
       </nav>
@@ -126,6 +131,38 @@ var sum = rt.remote[Total](squares)   # runs once all 100 exist
 var next = rt.remote[Square](sum)     # a task on a task's result`}</code></pre>
       <p>If an input fails, every task that depends on it fails with that error.</p>
 
+      <h2 id="shuffles">Shuffles</h2>
+      <p>
+        A shuffle moves data between two sets of tasks: map tasks each split their output
+        by key, and each reduce task takes its share from every map task. Two kinds of task
+        make that work. A <code>TaskMany</code> returns several results, each an object of
+        its own, stored, fetched and freed separately, like Ray's <code>num_returns</code>.
+        A <code>TaskWith</code> takes a value beside a list of other tasks' results:
+      </p>
+      <pre><code>{`from dista import TaskMany, TaskWith
+
+def map_rows(m: Int) -> Seq[Seq[Pair]]:          # one partition per reducer
+    ...
+def reduce_part(j: Int, parts: Seq[Seq[Pair]]) -> Seq[Pair]:
+    ...
+
+comptime MapRows = TaskMany[Int, Seq[Pair], map_rows]
+comptime ReducePart = TaskWith[Int, Seq[Pair], Seq[Pair], reduce_part]
+
+var outputs = List[List[ObjectRef[Seq[Pair]]]]()
+for m in range(8):
+    outputs.append(rt.remote_many[MapRows](m, 4))   # 4 results each
+for j in range(4):
+    var mine = List[ObjectRef[Seq[Pair]]]()
+    for m in range(8):
+        mine.append(outputs[m][j])
+    var r = rt.remote[ReducePart](j, mine)          # partition j of every map`}</code></pre>
+      <p>
+        A <code>TaskMany</code> must return exactly as many values as asked for, or every
+        one of its results fails. Each large partition stays on the worker that made it,
+        and the reducer fetches it from there.
+      </p>
+
       <h2 id="types">What crosses the wire</h2>
       <p>
         Arguments and results are encoded by type, at compile time. Scalars,
@@ -165,9 +202,43 @@ var n = rt.call[Add](c, 5)            # ObjectRef[Int]
 print(rt.get(rt.remote[Square](n)))   # 25
 rt.kill(c)                             # after its earlier calls; frees the worker`}</code></pre>
       <p>
-        Calling a method on the wrong actor's handle is a compile error. Actors are new:
-        today an actor is lost if its worker or the head restarts. Restarting it from its
-        constructor, and then from checkpoints, comes next.
+        Calling a method on the wrong actor's handle is a compile error. A handle is a
+        value, so a task or another actor can call the actor too: declare it with
+        <code>CtxTask</code> or <code>CtxMethod</code>, and its function gets a
+        <code>Client</code> to call through:
+      </p>
+      <pre><code>{`from dista import Client, CtxTask
+
+def bump(mut c: Client, h: ActorHandle[CounterActor]) raises -> Int:
+    return c.get(c.call[Add](h, 1))
+
+comptime Bump = CtxTask[ActorHandle[CounterActor], Int, bump]
+var n = rt.remote[Bump](c)   # a task calling the actor`}</code></pre>
+      <p>
+        <strong>When an actor's worker goes away</strong>, the head places the actor on
+        another worker, builds it again from its last checkpoint, or its constructor if it
+        has none, and runs every call since then again, in order. Each call is answered
+        once. A call may run twice on the actor's state, so a method should be safe to
+        repeat; that's the price of not losing calls.
+      </p>
+
+      <h2 id="checkpoints">Checkpoints</h2>
+      <p>
+        A checkpoint is the actor's state through the codec, written to
+        <code>DISTA_CHECKPOINT_URI</code>: a directory every node sees, or
+        <code>s3://bucket/prefix</code>. Ask for one every so many calls, or when it
+        suits:
+      </p>
+      <pre><code>{`var c = rt.create[CounterActor](0, checkpoint_every=100)
+...
+var calls = rt.get(rt.checkpoint(c))   # written; covers this many calls`}</code></pre>
+      <p>
+        A restart then replays only the calls since the checkpoint, and the head stops
+        keeping the ones it covers. A state type that implements <code>Codec</code> decides
+        what it saves: a cache can save nothing, a loaded model its path. Checkpoints also
+        carry an actor across a head restart: the new head restores it from its newest
+        checkpoint, and its callers send again the calls no checkpoint includes. Killing an
+        actor deletes its checkpoints.
       </p>
 
       <h2 id="running">Running it</h2>
@@ -189,14 +260,41 @@ rt.kill(c)                             # after its earlier calls; frees the work
         </table>
       </div>
       <p>
-        The repository's <code>deploy/</code> folder builds one distroless image, 32 MB
-        compressed, for every role. <code>tests/kind.sh</code> runs a cluster on kind, and
+        The head doesn't run your code, so it can be the generic one: <code>dista
+        head</code>, from the <code>dista</code> command (<code>pixi run cli</code>). It
+        serves drivers and workers built from any program, several at once, and gives each
+        driver's tasks and actors only to workers built from the same program. A head built
+        into your program, <code>DISTA_ROLE=head</code>, serves only that program.
+      </p>
+      <p>
+        The repository's <code>deploy/</code> folder builds one image for every role, with
+        your program at <code>/opt/dista/bin/app</code> and the command at
+        <code>/opt/dista/bin/dista</code>; the manifests run the head as <code>dista
+        head</code>. <code>tests/kind.sh</code> runs a cluster on kind, and
         <code>bench/cloud/</code> runs one on EC2 with k3s. Give the workers'
-        <code>/dev/shm</code> room for the large results they keep.
+        <code>/dev/shm</code> room for the large results they keep. A deleted pod's process
+        exits on its SIGTERM.
       </p>
       <p>
         <code>Runtime(pipeline=n)</code> sets how many tasks the head keeps in flight per
         worker (default 2).
+      </p>
+
+      <h2 id="watching">Watching a cluster</h2>
+      <p>
+        <code>dista status</code> prints the head's view: workers, with the program each
+        was built from and what it's running or hosting; drivers; and actors, with their
+        worker, calls and last checkpoint. <code>dista timeline -o trace.json</code> writes
+        every driver's finished tasks, and <code>dista stop</code> shuts the head and its
+        workers down. Each takes <code>--head host:port</code>, or reads
+        <code>DISTA_HEAD</code>.
+      </p>
+      <p>
+        With <code>DISTA_METRICS_PORT</code> set, the head and every worker serve
+        Prometheus metrics at <code>/metrics</code>: tasks submitted and finished by
+        outcome, task durations as a histogram, queue depth, objects and bytes held,
+        workers, drivers, actors, restarts and checkpoints. The kind manifests turn it on
+        at port 9090, for Kubernetes monitoring to scrape.
       </p>
 
       <h2 id="timeline">The timeline</h2>
@@ -222,8 +320,9 @@ _ = rt.timeline("trace.json")`}</code></pre>
         rebuilt from its peers when it comes back: workers rejoin and report what they hold,
         and drivers reconnect under their old number and resubmit what they still need. A
         task running at that moment may run twice, so tasks should be safe to repeat, as a
-        pure function is. A chaos test kills the head at random throughout a run and checks
-        every answer.
+        pure function is. Actors come back too, from their checkpoints (see above). A chaos
+        test kills the head at random throughout a run and checks every answer, and on kind
+        the actor's pod is deleted mid-run and its count must come out exact.
       </p>
     </div>
   </section>

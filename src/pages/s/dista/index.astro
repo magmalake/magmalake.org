@@ -117,9 +117,10 @@ def main() raises:
       <p class="eyebrow">Status</p>
       <h2 class="section-title">Early, and measured as it goes</h2>
       <p class="lede">
-        dista is in its third phase: tasks, results and a head that restarts are done;
-        stateful actors arrived this week and are being made to survive restarts. What it
-        doesn't do yet is listed here rather than left to be found out.
+        dista has finished its third phase: tasks, results, a head that restarts, and
+        stateful actors that survive their worker or the head restarting, with metrics and
+        a command for operating a cluster. What it doesn't do yet is listed here rather
+        than left to be found out.
       </p>
       <div class="status-grid">
         <div class="status-col status-col--yes">
@@ -132,8 +133,8 @@ def main() raises:
         </div>
       </div>
       <p class="panel__fine dista-fine">
-        A longer write-up, with the design and the measurements behind it, follows when the
-        actor work is complete.
+        A longer write-up, with the design and the measurements behind it, follows with the
+        second benchmark, which spends its time in user code and a shuffle.
       </p>
     </div>
   </section>
