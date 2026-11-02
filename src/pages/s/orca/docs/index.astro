@@ -5,7 +5,7 @@ import OrcaFooter from "../../../../components/OrcaFooter.astro";
 import { ORCA_REPO, ORCA_PRS } from "../../../../data/orca";
 
 const description =
-  "How to use Orca: declaring steps and pipelines, partitions and schedules, the command line every pipeline binary gets, the scheduler and backfills, runs in Postgres and resuming them, pinned Iceberg reads and recognised commits.";
+  "How to use Orca: declaring steps and pipelines, partitions and schedules, the command line every pipeline binary gets, the scheduler and backfills, the web UI, runs in Postgres and resuming them, pinned Iceberg reads and recognised commits.";
 
 const env = [
   ["ORCA_DATABASE_URL", "the Postgres database runs are recorded in; unset, run runs in memory", "unset"],
@@ -13,6 +13,7 @@ const env = [
   ["ORCA_WORKERS", "the local Dista workers a run forks", "4"],
   ["ORCA_LOGS", "the directory attempts' logs and the run's timeline go in; the scheduler's runs log there too", "unset"],
   ["ORCA_RETRY_SECONDS", "the scheduler's first wait before retrying a failed run, doubled with each start", "60"],
+  ["ORCA_UI_ADDR", "host:port orca ui listens on", "127.0.0.1:8270"],
   ["ORCA_NOW", "fixes the clock of fires and the scheduler, as 2024-03-10T07:00Z or epoch seconds, for tests", "the clock"],
   ["ORCA_ZONEINFO", "where time zones' TZif files are read from", "/usr/share/zoneinfo"],
   ["DISTA_ROLE", "head or worker: the binary runs as that Dista process instead", "unset"],
@@ -34,9 +35,26 @@ const schedulerCmds = [
   ["orca scheduler", "a tick every second, until it's stopped"],
 ];
 
+const uiPages = [
+  ["/", "pipelines, with their schedules, next fires and last runs"],
+  ["/pipelines/<name>", "a pipeline's DAG, partitions, schedule, next fires and runs, and the forms to start a run and backfill a range"],
+  ["/runs", "runs, newest first; ?pipeline=, ?status=, ?trigger="],
+  ["/runs/<id>", "a run's DAG in its steps' colours, its steps and partitions, attempts, errors, reads and commits, and resume, rerun from a step and cancel"],
+  ["/runs/<id>/attempts/<attempt>", "an attempt's log, its last MiB, with its error"],
+  ["/runs/<id>/timeline.json", "the run's Dista timeline, for Perfetto"],
+];
+
+const uiActions = [
+  ["Start", "a queued run over the partitions entered, trigger ui"],
+  ["Backfill", "what orca backfill does: a queued run for each partition without one"],
+  ["Resume", "a failed, cancelled or stalled run queued again, to resume at what hasn't succeeded; a run whose code has changed asks for confirmation first"],
+  ["Rerun from a step", "a new run, trigger rerun, with the steps before the chosen one copied from the old run, so only it and what follows run"],
+  ["Cancel", "a queued or failed run cancelled at once; a running one stops before its next attempt, and the attempt already going finishes"],
+];
+
 const exits = [
   ["0", "the run succeeded"],
-  ["1", "a step didn't"],
+  ["1", "a step didn't, or the run was cancelled"],
   ["2", "a usage error"],
   ["3", "anything else: the database, a run that can't be resumed"],
 ];
@@ -65,6 +83,7 @@ const exits = [
         <a href="#partitions">Partitions and schedules</a>
         <a href="#cli">The command line</a>
         <a href="#scheduler">The scheduler</a>
+        <a href="#ui">The UI</a>
         <a href="#state">Runs in Postgres</a>
         <a href="#tables">Iceberg tables</a>
         <a href="#dista">Dista inside steps</a>
@@ -231,6 +250,52 @@ toy fires [<count>] [--after <time>]      the next fires and the partitions they
         is started again as soon as its heartbeat is stale. The scheduler holds nothing in
         memory, so it can be stopped and restarted at any time. Registering a new build moves
         the pipeline's queued runs to the new code.
+      </p>
+
+      <h2 id="ui">The UI</h2>
+      <p>
+        <code>orca ui</code> serves pipelines and runs as web pages, from the same
+        <code>orca</code> binary, on <code>127.0.0.1:8270</code> unless
+        <code>ORCA_UI_ADDR</code> says otherwise. It holds no state: it reads the tables the
+        scheduler and the runs write, connecting to Postgres per request, so it can run beside
+        the scheduler or anywhere else that reaches the database. Nothing is fetched from
+        elsewhere, so it works offline.
+      </p>
+      <pre><code>{`ORCA_DATABASE_URL=postgresql:///orca ./build/orca ui
+curl -H 'Accept: application/json' http://127.0.0.1:8270/runs/7`}</code></pre>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Path</th><th>What it shows</th></tr></thead>
+          <tbody>
+            {uiPages.map(([k, v]) => (
+              <tr><td><code>{k}</code></td><td>{v}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Every path also answers JSON, to <code>Accept: application/json</code> or
+        <code>?format=json</code>, built from the same rows, so a script and a person see the
+        same thing. While a run or an attempt is going on, its page refreshes its DAG, steps
+        or log every two seconds, and stops once it has ended.
+      </p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Action</th><th>What it does</th></tr></thead>
+          <tbody>
+            {uiActions.map(([k, v]) => (
+              <tr><td>{k}</td><td>{v}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The UI never starts a pipeline binary. An action writes rows in Postgres, and the
+        scheduler starts the queued runs on its next tick, within <code>max_runs</code>, so
+        the UI does nothing without a scheduler running. There's no authentication: it binds
+        to localhost, and refuses a <code>POST</code> whose <code>Origin</code>, or
+        <code>Referer</code> without one, isn't its own, so another site's page can't post to
+        it through a browser.
       </p>
 
       <h2 id="state">Runs in Postgres</h2>

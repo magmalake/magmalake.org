@@ -90,6 +90,38 @@ export const phase2Prs: Pr[] = [
   },
 ];
 
+/** Phase 3, as DESIGN.md splits it into pull requests. */
+export const phase3Prs: Pr[] = [
+  {
+    n: 1,
+    title: "Read-only pages and their JSON: orca ui on flare, an escaping HTML writer, pipelines and runs",
+    gate: "Every page answers HTML and JSON; a run's JSON agrees with status; a step's error with <script> in it comes out as text.",
+    state: "merged",
+    pr: 16,
+  },
+  {
+    n: 2,
+    title: "Logs, the DAG and live updates: attempt pages, the DAG as SVG, polled fragments, the Dista timeline",
+    gate: "A running run's page follows it to succeeded and stops polling; the DAG has a box per step and an edge per after.",
+    state: "merged",
+    pr: 17,
+  },
+  {
+    n: 3,
+    title: "Actions: start, resume, rerun from a step, backfill and cancel, as rows the scheduler acts on",
+    gate: "Phase 3's gate, over HTTP only: a failed step found, its log read, the run resumed and succeeding under the scheduler.",
+    state: "merged",
+    pr: 18,
+  },
+];
+
+/** What phase 3's gate checks, in tests/actions.sh on PR #18. */
+export const phase3Gate = [
+  "A toy run fails a step; the test finds it on /runs, reads the failed attempt's log and posts resume, and with the scheduler running the run succeeds, the failed step on its second attempt and nothing else run again.",
+  "A rerun from measure copies days from the old run and runs measure and total; a cancelled running run stops before its next step and ends cancelled; a resume onto new code waits for confirmation.",
+  "A POST from another site's page, or with neither Origin nor Referer, is refused and changes nothing.",
+];
+
 /** What phase 1's gate measured. */
 export const phase1Gate = [
   "The 24 months of 2023–2024 load to 79,478,796 rows, and every column's sum equals taxibench's table.",
@@ -140,16 +172,11 @@ export const phases: Phase[] = [
   {
     n: 3,
     title: "The UI",
-    status: "planned",
+    status: "done",
     summary:
       "Pipelines, runs, steps, logs and the Dista timeline, served by flare; start, rerun and backfill from the browser.",
     gate: "A failed step is found, its logs read and the run resumed, without a terminal.",
-    items: [
-      "Server-rendered HTML from flare with a little JavaScript, and the same paths as JSON for the command line",
-      "The DAG drawn server-side as SVG; the Dista timeline linked for Perfetto",
-      "Start, resume, rerun from a step, backfill a range, cancel",
-      "No authentication: one team, bound to localhost unless told otherwise",
-    ],
+    items: [],
   },
   {
     n: 4,
@@ -191,6 +218,8 @@ export const worksToday = [
   "The Orca scheduler: fires once each, backfills, max_runs, retries with backoff, missed fires caught up",
   "The NYC taxi load as a pipeline: 2023–2024 to 79,478,796 rows, resumed after kill -9",
   "Every month of taxi trips since 2011 backfilled four runs at a time, and the next filled by its schedule",
+  "orca ui: pipelines, runs, attempts' logs and the DAG in the browser, live while a run goes on, and every page as JSON",
+  "Start, resume, rerun from a step, backfill and cancel from the browser, as rows the scheduler acts on",
 ];
 
 export const inReview: string[] = [];
@@ -203,7 +232,6 @@ export const phase2Gate = [
 ];
 
 export const notYet = [
-  "A web UI (phase 3)",
   "Lineage queries and sensors (phase 4)",
   "Runs on Kubernetes, and logs in S3 (phase 5)",
   "A published package: Orca builds from source today",
