@@ -198,6 +198,8 @@ export const worksToday = [
   "Tasks: a top-level Mojo function, declared once, called with rt.remote",
   "Results that stay on the worker that computed them, mapped from shared memory on the same host or fetched from that worker directly",
   "Tasks on other tasks' results: one ObjectRef, or a list gathered into a Seq",
+  "Placement by data location: a task goes to the node holding most of its input, when one does",
+  "Tasks whose worker dies run again on another, up to DISTA_TASK_RETRIES times",
   "Arrow record batches as task arguments and results",
   "Freeing: reference counts at the head, rt.release",
   "A head that restarts: workers rejoin with what they hold, drivers resume where they were",
@@ -212,6 +214,6 @@ export const worksToday = [
 
 export const notYet = [
   "Refs nested anywhere inside a task's argument",
-  "Placement by data location, and spilling to disk",
+  "Spilling results to disk",
   "A published package: Dista builds from source today",
 ];

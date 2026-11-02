@@ -315,8 +315,13 @@ _ = rt.timeline("trace.json")`}</code></pre>
       <h2 id="failures">When things fail</h2>
       <p>
         <strong>A task that raises</strong> fails its <code>ObjectRef</code> with the error,
-        and the tasks that depend on it. <strong>A worker that dies</strong> fails the tasks
-        it was running and loses the results it held. <strong>A head that dies</strong> is
+        and the tasks that depend on it. <strong>A worker that dies</strong> has the tasks it
+        was running sent to another worker, up to <code>DISTA_TASK_RETRIES</code> times
+        (default 3). The results it held are lost: Dista doesn't rebuild them by re-running
+        the tasks that made them, so a task that needs one fails, naming it, and the job is
+        run again, by <a href="/s/orca">Orca</a> or by hand. In local mode, where nothing
+        replaces a dead worker, tasks fail with <code>no workers left</code> once every worker
+        is gone, rather than waiting. <strong>A head that dies</strong> is
         rebuilt from its peers when it comes back: workers rejoin and report what they hold,
         and drivers reconnect under their old number and resubmit what they still need. A
         task running at that moment may run twice, so tasks should be safe to repeat, as a
