@@ -138,15 +138,17 @@ def main() raises:
   <section class="section">
     <div class="wrap wrap--wide">
       <p class="eyebrow">Status</p>
-      <h2 class="section-title">Two of {phases.length} phases done; the UI is next</h2>
+      <h2 class="section-title">Three of {phases.length} phases done; lineage is next</h2>
       <p class="lede">
         Phase 1, DAGs and runs, is done: the 2023–2024 NYC taxi load runs as a pipeline, to
         the row count and column sums of taxibench's table, and a run killed with
         <code>kill -9</code> halfway resumes at the month it was on. Phase 2,
         partitions, cron schedules in time zones and the scheduler, is done too: every month of taxi
         trips since 2011, 1.44 billion rows, loaded as a backfill four runs at a time in 11
-        minutes, and the schedule filled the next month as it fell due. Phase 3 is the web
-        UI.
+        minutes, and the schedule filled the next month as it fell due. Phase 3, the web UI,
+        is done: a failed step is found, its log read and its run resumed from the browser,
+        and runs are started, rerun from a step, backfilled and cancelled there too. Phase 4
+        is lineage and sensors.
         The <a href="/s/orca/roadmap">roadmap</a> has every phase and its gate.
       </p>
       <div class="status-grid">
