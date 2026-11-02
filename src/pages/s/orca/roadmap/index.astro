@@ -2,12 +2,12 @@
 import Base from "../../../../layouts/Base.astro";
 import OrcaNav from "../../../../components/OrcaNav.astro";
 import OrcaFooter from "../../../../components/OrcaFooter.astro";
-import { phases, phase1Prs, phase2Prs, phase3Prs, phase1Gate, phase2Gate, phase3Gate, testingPr, asOf, ORCA_REPO, ORCA_PRS } from "../../../../data/orca";
+import { phases, phase1Prs, phase2Prs, phase3Prs, phase4Prs, phase1Gate, phase2Gate, phase3Gate, phase4Gate, testingPr, asOf, ORCA_REPO, ORCA_PRS } from "../../../../data/orca";
 
 const description =
-  "Orca's five phases, from DAGs and runs to schedules, a web UI, lineage and Kubernetes, each with the gate that ends it, and the pull requests of the first three.";
+  "Orca's five phases, from DAGs and runs to schedules, a web UI, lineage and Kubernetes, each with the gate that ends it, and the pull requests of the first four.";
 
-const prsOf: Record<number, typeof phase1Prs> = { 1: phase1Prs, 2: phase2Prs, 3: phase3Prs };
+const prsOf: Record<number, typeof phase1Prs> = { 1: phase1Prs, 2: phase2Prs, 3: phase3Prs, 4: phase4Prs };
 
 const prLabel = { merged: "merged", review: "in review", planned: "next" } as const;
 ---
@@ -21,8 +21,8 @@ const prLabel = { merged: "merged", review: "in review", planned: "next" } as co
       <h1 class="section-title">Five phases, each ending at a gate</h1>
       <p class="lede">
         A gate is something that works, not a feature list: a phase is done when its gate
-        passes. Phases 1 to 3 are done; lineage and sensors are next. Phases 4 and 5 are
-        planned, not built; what's written here about them is the design, and it changes as the earlier phases teach something. The detail
+        passes. Phases 1 to 4 are done; running on Kubernetes is next. Phase 5 is
+        planned, not built; what's written here about it is the design, and it changes as the earlier phases teach something. The detail
         is in the repository's
         <a href={`${ORCA_REPO}/blob/main/VISION.md`} rel="noopener">VISION.md</a> and
         <a href={`${ORCA_REPO}/blob/main/DESIGN.md`} rel="noopener">DESIGN.md</a>.
@@ -48,6 +48,9 @@ const prLabel = { merged: "merged", review: "in review", planned: "next" } as co
               )}
               {p.n === 3 && (
                 <ul class="phase__items">{phase3Gate.map((g) => <li>{g}</li>)}</ul>
+              )}
+              {p.n === 4 && (
+                <ul class="phase__items">{phase4Gate.map((g) => <li>{g}</li>)}</ul>
               )}
 
               {prsOf[p.n] ? (
