@@ -128,6 +128,45 @@ export const singleThread: Table = {
   ],
 };
 
+/** The second benchmark: a group-by whose time goes to user code and the shuffle. */
+export const shuffle = {
+  date: "2 November 2026",
+  query:
+    "every trip grouped by pickup zone, dropoff zone and hour of day (1,044,000 groups), each group adding up its trips, speeds, tip ratios and fares",
+  groups: 1044000,
+  trips: 1422958681,
+  spec: `${DISTA_REPO}/blob/main/bench/shuffle/README.md`,
+};
+
+export const shuffleMatrix: Table = {
+  id: "shuffle-scaling",
+  title: "The shuffle, distributed on 3, 6 and 12 nodes",
+  columns: ["Dista", "Ray"],
+  unit: "ms, median of 5 passes",
+  source: "shuffle-matrix-2026-11-02",
+  caption:
+    "One map task per data file, which splits its groups into one partition per reducer; one reducer per task slot, so 48, 96 and 192 reducers, each taking its partition from all 416 map tasks. Both get slower from 6 nodes to 12, where 192 reducers make about 80,000 partitions; fewer reducers is the next thing to try. Every answer matches both one-process references: groups and trips exactly, sums to about 1e-13.",
+  rows: [
+    { label: "3 nodes", values: [8462, 14169] },
+    { label: "6 nodes", values: [5139, 10955] },
+    { label: "12 nodes", values: [7282, 11439] },
+  ],
+};
+
+export const shuffleSingle: Table = {
+  id: "shuffle-single",
+  title: "The shuffle, one process",
+  columns: ["Dista", "Ray (PyIceberg + NumPy)"],
+  unit: "ms",
+  source: "shuffle-local-2026-11-02",
+  caption:
+    "The head node alone. Ray wins on one thread. Dista's per-row loop has since been made faster (dista#58, in review) and will be measured here next. On 16 threads Dista is only 1.6× faster than on one, because one thread did every batch's per-row work while sixteen decoded. Ray's 16-thread run failed twice: Kubernetes' API server, on the same node, stopped answering while Ray used all 16 cores.",
+  rows: [
+    { label: "16 threads", values: [126383, null] },
+    { label: "1 thread", values: [202154, 115680] },
+  ],
+};
+
 export const timeline = {
   source: "gate-2026-11-01-readpath",
   rows: [
@@ -179,7 +218,7 @@ export const worksToday = [
   "A head that restarts: workers rejoin with what they hold, drivers resume where they were",
   "Actors: stateful structs on a worker of their own, calls in order, handles passed to tasks and other actors",
   "Actors that survive their worker or the head restarting, restored from checkpoints in a directory or S3",
-  "Shuffles: several results from one task, and a task taking a value beside other tasks' results",
+  "Shuffles: several results from one task, and a task taking a value beside other tasks' results; a shuffle benchmark against Ray",
   "A task timeline in Chrome's trace format, the driver's own work included",
   "Prometheus metrics on the head and every worker",
   "The dista command: one head for several programs; dista status, timeline and stop",
@@ -189,6 +228,5 @@ export const worksToday = [
 export const notYet = [
   "Refs nested anywhere inside a task's argument",
   "Placement by data location, and spilling to disk",
-  "A benchmark that spends its time in user code and the shuffle, not in reading Parquet",
   "A published package: Dista builds from source today",
 ];
