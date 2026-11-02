@@ -104,7 +104,7 @@ written for anyone building a columnar reader rather than for readers of this
 site:
 
 ```sh
-npx skills add magmalake/.github --skill writing-performant-data-code --yes
+npx skills add magmalake/skills --skill writing-performant-data-code --yes
 ```
 
 It installs for Claude Code, Codex, Cursor and GitHub Copilot, among others;

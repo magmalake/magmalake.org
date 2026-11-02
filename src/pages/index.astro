@@ -96,16 +96,19 @@ const tinTiers = [...TIERS, "oracle" as const];
           </p>
           <pre class="callout__code"><code>npx skills add magmalake/skills</code></pre>
           <p class="callout__fine">
+            That installs both. In Claude Code you can instead run{" "}
+            <code>/plugin marketplace add magmalake/skills</code> and then{" "}
+            <code>/plugin install skills@magmalake</code>.
+          </p>
+          <p class="callout__fine">
             <a href="https://github.com/magmalake/skills/tree/main/mojo-data-performance" rel="noopener"><code>mojo-data-performance</code></a>
             covers a pipeline's per-row loops, and how to tell the time spent decoding from
             the time spent on your own work without a second implementation to compare
-            against. In Claude Code, run <code>/plugin marketplace add magmalake/skills</code>
-            and then <code>/plugin install skills@magmalake</code>.
+            against.
           </p>
           <p class="callout__fine">
-            <a href="https://github.com/magmalake/.github/tree/main/skills/writing-performant-data-code" rel="noopener"><code>writing-performant-data-code</code></a>
-            covers columnar readers, writers and codecs, and measuring them honestly:{" "}
-            <code>npx skills add magmalake/.github --skill writing-performant-data-code</code>.
+            <a href="https://github.com/magmalake/skills/tree/main/writing-performant-data-code" rel="noopener"><code>writing-performant-data-code</code></a>
+            covers columnar readers, writers and codecs, and how to measure them honestly.
           </p>
         </aside>
         </div>
