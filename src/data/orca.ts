@@ -85,7 +85,7 @@ export const phase2Prs: Pr[] = [
     n: 4,
     title: "The taxi backfill: every month from 2011, on a monthly schedule",
     gate: "orca backfill taxi 2011-01..2024-12 with max_runs=4 loads every month once, and the schedule then fills the next month when it falls due.",
-    state: "review",
+    state: "merged",
     pr: 13,
   },
 ];
@@ -132,7 +132,7 @@ export const phases: Phase[] = [
   {
     n: 2,
     title: "Schedules and partitions",
-    status: "in progress",
+    status: "done",
     summary: "Cron schedules, monthly and daily partitions, a scheduler, backfills, retries with backoff.",
     gate: "A schedule fills each month's partition as it falls due, and a backfill over 2011–2024 runs with a bounded number at once.",
     items: [],
@@ -190,17 +190,16 @@ export const worksToday = [
   "Cron schedules in a time zone, read from the system's TZif files, daylight saving included",
   "The Orca scheduler: fires once each, backfills, max_runs, retries with backoff, missed fires caught up",
   "The NYC taxi load as a pipeline: 2023–2024 to 79,478,796 rows, resumed after kill -9",
+  "Every month of taxi trips since 2011 backfilled four runs at a time, and the next filled by its schedule",
 ];
 
-export const inReview = [
-  "The taxi backfill over 2011–2024, phase 2's gate (PR #13)",
-];
+export const inReview: string[] = [];
 
 /** What phase 2's gate measured, by hand, on PR #13. */
 export const phase2Gate = [
   "orca backfill taxi 2011-01..2024-12: all 168 months loaded on their first start, never more than 4 at once, in 11 minutes on one 10-core Mac, to 1,438,321,685 rows, one file per month.",
   "With the clock set to 2 February 2025, a tick at 05:59 fired nothing; at 06:00 it fired once, for January, which downloaded from the TLC and loaded its 3,475,204 rows.",
-  "It found a bug: iceberg never seeds its random snapshot IDs, so concurrent pipeline processes drew the same ones and overwrote each other's manifest lists. Orca now seeds each process.",
+  "It found a bug: iceberg never seeds its random snapshot IDs, so concurrent pipeline processes drew the same ones and overwrote each other's manifest lists. Orca now seeds each process, and iceberg's fix takes them from the OS.",
 ];
 
 export const notYet = [
