@@ -18,7 +18,7 @@ import {
 } from "../../../../data/dista";
 
 const description =
-  "dista measured against Ray and Rust on 1.4 billion taxi trips in S3: distributed runs before and after the read path, a task timeline, single-process references, image sizes, and how to reproduce every number.";
+  "Dista measured against Ray and Rust on 1.4 billion taxi trips in S3: distributed runs before and after the read path, a task timeline, single-process references, image sizes, and how to reproduce every number.";
 
 const fmt = (v: number | null) => (v === null ? "–" : v.toLocaleString("en-US"));
 const best = (t: Table, row: number[]) => {
@@ -28,7 +28,7 @@ const best = (t: Table, row: number[]) => {
 const tables = [distributed, matrix, singleThreads, singleThread, earlierMatrix];
 ---
 
-<Base title="Performance · dista" description={description} bare chrome={false}>
+<Base title="Performance · Dista" description={description} bare chrome={false}>
   <DistaNav />
 
   <section class="section section--flush">
@@ -93,7 +93,7 @@ const tables = [distributed, matrix, singleThreads, singleThread, earlierMatrix]
       <div class="perf-block" id="timeline">
         <h2 class="perf-block__title"><a href="#timeline">Where the time went</a></h2>
         <p class="perf-block__caption perf-block__caption--lead">
-          dista records a timeline of every task, which opens in Perfetto. Before the read
+          Dista records a timeline of every task, which opens in Perfetto. Before the read
           path, a file task waited on S3 for about 95% of its time: decoding the same file
           from local disk takes 12 to 40 ms. Planning each query read the table's 168
           manifests one after another, and every task re-read the table's metadata. Now the
@@ -150,7 +150,7 @@ const tables = [distributed, matrix, singleThreads, singleThread, earlierMatrix]
           </table>
         </div>
         <p class="perf-block__caption">
-          dista's image is distroless: the binary and the libraries it links, one image for
+          Dista's image is distroless: the binary and the libraries it links, one image for
           head, workers and driver. Ray's needs no compile and is the largest.
         </p>
       </div>
@@ -186,7 +186,7 @@ bench/cloud/bench matrix      # 3, 6 and 12 nodes`}</code></pre>
       </aside>
 
       <p class="perf-next">
-        <strong>Next:</strong> dista's decode speed on a single core, where it trails Ray;
+        <strong>Next:</strong> Dista's decode speed on a single core, where it trails Ray;
         and a second
         benchmark that spends its time in user code and in a shuffle rather than in reading
         Parquet.

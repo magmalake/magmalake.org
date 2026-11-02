@@ -1,6 +1,6 @@
 ---
-// dista's own header, in place of magmalake's: the magmalake mark, a bar,
-// then dista and its sections. The dista pages pass `chrome={false}` to
+// Dista's own header, in place of magmalake's: the magmalake mark, a bar,
+// then Dista and its sections. The Dista pages pass `chrome={false}` to
 // Base, so this is the only header they have.
 import Logo from "./Logo.astro";
 import { DISTA_REPO } from "../data/dista";
@@ -18,9 +18,9 @@ const path = Astro.url.pathname.replace(/\/$/, "");
     <div class="dhead__brand">
       <a class="dhead__mark" href="/" aria-label="magmalake home"><Logo size={22} /></a>
       <span class="dhead__bar" aria-hidden="true">|</span>
-      <a class="dhead__name" href="/s/dista">dista</a>
+      <a class="dhead__name" href="/s/dista">Dista</a>
     </div>
-    <nav class="dhead__links" aria-label="dista">
+    <nav class="dhead__links" aria-label="Dista">
       {
         links.map((l) => (
           <a class="dhead__link" href={l.href} aria-current={path === l.href ? "page" : undefined}>

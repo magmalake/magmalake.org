@@ -1,11 +1,12 @@
 ---
+import CodeTabs from "./CodeTabs.astro";
 import { tins, statusOf } from "../data/tins";
 
 const tinCount = tins.filter((t) => t.tier !== "oracle" && statusOf(t) === "shelf").length;
 
 const highlights = [
   { value: String(tinCount), label: "tins on mojoshelf" },
-  { value: "3.8 s", label: "1.4B rows in S3, 12 nodes, dista" },
+  { value: "3.8 s", label: "1.4B rows in S3, 12 nodes, Dista" },
   { value: "211M", label: "Parquet rows/s, one core" },
   { value: "0", label: "JVM or Python in the path" },
 ];
@@ -17,28 +18,19 @@ const highlights = [
     <p class="hero__kicker">magmalake · version 0.x · built in the open</p>
 
     <h1 class="hero__title">
-      The data ecosystem<br />
+      Batteries included data framework<br />
       <span class="hero__accent">for Mojo</span>
     </h1>
 
     <p class="hero__lede">
-      Everything a data platform needs, written in Mojo, layer by layer: distributed
-      execution and orchestration at the top, Iceberg tables and their catalogs, the file
+      Everything a data platform needs, written in Mojo, layer by layer: orchestration
+      with Orca and distributed execution with Dista at the top, Iceberg tables and their catalogs, the file
       formats beneath them, object storage and databases, and the primitives and utilities
       everything shares. No Python or JVM in the path. Each tin is independently usable,
       and each is checked against the reference implementation of what it speaks.
     </p>
 
-    <div class="hero__code">
-      <pre><code><span class="k">from</span> iceberg <span class="k">import</span> Catalog
-
-<span class="k">var</span> table = Catalog.rest(<span class="s">"https://polaris.example/api/catalog"</span>).load(<span class="s">"db.events"</span>)
-<span class="k">var</span> rows = table.scan().filter(<span class="s">'["=", "region", "eu"]'</span>).select([<span class="s">"id"</span>, <span class="s">"amount"</span>]).to_table()</code></pre>
-      <p class="hero__code-note">
-        Metadata, manifests, scan planning, Parquet decode, deletes and deletion
-        vectors, S3 IO and the REST catalog — all of it Mojo.
-      </p>
-    </div>
+    <CodeTabs />
 
     <div class="hero__actions">
       <a class="btn btn--primary" href="https://github.com/magmalake" rel="noopener">
@@ -124,26 +116,6 @@ const highlights = [
     margin-bottom: 2.25rem;
   }
 
-  .hero__code {
-    max-width: 76ch;
-    margin-bottom: 2.25rem;
-  }
-  .hero__code pre {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.1rem 1.25rem;
-    box-shadow: var(--shadow);
-  }
-  .hero__code code { color: var(--text); }
-  .hero__code .k { color: var(--ember); }
-  .hero__code .s { color: var(--lake); }
-  .hero__code-note {
-    margin: 0.75rem 0 0;
-    font-size: 0.8125rem;
-    color: var(--text-faint);
-  }
-
   .hero__actions {
     display: flex;
     flex-wrap: wrap;
@@ -179,6 +151,5 @@ const highlights = [
 
   @media (max-width: 720px) {
     .hero__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem 1rem; }
-    .hero__code pre { font-size: 0.9em; }
   }
 </style>

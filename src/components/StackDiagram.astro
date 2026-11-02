@@ -30,8 +30,8 @@ const bands = TIERS.map((tier) => ({
                     band.tier === "table" && "box--lead",
                     status === "planned" && "box--planned",
                   ]}
-                  href={t.repo}
-                  rel="noopener"
+                  href={t.site ?? t.repo}
+                  rel={t.site ? undefined : "noopener"}
                 >
                   <span class="box__name">
                     {t.name}
