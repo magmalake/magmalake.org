@@ -1,0 +1,190 @@
+---
+/**
+ * The hero's code: one short example per layer, in tabs. Without JavaScript
+ * the first tab shows and the others stay hidden. Keywords and strings are
+ * coloured at build time, so the examples stay plain text here.
+ */
+const tabs = [
+  {
+    id: "orchestration",
+    label: "Orchestration",
+    code: `from orca import Cron, Ctx, Mapped, Month, Monthly, Pipeline, Step, orca_main
+from orca.tables import append
+
+def load(mut ctx: Ctx, m: Month) raises -> Int64:
+    var table = trips()
+    return append(ctx, table, read_month(download(m)))
+
+comptime Load = Step["load", Month, Int64, load, Mapped, retries=2]
+comptime Taxi = Pipeline[
+    "taxi", Load,
+    partitions=Monthly["2011-01"],
+    schedule=Cron["0 6 2 * *"],
+    max_runs=4,
+]
+
+def main() raises:
+    orca_main[Taxi]()`,
+    note: `Orca: the compiler checks every edge, the binary gets run, resume and status, and the orca scheduler fires it monthly and backfills 2011–2024 four runs at a time.`,
+    href: "/s/orca",
+  },
+  {
+    id: "distributed",
+    label: "Distributed compute",
+    code: `from dista import ObjectRef, Runtime, Task
+from parquet import ParquetReader
+
+def rows(path: String) raises -> Int:
+    return ParquetReader.open(path).num_rows()
+
+comptime Rows = Task[String, Int, rows]
+
+def main() raises:
+    var rt = Runtime[Rows](workers=16)
+    var refs = List[ObjectRef[Int]]()
+    for path in files:
+        refs.append(rt.remote[Rows](path))
+    var total = 0
+    for r in refs:
+        total += rt.get(r)`,
+    note: `Dista: one compiled binary is the driver, the head and every worker, on a laptop or a cluster; large results stay on the worker that made them.`,
+    href: "/s/dista",
+  },
+  {
+    id: "data",
+    label: "Data processing",
+    code: `from iceberg import Catalog
+
+var table = Catalog.rest("https://polaris.example/api/catalog").load("db.events")
+var rows = table.scan().filter('["=", "region", "eu"]').select(["id", "amount"]).to_table()`,
+    note: `Metadata, manifests, scan planning, Parquet decode, deletes and deletion vectors, S3 IO and the REST catalog — all of it Mojo.`,
+    href: "/tins",
+  },
+];
+
+const KEYWORDS = new Set([
+  "from", "import", "def", "var", "comptime", "return", "for", "in", "raises", "mut",
+]);
+
+function highlight(code: string): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return code.replace(/("[^"]*"|'[^']*'|[A-Za-z_]+|[^"'A-Za-z_]+)/g, (tok) => {
+    if (tok.startsWith('"') || tok.startsWith("'")) return `<span class="s">${esc(tok)}</span>`;
+    if (KEYWORDS.has(tok)) return `<span class="k">${tok}</span>`;
+    return esc(tok);
+  });
+}
+---
+
+<div class="codetabs" data-codetabs>
+  <div class="codetabs__bar" role="tablist" aria-label="Code examples">
+    {
+      tabs.map((t, i) => (
+        <button
+          class="codetabs__tab"
+          role="tab"
+          id={`tab-${t.id}`}
+          aria-controls={`panel-${t.id}`}
+          aria-selected={i === 0 ? "true" : "false"}
+          tabindex={i === 0 ? 0 : -1}
+          type="button"
+        >
+          {t.label}
+        </button>
+      ))
+    }
+  </div>
+  {
+    tabs.map((t, i) => (
+      <div
+        class="codetabs__panel"
+        role="tabpanel"
+        id={`panel-${t.id}`}
+        aria-labelledby={`tab-${t.id}`}
+        hidden={i !== 0}
+      >
+        <pre><code set:html={highlight(t.code)} /></pre>
+        <p class="codetabs__note">
+          {t.note} <a href={t.href}>More</a>
+        </p>
+      </div>
+    ))
+  }
+</div>
+
+<script>
+  for (const root of document.querySelectorAll<HTMLElement>("[data-codetabs]")) {
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    const select = (tab: HTMLButtonElement) => {
+      for (const t of tabs) {
+        const on = t === tab;
+        t.setAttribute("aria-selected", String(on));
+        t.tabIndex = on ? 0 : -1;
+        const panel = document.getElementById(t.getAttribute("aria-controls")!);
+        if (panel) panel.hidden = !on;
+      }
+    };
+    tabs.forEach((tab, i) => {
+      tab.addEventListener("click", () => select(tab));
+      tab.addEventListener("keydown", (e) => {
+        const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+        if (!step) return;
+        const next = tabs[(i + step + tabs.length) % tabs.length];
+        select(next);
+        next.focus();
+      });
+    });
+  }
+</script>
+
+<style>
+  .codetabs {
+    max-width: 82ch;
+    margin-bottom: 2.25rem;
+  }
+  .codetabs__bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-bottom: -1px;
+  }
+  .codetabs__tab {
+    font: inherit;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    padding: 0.45rem 0.9rem;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .codetabs__tab:hover { color: var(--text); }
+  .codetabs__tab[aria-selected="true"] {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--ember);
+  }
+  .codetabs__panel pre {
+    margin: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0 var(--radius) var(--radius) var(--radius);
+    padding: 1.1rem 1.25rem;
+    box-shadow: var(--shadow);
+    overflow-x: auto;
+  }
+  .codetabs__panel code { color: var(--text); }
+  .codetabs__panel :global(.k) { color: var(--ember); }
+  .codetabs__panel :global(.s) { color: var(--lake); }
+  .codetabs__note {
+    margin: 0.75rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--text-faint);
+    max-width: 76ch;
+  }
+  @media (max-width: 720px) {
+    .codetabs__panel pre { font-size: 0.9em; }
+  }
+</style>

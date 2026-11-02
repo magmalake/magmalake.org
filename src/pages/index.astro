@@ -36,12 +36,14 @@ const tinTiers = [...TIERS, "oracle" as const];
             Mojo to Iceberg has to go through.
           </p>
           <p>
-            Then it grew upward. <a href="/s/dista">dista</a> runs Mojo functions across a
-            cluster, with results that stay on the worker that made them; on 1.4 billion taxi
-            rows in S3 it now beats both Ray and a Rust implementation of the same queries.
-            orca, designed and not yet built, is the orchestration layer above it: pipelines as
-            DAGs in Mojo, cron schedules and a UI. Small utilities, an XML parser and soon a
-            Kubernetes client, fill the gaps those need.
+            Then it grew upward. <a href="/s/orca">Orca</a> is the orchestration layer:
+            pipelines as DAGs in Mojo, checked by the compiler, partitioned by month or day
+            and run on cron schedules, with a scheduler that backfills and retries. It loads
+            every month of NYC taxi trips since 2011, 1.44 billion rows, four runs at a time.
+            <a href="/s/dista">Dista</a>, beneath it, runs Mojo functions across a cluster,
+            with results that stay on the worker that made them; on those taxi rows in S3 it
+            beats both Ray and a Rust implementation of the same queries. Small utilities, an
+            XML parser, a linter and soon a Kubernetes client, fill the gaps those need.
           </p>
           <p>
             Where it stands today: native Parquet decode is <em>faster</em> than pyarrow on a
@@ -93,8 +95,8 @@ const tinTiers = [...TIERS, "oracle" as const];
       <p class="eyebrow">The stack</p>
       <h2 class="section-title">How they layer</h2>
       <p class="lede" style="margin-bottom: 2.5rem;">
-        At the top, execution: dista runs Mojo functions across a cluster, orca will
-        schedule pipelines of them, and restate makes a flow durable. Beneath it, Iceberg
+        At the top, execution: Orca schedules pipelines, Dista runs Mojo functions across a
+        cluster, and restate makes a flow durable. Beneath it, Iceberg
         tables and their catalogs; then the file formats a table is made of, and the
         storage and databases it lives in; then the codecs, hashes and threads they all
         share, and small utilities beside them. I kept every piece separate, so you can
@@ -124,7 +126,7 @@ const tinTiers = [...TIERS, "oracle" as const];
               <ul class="tin-glance__list">
                 {tinsByTier(tier).map((t) => (
                   <li>
-                    <a href="/tins">
+                    <a href={t.site ?? "/tins"}>
                       <span class="tin-glance__name">{t.name}</span>
                       <span class="tin-glance__version">{t.version}</span>
                     </a>

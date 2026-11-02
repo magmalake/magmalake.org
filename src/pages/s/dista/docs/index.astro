@@ -5,7 +5,7 @@ import DistaFooter from "../../../../components/DistaFooter.astro";
 import { DISTA_REPO } from "../../../../data/dista";
 
 const description =
-  "How to use dista: tasks and actors, passing results between them, shuffles, checkpoints, running locally and on Kubernetes, and watching a cluster.";
+  "How to use Dista: tasks and actors, passing results between them, shuffles, checkpoints, running locally and on Kubernetes, and watching a cluster.";
 
 const env = [
   ["DISTA_ROLE", "head or worker; unset, the process is a driver", "driver"],
@@ -21,15 +21,15 @@ const env = [
 ];
 ---
 
-<Base title="Docs · dista" description={description} bare chrome={false}>
+<Base title="Docs · Dista" description={description} bare chrome={false}>
   <DistaNav />
 
   <section class="section section--flush">
     <div class="wrap wrap--wide docs">
       <p class="eyebrow">Docs</p>
-      <h1 class="section-title">Using dista</h1>
+      <h1 class="section-title">Using Dista</h1>
       <p class="lede">
-        dista turns ordinary Mojo functions into tasks that run across a cluster. This page
+        Dista turns ordinary Mojo functions into tasks that run across a cluster. This page
         covers what a program needs: declaring tasks and actors, passing results around,
         and running the same binary locally and on Kubernetes. The design itself is in the
         repository's <a href={`${DISTA_REPO}/blob/main/DESIGN.md`} rel="noopener">DESIGN.md</a>.
@@ -52,7 +52,7 @@ const env = [
 
       <h2 id="install">Install</h2>
       <p>
-        dista isn't published as a package yet. A pixi project depends on it from source, at
+        Dista isn't published as a package yet. A pixi project depends on it from source, at
         a pinned commit, since a git dependency without a revision never updates:
       </p>
       <pre><code>{`[dependencies]

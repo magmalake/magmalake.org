@@ -1,6 +1,6 @@
 ---
-// orca's own header, in place of magmalake's: the magmalake mark, a bar,
-// then orca and its sections. The orca pages pass `chrome={false}` to
+// Orca's own header, in place of magmalake's: the magmalake mark, a bar,
+// then Orca and its sections. The Orca pages pass `chrome={false}` to
 // Base, so this is the only header they have. A copy of DistaNav.
 import Logo from "./Logo.astro";
 import { ORCA_REPO } from "../data/orca";
@@ -18,9 +18,9 @@ const path = Astro.url.pathname.replace(/\/$/, "");
     <div class="ohead__brand">
       <a class="ohead__mark" href="/" aria-label="magmalake home"><Logo size={22} /></a>
       <span class="ohead__bar" aria-hidden="true">|</span>
-      <a class="ohead__name" href="/s/orca">orca</a>
+      <a class="ohead__name" href="/s/orca">Orca</a>
     </div>
-    <nav class="ohead__links" aria-label="orca">
+    <nav class="ohead__links" aria-label="Orca">
       {
         links.map((l) => (
           <a class="ohead__link" href={l.href} aria-current={path === l.href ? "page" : undefined}>

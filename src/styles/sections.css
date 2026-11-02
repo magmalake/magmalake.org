@@ -173,7 +173,7 @@
 }
 .cta__actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
 
-/* ---- works today / not yet (status, dista) ---- */
+/* ---- works today / not yet (status, Dista) ---- */
 .status-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);

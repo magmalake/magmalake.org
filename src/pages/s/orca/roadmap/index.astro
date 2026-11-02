@@ -2,15 +2,17 @@
 import Base from "../../../../layouts/Base.astro";
 import OrcaNav from "../../../../components/OrcaNav.astro";
 import OrcaFooter from "../../../../components/OrcaFooter.astro";
-import { phases, phase1Prs, testingPr, asOf, ORCA_REPO, ORCA_PRS } from "../../../../data/orca";
+import { phases, phase1Prs, phase2Prs, phase1Gate, phase2Gate, testingPr, asOf, ORCA_REPO, ORCA_PRS } from "../../../../data/orca";
 
 const description =
-  "orca's five phases, from DAGs and runs to schedules, a web UI, lineage and Kubernetes, each with the gate that ends it, and phase 1's pull requests with what is merged and what is in review.";
+  "Orca's five phases, from DAGs and runs to schedules, a web UI, lineage and Kubernetes, each with the gate that ends it, and the pull requests of the first two with what is merged and what is next.";
+
+const prsOf: Record<number, typeof phase1Prs> = { 1: phase1Prs, 2: phase2Prs };
 
 const prLabel = { merged: "merged", review: "in review", planned: "next" } as const;
 ---
 
-<Base title="Roadmap · orca" description={description} bare chrome={false}>
+<Base title="Roadmap · Orca" description={description} bare chrome={false}>
   <OrcaNav />
 
   <section class="section section--flush">
@@ -19,9 +21,10 @@ const prLabel = { merged: "merged", review: "in review", planned: "next" } as co
       <h1 class="section-title">Five phases, each ending at a gate</h1>
       <p class="lede">
         A gate is something that works, not a feature list: a phase is done when its gate
-        passes. orca is in phase 1. Phases 2 to 5 are planned, not built; what's written here
-        about them is the design, and it changes as the earlier phases teach something. The
-        detail is in the repository's
+        passes. Phase 1 is done. Phase 2's gate has passed, by hand, on its last pull
+        request, the taxi backfill, which is in review. Phases 3 to 5 are planned, not built; what's written here about
+        them is the design, and it changes as the earlier phases teach something. The detail
+        is in the repository's
         <a href={`${ORCA_REPO}/blob/main/VISION.md`} rel="noopener">VISION.md</a> and
         <a href={`${ORCA_REPO}/blob/main/DESIGN.md`} rel="noopener">DESIGN.md</a>.
         As of {asOf}.
@@ -30,7 +33,7 @@ const prLabel = { merged: "merged", review: "in review", planned: "next" } as co
       <ol class="phases">
         {
           phases.map((p) => (
-            <li class={`phase${p.status === "in progress" ? " phase--now" : ""}`} id={`phase-${p.n}`}>
+            <li class={`phase${p.status === "in progress" ? " phase--now" : p.status === "done" ? " phase--done" : ""}`} id={`phase-${p.n}`}>
               <div class="phase__head">
                 <span class="phase__n num">{p.n}</span>
                 <h2 class="phase__title"><a href={`#phase-${p.n}`}>{p.title}</a></h2>
@@ -38,15 +41,21 @@ const prLabel = { merged: "merged", review: "in review", planned: "next" } as co
               </div>
               <p class="phase__summary">{p.summary}</p>
               <p class="phase__gate"><strong>Gate:</strong> {p.gate}</p>
+              {p.n === 1 && (
+                <ul class="phase__items">{phase1Gate.map((g) => <li>{g}</li>)}</ul>
+              )}
+              {p.n === 2 && (
+                <ul class="phase__items">{phase2Gate.map((g) => <li>{g}</li>)}</ul>
+              )}
 
-              {p.n === 1 ? (
+              {prsOf[p.n] ? (
                 <div class="table-scroll phase__prs">
                   <table>
                     <thead>
                       <tr><th class="num">#</th><th>Pull request</th><th>Its gate</th><th>State</th></tr>
                     </thead>
                     <tbody>
-                      {phase1Prs.map((r) => (
+                      {prsOf[p.n].map((r) => (
                         <tr>
                           <td class="num">{r.n}</td>
                           <td>
@@ -69,21 +78,24 @@ const prLabel = { merged: "merged", review: "in review", planned: "next" } as co
 
       <aside class="callout roadmap-testing" id="testing">
         <h3 class="callout__title">
-          Alongside phase 1: <a href={`${ORCA_PRS}/${testingPr.pr}`} rel="noopener">{testingPr.title}</a> (in review)
+          Alongside phase 1: <a href={`${ORCA_PRS}/${testingPr.pr}`} rel="noopener">{testingPr.title}</a>
         </h3>
         {testingPr.body.map((b) => <p>{b}</p>)}
         <p><strong>What it found:</strong></p>
         <ul class="phase__items">{testingPr.found.map((f) => <li>{f}</li>)}</ul>
         <p class="callout__fine">
-          The PR numbers in the table are the design's; the repository's pull requests have
-          their own numbers, so this one is GitHub's #{testingPr.pr} while the taxi pipeline is
-          the design's 6.
+          The numbers in the tables are the design's; the repository's pull requests have
+          their own, so this one is GitHub's #{testingPr.pr}, and the taxi pipeline, the
+          design's 6, is GitHub's #8. Between them, #7 wrote down how Orca will run on
+          Kubernetes.
         </p>
       </aside>
 
       <p class="roadmap-next">
-        <strong>No benchmark numbers yet.</strong> The first measured run is phase 1's gate:
-        the 2023–2024 NYC taxi load, 79,478,796 rows, checked against taxibench's table.
+        <strong>Measured so far:</strong> phase 1's gate, the 2023–2024 NYC taxi load,
+        79,478,796 rows, checked column by column against taxibench's table, and phase 2's,
+        every month since 2011, 1,438,321,685 rows, backfilled four runs at a time in 11
+        minutes. Those are the same rows Dista's benchmarks query.
       </p>
     </div>
   </section>
@@ -128,6 +140,7 @@ const prLabel = { merged: "merged", review: "in review", planned: "next" } as co
     letter-spacing: 0.1em;
   }
   .phase--now .phase__status { color: var(--ember); }
+  .phase--done .phase__status { color: var(--lake); }
   .phase__summary,
   .phase__gate,
   .phase__items {

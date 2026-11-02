@@ -17,6 +17,8 @@ export interface Tin {
   /** The mojoshelf registry name — `shelf add <pkg>`. */
   pkg: string;
   repo: string;
+  /** Its own section of this site, if it has one: where its box links. */
+  site?: string;
   version: string;
   tier: Tier;
   /** Unset means "shelf". */
@@ -63,9 +65,29 @@ export const statusOf = (t: Tin): Status => t.status ?? "shelf";
 
 export const tins: Tin[] = [
   {
-    name: "dista",
+    name: "Orca",
+    pkg: "orca-mojo",
+    repo: "https://github.com/magmalake/orca.mojo",
+    site: "/s/orca",
+    version: "0.0.1",
+    tier: "execution",
+    status: "source",
+    short: "pipelines as DAGs · cron schedules · backfills",
+    what:
+      "Orchestration for data pipelines written in Mojo: DAGs declared in Mojo and checked by the compiler, partitions by month or day, cron schedules in a time zone, and a scheduler that starts runs, backfills ranges and retries what failed. Steps run on Dista over Iceberg tables, with runs recorded in Postgres.",
+    oracle: "taxibench's table: 2023–2024 NYC taxi trips to the same 79,478,796 rows and column sums",
+    bullets: [
+      "Edges type-checked at compile time; one binary per pipeline",
+      "A killed run resumes where it stopped; a retried commit is recognised, not repeated",
+      "Every month since 2011, 1.44 billion rows, backfilled four runs at a time",
+      "A web UI next; lineage and Kubernetes after",
+    ],
+  },
+  {
+    name: "Dista",
     pkg: "dista-mojo",
     repo: "https://github.com/magmalake/dista.mojo",
+    site: "/s/dista",
     version: "0.0.1",
     tier: "execution",
     status: "source",
@@ -78,23 +100,6 @@ export const tins: Tin[] = [
       "A head that restarts: workers rejoin, drivers resume",
       "Actors: state on a worker of its own, calls in order",
       "1.4 billion taxi rows in S3: 3.8 s a pass on 12 nodes, against 6.7 s for Rust and 15.4 s for Ray",
-    ],
-  },
-  {
-    name: "orca",
-    pkg: "orca-mojo",
-    repo: "https://github.com/magmalake/orca.mojo",
-    version: "vision",
-    tier: "execution",
-    status: "planned",
-    short: "pipelines as DAGs · cron schedules · a web UI",
-    what:
-      "Orchestration for data pipelines written in Mojo: DAGs declared in Mojo and checked by the compiler, schedules in cron syntax, and a web UI for runs, reruns and backfills. Steps run on dista over Iceberg tables.",
-    oracle: "Not built yet: its vision is in the repository",
-    bullets: [
-      "Assets and partitions, not just tasks",
-      "One dista cluster per run",
-      "Lineage in each Iceberg snapshot it commits",
     ],
   },
   {
@@ -202,6 +207,23 @@ export const tins: Tin[] = [
       "A bounded ConnectionPool behind with pool.lease(): acquire timeouts, is_alive-checked checkout, lifetime and idle recycling, ROLLBACK on return",
       "A connection whose statement or transaction outlives its lease is closed, never handed to a second thread",
       "Tested against a throwaway cluster on every CI leg — no Docker",
+    ],
+  },
+  {
+    name: "arrow-mlake",
+    short: "Arrow layout · C Data Interface · IPC",
+    pkg: "arrow-mlake-mojo",
+    repo: "https://github.com/magmalake/arrow-mlake.mojo",
+    version: "0.2.0",
+    tier: "format",
+    what:
+      "The Apache Arrow memory layout, the C Data Interface and IPC streams in pure Mojo, with no dependencies and no FFI. A stopgap until marrow, the community Arrow for Mojo, builds on Mojo 1.x.",
+    oracle: "pyarrow imports what it exports over C, and reads and writes its IPC streams both ways",
+    bullets: [
+      "ArrayData and ArrayArena: flat, nested and extension types",
+      "Export and import over the C Data Interface, release callbacks and all",
+      "IPC stream writer and reader, with a bounds-checked FlatBuffers reader",
+      "What parquet hands its batches back in",
     ],
   },
   {
@@ -313,6 +335,22 @@ export const tins: Tin[] = [
     ],
   },
   {
+    name: "deflate",
+    short: "raw DEFLATE · pure Mojo",
+    pkg: "deflate-mojo",
+    repo: "https://github.com/magmalake/deflate.mojo",
+    version: "0.1.2",
+    tier: "primitive",
+    what:
+      "Raw DEFLATE (RFC 1951) in pure Mojo, the compression inside Avro's deflate codec and Parquet's GZIP codec. No FFI, no libz.",
+    oracle: "zlib: inflates what zlib wrote, one fixture per block type",
+    bullets: [
+      "inflate for stored, fixed- and dynamic-Huffman blocks",
+      "deflate with a hash-chain LZ77 matcher, fixed-Huffman blocks",
+      "inflate_at for back-to-back streams, as gzip members are",
+    ],
+  },
+  {
     name: "hashes",
     short: "CRC-32 · murmur3 · XXH64",
     pkg: "hashes-mojo",
@@ -328,6 +366,22 @@ export const tins: Tin[] = [
       "MurmurHash3 for the Iceberg bucket[N] transform",
       "XXH64 for Parquet bloom filters",
       "1.2–1.5 GB/s, identical results on every platform",
+    ],
+  },
+  {
+    name: "memory-region",
+    short: "bytes addressed by offset · shared mappings",
+    pkg: "memory-region-mojo",
+    repo: "https://github.com/magmalake/memory-region.mojo",
+    version: "0.1.1",
+    tier: "primitive",
+    what:
+      "A region of bytes, on the heap or in a shared mapping, carved by a bump allocator that returns offsets rather than pointers, so whatever is built in it reads the same in any process that maps it.",
+    oracle: "A write-here, read-there round trip between processes",
+    bullets: [
+      "Heap and file-backed shared regions behind one bump allocator",
+      "The consumer's mapping is read-only, with checked, origin-tracked views",
+      "How Arrow batches cross processes without a copy",
     ],
   },
   {
@@ -383,15 +437,30 @@ export const tins: Tin[] = [
     ],
   },
   {
+    name: "lint",
+    short: "mojolint · origin and threading mistakes",
+    pkg: "lint-mojo",
+    repo: "https://github.com/magmalake/lint.mojo",
+    version: "0.1.4",
+    tier: "utility",
+    what:
+      "mojolint, a linter for the origin and threading mistakes the Mojo compiler accepts, asking mojo-lsp-server, the compiler's own frontend, for resolved types and uses. A proof of concept.",
+    oracle: "threads.example's uncaught programs flagged, and the correct ones beside them silent",
+    bullets: [
+      "Text mode needs nothing; --lsp uses the project's own mojo-lsp-server",
+      "Run in CI by the magmalake tins",
+    ],
+  },
+  {
     name: "k8s",
     pkg: "k8s-mojo",
-    repo: "https://github.com/magmalake",
+    repo: "https://github.com/magmalake/k8s.mojo",
     version: "soon",
     tier: "utility",
     status: "planned",
     short: "the Kubernetes API from Mojo",
     what:
-      "A Kubernetes API client for Mojo, so dista and orca can start, scale and stop the clusters they run on.",
+      "A Kubernetes API client for Mojo, so Dista and Orca can start, scale and stop the clusters they run on.",
     oracle: "Coming soon",
     bullets: ["Create and watch pods, jobs and deployments"],
   },

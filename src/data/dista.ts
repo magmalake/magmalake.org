@@ -1,4 +1,4 @@
-// dista: the distributed-tasks runtime for Mojo. Every number on the
+// Dista: the distributed-tasks runtime for Mojo. Every number on the
 // /s/dista pages comes from here, and every one of them from a results folder
 // in dista.mojo's bench/cloud/results/ (named in `source`), so updating a run
 // is an edit to this file.
@@ -37,7 +37,7 @@ export const headline = {
 export const distributed: Table = {
   id: "distributed",
   title: "Distributed, 3 nodes",
-  columns: ["dista, before", "dista", "Rust", "Ray"],
+  columns: ["Dista, before", "Dista", "Rust", "Ray"],
   unit: "ms, median of 2 passes",
   source: "gate-2026-11-01-readpath",
   caption:
@@ -58,11 +58,11 @@ export const distributed: Table = {
 export const matrix: Table = {
   id: "scaling",
   title: "Distributed, 3, 6 and 12 nodes",
-  columns: ["dista", "Rust", "Ray"],
+  columns: ["Dista", "Rust", "Ray"],
   unit: "ms, median of 5 passes",
   source: "matrix-2026-11-01",
   caption:
-    "The same queries on 3, 6 and 12 worker nodes, after the read path; answers identical across every run. Two changes since, measured on 12 nodes: dista's driver keeps one manifest cache across queries (iceberg-rust's object cache does the same), and a query planning fewer than 64 files has its files split at row-group boundaries, so the wide query's one file runs as four tasks. The Rust and Ray benchmarks don't split files. Ray's 12-node result moves by up to 50% between runs.",
+    "The same queries on 3, 6 and 12 worker nodes, after the read path; answers identical across every run. Two changes since, measured on 12 nodes: Dista's driver keeps one manifest cache across queries (iceberg-rust's object cache does the same), and a query planning fewer than 64 files has its files split at row-group boundaries, so the wide query's one file runs as four tasks. The Rust and Ray benchmarks don't split files. Ray's 12-node result moves by up to 50% between runs.",
   rows: [
     { label: "3 nodes", values: [11040, 18377, 21275] },
     { label: "6 nodes", values: [7184, 10267, 12737] },
@@ -75,11 +75,11 @@ export const matrix: Table = {
 export const earlierMatrix: Table = {
   id: "matrix",
   title: "Distributed, 3 and 6 nodes, before the read path",
-  columns: ["dista", "Rust", "Ray"],
+  columns: ["Dista", "Rust", "Ray"],
   unit: "ms, median of 5 passes",
   source: "2026-11",
   caption:
-    "The first matrix, before the read path. dista was the slowest of the three here. A 12-node dista run failed its answer check then (fixed since); the table above has the 12-node runs.",
+    "The first matrix, before the read path. Dista was the slowest of the three here. A 12-node Dista run failed its answer check then (fixed since); the table above has the 12-node runs.",
   rows: [
     { label: "3 nodes", values: [53548, 21966, 30140] },
     { label: "6 nodes", values: [35613, 10264, 16140] },
@@ -89,11 +89,11 @@ export const earlierMatrix: Table = {
 export const singleThreads: Table = {
   id: "single-16",
   title: "One process, 16 threads",
-  columns: ["dista", "Rust", "Ray (PyIceberg + pyarrow)"],
+  columns: ["Dista", "Rust", "Ray (PyIceberg + pyarrow)"],
   unit: "ms, the eight queries",
   source: "local-2026-11-01",
   caption:
-    "The head node alone, no workers, every framework on its 16 cores: dista's scan with 16 workers, Rust's multi-threaded tokio runtime with one task per core, pyarrow's default thread pools. Answers identical across the three. Before this run, dista's integer column copies got about 4× faster (q5 26.8 → 15.3 s), and the Rust benchmark was fixed to decode on every core rather than on the one task polling iceberg-rust's stream (195 → 96 s). Rust's row is from local-2026-11-01-2, a re-run.",
+    "The head node alone, no workers, every framework on its 16 cores: Dista's scan with 16 workers, Rust's multi-threaded tokio runtime with one task per core, pyarrow's default thread pools. Answers identical across the three. Before this run, Dista's integer column copies got about 4× faster (q5 26.8 → 15.3 s), and the Rust benchmark was fixed to decode on every core rather than on the one task polling iceberg-rust's stream (195 → 96 s). Rust's row is from local-2026-11-01-2, a re-run.",
   rows: [
     { label: "q1_scan_count", values: [7828, 15597, 9192] },
     { label: "q2_month_range", values: [315, 830, 446] },
@@ -110,11 +110,11 @@ export const singleThreads: Table = {
 export const singleThread: Table = {
   id: "single-1",
   title: "One process, one thread, 8 files' reads in flight",
-  columns: ["dista", "Rust", "Ray (PyIceberg + pyarrow)"],
+  columns: ["Dista", "Rust", "Ray (PyIceberg + pyarrow)"],
   unit: "ms, the eight queries",
   source: "local-2026-11-01",
   caption:
-    "One decoding thread each, with the best settings that allows: up to 8 files' reads in flight (dista's files_at_once, with the next files fetched on a second thread while one decodes; iceberg-rust's concurrency limits on a current-thread runtime; pyarrow's I/O pool next to one CPU thread). dista is level with Rust and 15% behind Ray; overlapping the fetch helped only 8%, so what's left is decode speed on one core. Reading one file at a time instead, Rust took 1,384 s and Ray 1,306 s.",
+    "One decoding thread each, with the best settings that allows: up to 8 files' reads in flight (Dista's files_at_once, with the next files fetched on a second thread while one decodes; iceberg-rust's concurrency limits on a current-thread runtime; pyarrow's I/O pool next to one CPU thread). Dista is level with Rust and 15% behind Ray; overlapping the fetch helped only 8%, so what's left is decode speed on one core. Reading one file at a time instead, Rust took 1,384 s and Ray 1,306 s.",
   rows: [
     { label: "q1_scan_count", values: [28022, 34318, 17537] },
     { label: "q2_month_range", values: [391, 834, 533] },
@@ -146,7 +146,7 @@ export const timeline = {
 export const images = {
   source: "gate-2026-11-01-readpath",
   rows: [
-    { label: "dista", build: 122, deps: 35.1, compile: 54.0, unpacked: 93, gzip: 32 },
+    { label: "Dista", build: 122, deps: 35.1, compile: 54.0, unpacked: 93, gzip: 32 },
     { label: "Rust", build: 170, deps: 93.4, compile: 57.9, unpacked: 132, gzip: 41 },
     { label: "Ray", build: 44, deps: 17.5, compile: null, unpacked: 607, gzip: 204 },
   ],
@@ -182,7 +182,7 @@ export const worksToday = [
   "Shuffles: several results from one task, and a task taking a value beside other tasks' results",
   "A task timeline in Chrome's trace format, the driver's own work included",
   "Prometheus metrics on the head and every worker",
-  "The dista command: one head for several programs, dista status, timeline and stop",
+  "The dista command: one head for several programs; dista status, timeline and stop",
   "One container image for every role, 32 MB compressed, on Kubernetes",
 ];
 
@@ -190,5 +190,5 @@ export const notYet = [
   "Refs nested anywhere inside a task's argument",
   "Placement by data location, and spilling to disk",
   "A benchmark that spends its time in user code and the shuffle, not in reading Parquet",
-  "A published package: dista builds from source today",
+  "A published package: Dista builds from source today",
 ];
