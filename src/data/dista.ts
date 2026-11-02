@@ -177,16 +177,18 @@ export const worksToday = [
   "Arrow record batches as task arguments and results",
   "Freeing: reference counts at the head, rt.release",
   "A head that restarts: workers rejoin with what they hold, drivers resume where they were",
-  "Actors: stateful structs on a worker of their own, calls in order",
+  "Actors: stateful structs on a worker of their own, calls in order, handles passed to tasks and other actors",
+  "Actors that survive their worker or the head restarting, restored from checkpoints in a directory or S3",
+  "Shuffles: several results from one task, and a task taking a value beside other tasks' results",
   "A task timeline in Chrome's trace format, the driver's own work included",
+  "Prometheus metrics on the head and every worker",
+  "The dista command: one head for several programs, dista status, timeline and stop",
   "One container image for every role, 32 MB compressed, on Kubernetes",
 ];
 
 export const notYet = [
-  "Actors surviving a worker or head restart (restart, then checkpoints, are next)",
-  "Actor handles passed to tasks and other actors",
-  "Several results from one task, and refs inside arguments: what a shuffle needs",
+  "Refs nested anywhere inside a task's argument",
   "Placement by data location, and spilling to disk",
-  "Prometheus metrics and a cluster command (dista status, dista timeline)",
+  "A benchmark that spends its time in user code and the shuffle, not in reading Parquet",
   "A published package: dista builds from source today",
 ];
