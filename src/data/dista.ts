@@ -213,10 +213,10 @@ export const worksToday = [
   "Prometheus metrics on the head and every worker",
   "The dista command: one head for several programs; dista status, timeline and stop",
   "One container image for every role, 32 MB compressed, on Kubernetes",
+  "A published package: pixi shelf add dista-mojo",
 ];
 
 export const notYet = [
-  "A published package: Dista builds from source today",
   "Refs nested inside a struct or list in a task's argument, which is a compile error for now (deferred, issue 68)",
   "Rebuilding results lost with a worker, as Ray's lineage does: the job fails, naming them, and orca runs it again (deferred, issue 69)",
   "A running job asking for more workers: orca sizes each run's cluster (deferred, issue 76)",
