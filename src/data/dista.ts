@@ -22,7 +22,11 @@ export type Table = {
   columns: string[];
   unit: string;
   rows: Row[];
+  /** Each query, under the rows, when the rows aren't queries themselves. */
+  detail?: Row[];
   source: string;
+  /** A second results folder the table draws on. */
+  also?: string;
   caption: string;
 };
 
@@ -38,20 +42,24 @@ export const distributed: Table = {
   id: "distributed",
   title: "Distributed, 3 nodes",
   columns: ["Dista", "Rust", "Ray"],
-  unit: "ms, median of 2 passes",
-  source: "gate-2026-11-01-readpath",
+  unit: "ms, the eight queries, median pass",
+  source: "matrix-2026-11-01",
+  also: "gate-2026-11-01-readpath",
   caption:
-    "Three worker nodes, 16 task slots each, one task per data file. Every answer matches across the three frameworks: row counts exactly, sums to floating-point rounding.",
+    "Three worker nodes, 16 task slots each, one task per data file, in two runs on separate clusters the same day. With 2 passes the median is the mean of both, so the slow first pass counts in it, and Rust and Ray lose more on that pass than Dista; with 5 the median is a warm pass. Even warm, Rust and Ray were slower on the first cluster: the clusters' own variation. Each query is from the 5-pass run. Every answer matches across the three frameworks: row counts exactly, sums to floating-point rounding.",
   rows: [
-    { label: "q1_scan_count", values: [2439, 6630, 6822] },
-    { label: "q2_month_range", values: [220, 617, 748] },
-    { label: "q3_payment_sum", values: [1723, 5269, 6274] },
-    { label: "q4_tip_ratio", values: [2072, 5014, 7684] },
-    { label: "q5_top_zones", values: [1889, 4426, 6344] },
-    { label: "q6_zone_revenue", values: [251, 616, 896] },
-    { label: "q7_wide", values: [1122, 1150, 1281] },
-    { label: "q8_selective", values: [2293, 5022, 8520] },
-    { label: "total", values: [12008, 28744, 38570] },
+    { label: "2 passes", values: [12008, 28744, 38570] },
+    { label: "5 passes", values: [11040, 18377, 21275] },
+  ],
+  detail: [
+    { label: "q1_scan_count", values: [1981, 2306, 4128] },
+    { label: "q2_month_range", values: [157, 429, 409] },
+    { label: "q3_payment_sum", values: [1599, 3347, 4168] },
+    { label: "q4_tip_ratio", values: [1980, 3538, 3528] },
+    { label: "q5_top_zones", values: [1889, 3481, 3483] },
+    { label: "q6_zone_revenue", values: [247, 468, 493] },
+    { label: "q7_wide", values: [1001, 1074, 1219] },
+    { label: "q8_selective", values: [2169, 3756, 3603] },
   ],
 };
 
