@@ -195,11 +195,14 @@ export const runtime = [
 ];
 
 export const worksToday = [
-  "Tasks: a top-level Mojo function, declared once, called with rt.remote",
+  "Tasks: a top-level Mojo function, declared once, called with rt.remote; Task2 and Task3 for two or three arguments",
   "Results that stay on the worker that computed them, mapped from shared memory on the same host or fetched from that worker directly",
   "Tasks on other tasks' results: one ObjectRef, or a list gathered into a Seq",
   "Placement by data location: a task goes to the node holding most of its input, when one does",
   "Tasks whose worker dies run again on another, up to DISTA_TASK_RETRIES times",
+  "Draining: a worker that Kubernetes stops finishes its tasks, and its results and its actor move to other workers, so nothing fails or runs twice",
+  "Spilling: past DISTA_STORE_BYTES, a worker's results go to disk, and readers find them there",
+  "Backpressure: with too much queued, rt.remote waits for the workers to catch up",
   "Arrow record batches as task arguments and results",
   "Freeing: reference counts at the head, rt.release",
   "A head that restarts: workers rejoin with what they hold, drivers resume where they were",
@@ -213,7 +216,8 @@ export const worksToday = [
 ];
 
 export const notYet = [
-  "Refs nested anywhere inside a task's argument",
-  "Spilling results to disk",
   "A published package: Dista builds from source today",
+  "Refs nested inside a struct or list in a task's argument, which is a compile error for now (deferred, issue 68)",
+  "Rebuilding results lost with a worker, as Ray's lineage does: the job fails, naming them, and orca runs it again (deferred, issue 69)",
+  "A running job asking for more workers: orca sizes each run's cluster (deferred, issue 76)",
 ];
