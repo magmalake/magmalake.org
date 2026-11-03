@@ -11,7 +11,7 @@ const description =
 const tinTiers = [...TIERS, "oracle" as const];
 ---
 
-<Base title="Data lake building blocks in Mojo" description={description} bare={false}>
+<Base title="Data processing in Mojo" description={description} bare={false}>
   <Hero />
 
   <!-- ============================ what this is ============================ -->
@@ -23,12 +23,12 @@ const tinTiers = [...TIERS, "oracle" as const];
       <div class="two-col">
         <div class="prose">
           <p>
-            magmalake began as a question — now that Mojo has reached 1.0, can one implement
+            magmalake began when Mojo reached 1.0 as an exploration in building
             a meaningfully large data library in it? — and I picked
             <a href="https://iceberg.apache.org" rel="noopener">Apache Iceberg</a> as the
-            target. The answer was yes, and what came out is a stack rather than a demo.
+            target. What came out is a stack rather than a demo.
             Parquet, Avro, Thrift, Iceberg itself, Roaring bitmaps, Snappy and the hashes are
-            implemented in Mojo, not wrapped. A few very mature C libraries are linked rather
+            implemented in Mojo. A few very mature C libraries are linked rather
             than reimplemented — <strong>libzstd</strong>, <strong>liblz4</strong> and
             <strong>libbrotli</strong> for those three codecs, <strong>libcurl</strong> for
             HTTP and TLS, and <strong>pthreads</strong> for the threads the language does not
@@ -37,20 +37,12 @@ const tinTiers = [...TIERS, "oracle" as const];
           </p>
           <p>
             Then it grew upward. <a href="/s/orca">Orca</a> is the orchestration layer:
-            pipelines as DAGs in Mojo, checked by the compiler, partitioned by month or day
+            pipelines as DAGs in Mojo, checked by the compiler, partitioned by time or arbitrary keys
             and run on cron schedules, with a scheduler that backfills and retries. It loads
             every month of NYC taxi trips since 2011, 1.44 billion rows, four runs at a time.
-            <a href="/s/dista">Dista</a>, beneath it, runs Mojo functions across a cluster,
-            with results that stay on the worker that made them; on those taxi rows in S3 it
-            beats both Ray and a Rust implementation of the same queries. Small utilities, an
-            XML parser, a linter and soon a Kubernetes client, fill the gaps those need.
-          </p>
-          <p>
-            Where it stands today: native Parquet decode is <em>faster</em> than pyarrow on a
-            single core; writes and thread-pooled scans still lose, and the language is still
-            missing pieces a data stack assumes. I don't read the misses as limits of the
-            approach — they are the current position on a roadmap, and the measurements say
-            exactly where the line is.
+            <a href="/s/dista">Dista</a>, beneath it, runs Mojo functions distributed across a cluster.
+            On those taxi rows in S3 it
+            beats both Ray and a Rust implementation of the same queries.
           </p>
         </div>
 
@@ -62,21 +54,6 @@ const tinTiers = [...TIERS, "oracle" as const];
             <a href="https://mojoshelf.org" rel="noopener">mojoshelf.org</a> — a registry for
             Mojo <em>tins</em> on top of pixi. Every tin here is published there and installable with one
             command.
-          </p>
-          <pre class="callout__code"><code>pixi shelf add iceberg-mojo</code></pre>
-          <p class="callout__fine">
-            Working with a coding agent? <code>npx skills add mojoshelf/mojoshelf --skill
-            mojoshelf-consume --yes</code> teaches it to find and install tins on its own —
-            it installs the <code>shelf</code> CLI too.
-          </p>
-          <p class="callout__fine">
-            Tins are <strong>git source dependencies, not conda-channel packages</strong> —
-            <code>pixi add</code> will not find them, which is the first thing people trip on.
-            <code>pixi shelf add</code> resolves the tin and everything it depends on.
-          </p>
-          <p class="callout__fine">
-            Source tins can be consumed as git submodules, or as pixi git source dependencies.
-            The pixi approach is recommended because it encapsulates any additional build process.
           </p>
           <a class="callout__link" href="https://mojoshelf.org" rel="noopener">
             mojoshelf.org
@@ -90,25 +67,22 @@ const tinTiers = [...TIERS, "oracle" as const];
         <aside class="callout" id="skills">
           <h3 class="callout__title">Skills for coding agents</h3>
           <p>
-            What magmalake learned making its code fast is packaged as agent skills, so an
+            What magmalake learned making its code fast is packaged as an agent skill, so an
             agent writing a data pipeline in Mojo starts with it. Each rule carries the
             measurement behind it.
           </p>
           <pre class="callout__code"><code>npx skills add magmalake/skills</code></pre>
           <p class="callout__fine">
-            That installs both. In Claude Code you can instead run{" "}
+            That installs it. In Claude Code you can instead run{" "}
             <code>/plugin marketplace add magmalake/skills</code> and then{" "}
             <code>/plugin install skills@magmalake</code>.
           </p>
           <p class="callout__fine">
             <a href="https://github.com/magmalake/skills/tree/main/mojo-data-performance" rel="noopener"><code>mojo-data-performance</code></a>
-            covers a pipeline's per-row loops, and how to tell the time spent decoding from
-            the time spent on your own work without a second implementation to compare
-            against.
-          </p>
-          <p class="callout__fine">
-            <a href="https://github.com/magmalake/skills/tree/main/writing-performant-data-code" rel="noopener"><code>writing-performant-data-code</code></a>
-            covers columnar readers, writers and codecs, and how to measure them honestly.
+            covers a pipeline's per-row loops and the readers, writers and codecs under
+            them, how to tell the time spent decoding from the time spent on your own work
+            without a second implementation to compare against, and how to take a
+            benchmark number that survives being checked.
           </p>
         </aside>
         </div>

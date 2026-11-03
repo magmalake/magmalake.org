@@ -99,12 +99,12 @@ the two repos whose benchmarks are not on that harness yet, is on
 The rules above are five of a list of thirty-five rules. The rest — fast-path gates that
 cannot be satisfied, decoding into the destination representation, the shape of
 a parallel decomposition, the tests that catch an optimisation which silently
-never fires — are packaged as an agent skill, `writing-performant-data-code`,
+never fires — are packaged in an agent skill, `mojo-data-performance`,
 written for anyone building a columnar reader rather than for readers of this
 site:
 
 ```sh
-npx skills add magmalake/skills --skill writing-performant-data-code --yes
+npx skills add magmalake/skills --skill mojo-data-performance --yes
 ```
 
 It installs for Claude Code, Codex, Cursor and GitHub Copilot, among others;
