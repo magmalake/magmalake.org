@@ -152,11 +152,24 @@ pixi shelf add orca-mojo`} />
       <CodeBlock label="shell" code={`pixi run mojo build lake.mojo -o build/lake
 ./build/lake run --partitions 2024-01..2024-03`} />
       <p>
-        The <code>orca</code> binary, which schedules runs and serves the UI, builds from
-        the repository with <code>pixi run orca</code>. To see the UI before running
-        anything real, the repository's playground starts it on this machine with a
-        throwaway Postgres, the example pipelines and their runs, two of them on a stand-in
-        EC2:
+        The <code>orca</code> command, which registers pipelines, schedules runs and serves
+        the UI, is in the package too, as <code>orca.command</code>. A project's own
+        <code>orca</code> is two lines, in any file not named <code>orca.mojo</code>
+        (that name would be the module <code>orca</code> itself):
+      </p>
+      <CodeBlock label="Mojo" code={`# bin/scheduler.mojo
+from orca.command import orca_command
+
+def main() raises:
+    orca_command()`} />
+      <CodeBlock label="shell" code={`pixi run mojo build bin/scheduler.mojo -o build/orca
+./build/orca locate build/lake --root .     # where each step's code is, for the UI's links
+ORCA_DATABASE_URL=postgresql:///orca ./build/orca register ./build/lake
+ORCA_DATABASE_URL=postgresql:///orca ./build/orca ui     # http://127.0.0.1:8270`} />
+      <p>
+        To see the UI before running anything real, the repository's playground starts it on
+        this machine with a throwaway Postgres, the example pipelines and their runs, two of
+        them on a stand-in EC2:
       </p>
       <CodeBlock label="shell" code={`git clone ${ORCA_REPO} && cd orca.mojo
 git clone https://github.com/magmalake/dista.mojo ../dista.mojo
