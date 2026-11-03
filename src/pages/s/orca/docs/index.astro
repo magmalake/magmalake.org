@@ -2,20 +2,42 @@
 import Base from "../../../../layouts/Base.astro";
 import OrcaNav from "../../../../components/OrcaNav.astro";
 import OrcaFooter from "../../../../components/OrcaFooter.astro";
+import CodeBlock from "../../../../components/CodeBlock.astro";
 import { ORCA_REPO, ORCA_PRS } from "../../../../data/orca";
 
 const description =
-  "How to use Orca: declaring steps and pipelines, partitions and schedules, the command line every pipeline binary gets, the scheduler and backfills, the web UI, runs in Postgres and resuming them, pinned Iceberg reads and recognised commits, datasets and lineage, sensors and rebuilds.";
+  "How to use Orca: installing it, declaring steps and pipelines, partitions by date or by name, the command line every pipeline binary gets, the scheduler and backfills, running on Kubernetes or EC2, the web UI and its login, versions and links to the code, runs in Postgres, Iceberg tables, datasets and lineage, sensors and rebuilds, and logs in object storage.";
 
 const env = [
   ["ORCA_DATABASE_URL", "the Postgres database runs are recorded in; unset, run runs in memory", "unset"],
   ["ORCA_STALE_SECONDS", "how old a run's heartbeat must be before another process may resume it", "30"],
   ["ORCA_WORKERS", "the local Dista workers a run forks", "4"],
-  ["ORCA_LOGS", "the directory attempts' logs and the run's timeline go in; the scheduler's runs log there too", "unset"],
+  ["ORCA_LOGS", "where attempts' logs, timelines, driver logs and instance logs go: a directory or s3://bucket/prefix", "unset"],
+  ["ORCA_LOG_STAGE", "where a log bound for object storage is written until it's complete", "$TMPDIR/orca-logs"],
+  ["ORCA_WAREHOUSE", "the root of the filesystem catalog datasets are found in, a directory or s3://; ns.table is <warehouse>/ns/table", "unset"],
   ["ORCA_RETRY_SECONDS", "the scheduler's first wait before retrying a failed run, doubled with each start", "60"],
-  ["ORCA_UI_ADDR", "host:port orca ui listens on", "127.0.0.1:8270"],
-  ["ORCA_WAREHOUSE", "the root of the filesystem catalog datasets are found in: ns.table is <warehouse>/ns/table", "unset"],
   ["ORCA_SENSE_SECONDS", "how often the scheduler asks a sensor's binary for its datasets' current snapshots", "60"],
+  ["ORCA_RUNNER", "where the scheduler starts runs: local, kubernetes or ec2", "local"],
+  ["ORCA_VCPU_BUDGET", "the vCPUs all live runs' pods or instances may use together; a run that would go over waits", "no limit"],
+  ["ORCA_RUN_ENV", "the scheduler's variables, by name and comma-separated, copied to every run's pods or instances", "unset"],
+  ["ORCA_RUN_DEADLINE", "seconds after which a run's pods or instances are removed whatever their state", "86400"],
+  ["ORCA_IMAGE", "the image a run's binary is in, recorded with its version; the runners set it", "unset"],
+  ["ORCA_EC2_HEAD_TYPE", "the head instance's type, unless registration gave one", "c7g.large"],
+  ["ORCA_EC2_WORKER_TYPE", "the worker instances' type, unless registration gave one", "c7g.xlarge"],
+  ["ORCA_EC2_AMI", "the image run instances boot", "unset"],
+  ["ORCA_EC2_SUBNET, ORCA_EC2_SECURITY_GROUP, ORCA_EC2_PROFILE", "where run instances go, their security group, and their instance profile", "unset"],
+  ["ORCA_EC2_DATABASE_URL", "the database URL run instances use, such as the control instance's private address", "ORCA_DATABASE_URL"],
+  ["ORCA_EC2_PREAMBLE", "shell run on each instance before the pipeline, such as an ECR login", "unset"],
+  ["ORCA_EC2_MODE", "docker runs the image on the instance; direct runs the binary, for the tests' stand-in EC2", "docker"],
+  ["ORCA_CLUSTER_LOG_SECONDS", "how often a run instance uploads its head's or worker's log", "30"],
+  ["ORCA_RUNS_NAMESPACE", "the Kubernetes namespace runs' pods go in", "orca-runs"],
+  ["ORCA_UI_ADDR", "host:port orca ui listens on", "127.0.0.1:8270"],
+  ["ORCA_UI_LOGIN", "required makes the UI's actions need a login even before any user exists", "on once a user exists"],
+  ["ORCA_UI_SESSION_HOURS", "how long a login lasts", "12"],
+  ["ORCA_UI_SECURE_COOKIES", "1 marks the session cookie Secure, for a UI behind HTTPS", "unset"],
+  ["ORCA_UI_TRUST_PROXY", "1 takes a request's address from X-Forwarded-For, behind a proxy you run", "unset"],
+  ["ORCA_UI_URL", "the UI's public address, for the Open in Perfetto link", "unset"],
+  ["ORCA_DOCS_URL", "where the UI's Docs links point", "https://mlake.dev/s/orca/docs/"],
   ["ORCA_NOW", "fixes the clock of fires and the scheduler, as 2024-03-10T07:00Z or epoch seconds, for tests", "the clock"],
   ["ORCA_ZONEINFO", "where time zones' TZif files are read from", "/usr/share/zoneinfo"],
   ["DISTA_ROLE", "head or worker: the binary runs as that Dista process instead", "unset"],
@@ -31,25 +53,32 @@ const rules = [
 ];
 
 const schedulerCmds = [
-  ["orca register <binary>...", "runs the binary's describe and records it, its path, its schedule and its limits"],
+  ["orca locate <binary>... [--root <dir>]", "finds each step's function, each Dista task and the pipeline in the source, and writes <binary>.source.json for the UI's links"],
+  ["orca register [options] <binary>...", "runs the binary's describe and records it, its path, its schedule and its limits, as a new version if its code or commit changed; --image, --head-type, --worker-type, --workers and --spot say how it runs on Kubernetes or EC2"],
   ["orca backfill <pipeline> KEYS", "queues one run per partition that hasn't succeeded and isn't queued or running"],
   ["orca tick", "one pass: fires what's due, starts queued runs and retries up to max_runs, then exits"],
   ["orca scheduler", "a tick every second, until it's stopped"],
   ["orca lineage <dataset> [<snapshot>]", "what a snapshot (the latest, without one) was made from, and what was made from it"],
   ["orca rebuild <dataset> KEYS", "reruns every pipeline downstream of the dataset over the keys, in dependency order"],
+  ["orca ui", "the web UI"],
+  ["orca user add|remove <name>, orca user list", "the UI's users; add reads the password from standard input"],
 ];
 
 const uiPages = [
-  ["/", "pipelines, with their schedules, next fires and last runs"],
-  ["/pipelines/<name>", "a pipeline's DAG, partitions, schedule, next fires and runs, and the forms to start a run and backfill a range"],
+  ["/", "pipelines, with their schedules, next runs and last runs, and runs per day over the last 30 days"],
+  ["/pipelines/<name>", "a pipeline's DAG, partitions, schedule, next runs, versions and runs, its code, and the forms to start a run and backfill a range; a keyed one's keys, done, live and failed"],
+  ["/pipelines/<name>/keys/<key>", "one key of a keyed pipeline: its steps in every run it was in"],
   ["/runs", "runs, newest first; ?pipeline=, ?status=, ?trigger="],
-  ["/runs/<id>", "a run's DAG in its steps' colours, its steps and partitions, attempts, errors, reads and commits, and resume, rerun from a step and cancel"],
+  ["/runs/<id>", "a run's DAG in its steps' colours, its steps and partitions, attempts, errors, reads and commits, its source and code, its timeline and instances, and resume, rerun from a step and cancel"],
   ["/runs/<id>/attempts/<attempt>", "an attempt's log, its last MiB, with its error"],
   ["/runs/<id>/timeline.json", "the run's Dista timeline, for Perfetto"],
+  ["/runs/<id>/driver.log", "the run's driver output, as the scheduler kept it"],
+  ["/runs/<id>/cluster/<role>-<instance>.log", "a head's or worker's output, from an EC2 run"],
   ["/datasets", "every dataset with its writers and readers, and the graph of pipelines and datasets"],
   ["/datasets/<name>", "a dataset's place in that graph, its snapshots, its rebuilds and the form to start one"],
   ["/datasets/<name>/snapshots/<id>", "a snapshot's lineage, back and forward, as a graph and as tables"],
   ["/rebuilds/<id>", "a rebuild's pipelines by level, with their runs"],
+  ["/login, /logout", "a session for the actions, as a cookie"],
 ];
 
 const uiActions = [
@@ -78,11 +107,11 @@ const exits = [
       <h1 class="section-title">Using Orca</h1>
       <p class="lede">
         Orca turns a Mojo file of steps into a pipeline binary with a command line. This page
-        covers what works on the main branch today: declaring steps and pipelines, their
-        partitions and schedules, running them by hand or from the scheduler, recording and
-        resuming runs in Postgres, reading and writing Iceberg tables from a step, lineage
-        across pipelines, and sensors and rebuilds. The
-        plan is in the
+        covers orca-mojo 0.1.0: installing it, declaring steps and pipelines, their
+        partitions and schedules, running them by hand or from the scheduler, on this machine,
+        on Kubernetes or on EC2, the web UI, recording and resuming runs in Postgres, reading
+        and writing Iceberg tables from a step, lineage across pipelines, and sensors and
+        rebuilds. The plan is in the
         repository's <a href={`${ORCA_REPO}/blob/main/DESIGN.md`} rel="noopener">DESIGN.md</a>.
       </p>
 
@@ -93,7 +122,9 @@ const exits = [
         <a href="#partitions">Partitions and schedules</a>
         <a href="#cli">The command line</a>
         <a href="#scheduler">The scheduler</a>
+        <a href="#runners">On Kubernetes and EC2</a>
         <a href="#ui">The UI</a>
+        <a href="#versions">Versions and code links</a>
         <a href="#state">Runs in Postgres</a>
         <a href="#tables">Iceberg tables</a>
         <a href="#datasets">Datasets and lineage</a>
@@ -106,22 +137,39 @@ const exits = [
 
       <h2 id="build">Build it</h2>
       <p>
-        Orca isn't published as a package yet. It builds from source with pixi, and compiles
-        Dista from a checkout beside it:
+        Orca is the mojoshelf tin <code>orca-mojo</code>. With pixi and mojoshelf's
+        <code>pixi shelf</code> installed, a new project adds it, and the tins it needs come
+        with it:
       </p>
-      <pre><code>{`git clone ${ORCA_REPO}
-git clone https://github.com/magmalake/dista.mojo
-cd orca.mojo
-pixi run test          # unit, CLI, compile-fail, state, kill, cron and scheduler tests
-pixi run toy           # builds examples/toy.mojo to build/toy
-./build/toy run --partitions 2024-01..2024-03
-pixi run orca          # builds the scheduler to build/orca`}</code></pre>
+      <CodeBlock label="shell" code={`pixi init lake && cd lake
+pixi shelf add orca-mojo`} />
       <p>
-        It targets Mojo 1.2.0, with a nightly environment alongside. Its state goes through
-        postgres-mojo, which loads libpq; the tests start a throwaway Postgres server of
-        their own. <code>orca.tables</code>, the Iceberg part, builds in the
-        <code>data</code> environment (<code>pixi run -e data test-tables</code>), with
-        iceberg and its siblings checked out beside it as well.
+        A pipeline is one Mojo file whose <code>main</code> hands it to
+        <code>orca_main</code> (<a href="#steps">Steps</a> and
+        <a href="#pipelines">Pipelines</a> say what goes in it). Build it, then run it in
+        memory to try it:
+      </p>
+      <CodeBlock label="shell" code={`pixi run mojo build lake.mojo -o build/lake
+./build/lake run --partitions 2024-01..2024-03`} />
+      <p>
+        The <code>orca</code> binary, which schedules runs and serves the UI, builds from
+        the repository with <code>pixi run orca</code>. To see the UI before running
+        anything real, the repository's playground starts it on this machine with a
+        throwaway Postgres, the example pipelines and their runs, two of them on a stand-in
+        EC2:
+      </p>
+      <CodeBlock label="shell" code={`git clone ${ORCA_REPO} && cd orca.mojo
+git clone https://github.com/magmalake/dista.mojo ../dista.mojo
+git clone https://github.com/magmalake/k8s.mojo ../k8s.mojo
+pixi run playground          # then http://127.0.0.1:8270, log in as demo / demo-password`} />
+      <p>
+        Building from source works the same way: the repository compiles Dista and k8s.mojo
+        from those checkouts beside it, <code>pixi run test</code> runs the tests, and
+        <code>pixi run orca</code> builds the scheduler to <code>build/orca</code>. It targets
+        Mojo 1.2.0, with a nightly environment alongside. Its state goes through postgres-mojo,
+        which loads libpq; the tests start a throwaway Postgres server of their own.
+        <code>orca.tables</code>, the Iceberg part, has its tests in the <code>data</code>
+        environment (<code>pixi run -e data test-tables</code>).
       </p>
 
       <h2 id="steps">Steps</h2>
@@ -130,7 +178,7 @@ pixi run orca          # builds the scheduler to build/orca`}</code></pre>
         and returns one output. It's declared once, with its name, its input and output
         types, the function, its kind, and the step it follows:
       </p>
-      <pre><code>{`from dista import Seq
+      <CodeBlock label="Mojo" code={`from dista import Seq
 from orca import Ctx, Gather, Mapped, Month, Pipeline, Step, orca_main
 
 @fieldwise_init
@@ -144,7 +192,7 @@ def total(mut ctx: Ctx, ms: Seq[Measured]) raises -> Int: ...
 
 comptime Days = Step["days", Month, Measured, days, Mapped]
 comptime Measure = Step["measure", Measured, Measured, measure, Mapped, after=Days]
-comptime Total = Step["total", Seq[Measured], Int, total, Gather, after=Measure]`}</code></pre>
+comptime Total = Step["total", Seq[Measured], Int, total, Gather, after=Measure]`} />
       <p>
         A run is over a list of partition keys, months or days. A <code>Mapped</code> step
         runs once per key; a <code>Gather</code> step runs once per run and takes every
@@ -161,10 +209,10 @@ comptime Total = Step["total", Seq[Measured], Int, total, Gather, after=Measure]
 
       <h2 id="pipelines">Pipelines</h2>
       <p>A pipeline is a name and its steps, and the binary's <code>main</code> hands it to <code>orca_main</code>:</p>
-      <pre><code>{`comptime Toy = Pipeline["toy", Days, Measure, Total]
+      <CodeBlock label="Mojo" code={`comptime Toy = Pipeline["toy", Days, Measure, Total]
 
 def main() raises:
-    orca_main[Toy]()`}</code></pre>
+    orca_main[Toy]()`} />
       <p>
         <code>Step</code> and <code>Pipeline</code> check their edges with
         <code>comptime assert</code>s, so a pipeline that breaks one of these rules doesn't
@@ -182,14 +230,14 @@ def main() raises:
         A pipeline says which partitions exist, and optionally when they're due, as
         parameters next to its steps:
       </p>
-      <pre><code>{`comptime Toy = Pipeline[
+      <CodeBlock label="Mojo" code={`comptime Toy = Pipeline[
     "toy", Days, Measure, Total,
     partitions=Monthly["2024-01"],       # every month from January 2024
     schedule=Cron["0 3 2 * *"],          # 03:00 UTC on the 2nd
     fills=Previous,                      # ... for the month before
     max_runs=2,                          # at most two runs at once
     run_retries=3,                       # a failed run is started again 3 times
-]`}</code></pre>
+]`} />
       <p>
         <code>Monthly[start]</code> and <code>Daily[start]</code> are the partition sets; the
         first step's input must be their key, <code>Month</code> or <code>Day</code>, which
@@ -203,19 +251,47 @@ def main() raises:
         (<code>Current</code>), and <code>catchup=False</code> makes only the latest of the
         fires missed while the scheduler was down. All of it is in <code>describe</code>.
       </p>
+      <p>
+        <strong>Partitions by name.</strong> Data that isn't divided by date, such as 20,000
+        recordings named by ID, is partitioned by the values of a column in a dataset:
+      </p>
+      <CodeBlock label="Mojo" code={`from orca import Name
+from orca.keyed import Keyed
+
+comptime Label = Step["label", Name, Int, label, Mapped]
+comptime Labels = Pipeline[
+    "labels", Label, Score,
+    partitions=Keyed["av2.logs", "log_id"],   # the keys are log_id's values
+    keys_per_run=100,                         # a run covers 100 keys
+    sensor=True,                              # new keys start runs
+]`} />
+      <p>
+        The first step takes a <code>Name</code>: 1 to 128 bytes of letters, digits and
+        <code>._:-</code>. The keys are the distinct values of the column in the dataset's
+        current snapshot, which <code>&lt;binary&gt; keys</code> prints. A keyed pipeline has
+        no <code>schedule=</code> or <code>fills=</code>, which the compiler checks; it runs
+        by hand, by backfill, or as a sensor. <code>--partitions</code> takes names separated
+        by commas, <code>@all</code> for every current key, or <code>@file:&lt;path&gt;</code>
+        for a list, one per line; a range or a name that isn't a key is refused. A key is
+        done once every mapped step has succeeded for it with the pipeline's current code,
+        so a backfill queues runs of <code>keys_per_run</code> keys for the ones that aren't,
+        and with <code>sensor=True</code> a new snapshot of the keys dataset starts runs for
+        its new keys only.
+      </p>
 
       <h2 id="cli">The command line</h2>
-      <p>Every pipeline binary gets the same six commands:</p>
-      <pre><code>{`toy describe                              the DAG, partitions and schedule as JSON
+      <p>Every pipeline binary gets the same commands:</p>
+      <CodeBlock label="shell" code={`toy describe                              the DAG, partitions and schedule as JSON
 toy run --partitions 2024-01..2024-03     starts a run and runs it
 toy resume <run> [--allow-new-code]       continues a run at what's unfinished
 toy status [<run>]                        the latest runs, or one run's steps
 toy fires [<count>] [--after <time>]      the next fires and the partitions they fill
-toy sense                                 the current snapshot of each dataset it reads`}</code></pre>
+toy sense                                 the current snapshot of each dataset it reads
+labels keys                               a keyed pipeline's keys snapshot, then its keys`} />
       <p>
         <code>--partitions</code> takes keys of the pipeline's kind, months
         (<code>2024-01</code>) or days (<code>2024-01-31</code>), and ranges of them,
-        separated by commas.
+        separated by commas, or a keyed pipeline's names.
         <code>run</code> and <code>resume</code> print one line per step and partition, then
         the run's status. Without <code>ORCA_DATABASE_URL</code>, <code>run</code> runs in
         memory and records nothing, and <code>resume</code> and <code>status</code> aren't
@@ -249,9 +325,9 @@ toy sense                                 the current snapshot of each dataset i
           </tbody>
         </table>
       </div>
-      <pre><code>{`./build/orca register ./build/taxi
+      <CodeBlock label="shell" code={`./build/orca register ./build/taxi
 ./build/orca backfill taxi 2011-01..2024-12
-./build/orca scheduler`}</code></pre>
+./build/orca scheduler`} />
       <p>
         Each fire is a row with a unique (pipeline, time), inserted with its queued run in one
         transaction, so two schedulers ticking at once, or one killed mid-tick, never fire
@@ -265,6 +341,36 @@ toy sense                                 the current snapshot of each dataset i
         the pipeline's queued runs to the new code.
       </p>
 
+      <h2 id="runners">On Kubernetes and EC2</h2>
+      <p>
+        By default the scheduler starts a run as a process on its own machine, and the run
+        forks its Dista workers there. <code>ORCA_RUNNER</code> starts each run on a
+        cluster of its own instead, from the image the pipeline was registered with:
+      </p>
+      <CodeBlock label="shell" code={`orca register --image 123456789012.dkr.ecr.us-east-2.amazonaws.com/orca:data \\
+    --head-type c7g.large --worker-type c7g.2xlarge --workers 3 ./build/taxi
+ORCA_RUNNER=ec2 orca scheduler`} />
+      <p>
+        <strong><code>ORCA_RUNNER=ec2</code></strong> starts a head instance, on demand,
+        running the Dista head and the driver (<code>&lt;binary&gt; resume &lt;run&gt;</code>),
+        and <code>--workers</code> worker instances pointed at it; <code>--spot</code> makes
+        the workers Spot instances, where the account allows them. Each instance is tagged
+        with its run, told to terminate when it shuts down, and recorded with its type, when
+        it started and ended, and why it ended (it shut itself down, it was terminated, or a
+        Spot interruption). <strong><code>ORCA_RUNNER=kubernetes</code></strong> creates a
+        driver Job, a head Pod and Service and the worker Pods in
+        <code>ORCA_RUNS_NAMESPACE</code>, all labelled with the run and owned by the Job.
+        A pipeline without Dista tasks gets only its driver.
+      </p>
+      <p>
+        Both clean up in layers. A run's instances or pods end when it does; every tick the
+        scheduler removes those of runs that aren't running any more and those older than
+        <code>ORCA_RUN_DEADLINE</code>, so nothing a killed scheduler left behind keeps
+        running. A run whose head goes is started again on new instances. Before making a
+        cluster, the scheduler adds up the vCPUs of every live run's pods or instances, and
+        a run that would take them past <code>ORCA_VCPU_BUDGET</code> waits.
+      </p>
+
       <h2 id="ui">The UI</h2>
       <p>
         <code>orca ui</code> serves pipelines and runs as web pages, from the same
@@ -274,8 +380,8 @@ toy sense                                 the current snapshot of each dataset i
         the scheduler or anywhere else that reaches the database. Nothing is fetched from
         elsewhere, so it works offline.
       </p>
-      <pre><code>{`ORCA_DATABASE_URL=postgresql:///orca ./build/orca ui
-curl -H 'Accept: application/json' http://127.0.0.1:8270/runs/7`}</code></pre>
+      <CodeBlock label="shell" code={`ORCA_DATABASE_URL=postgresql:///orca ./build/orca ui
+curl -H 'Accept: application/json' http://127.0.0.1:8270/runs/7`} />
       <div class="table-scroll">
         <table>
           <thead><tr><th>Path</th><th>What it shows</th></tr></thead>
@@ -305,10 +411,60 @@ curl -H 'Accept: application/json' http://127.0.0.1:8270/runs/7`}</code></pre>
       <p>
         The UI never starts a pipeline binary. An action writes rows in Postgres, and the
         scheduler starts the queued runs on its next tick, within <code>max_runs</code>, so
-        the UI does nothing without a scheduler running. There's no authentication: it binds
-        to localhost, and refuses a <code>POST</code> whose <code>Origin</code>, or
+        the UI does nothing without a scheduler running. It binds to localhost unless told
+        otherwise, and refuses a <code>POST</code> whose <code>Origin</code>, or
         <code>Referer</code> without one, isn't its own, so another site's page can't post to
         it through a browser.
+      </p>
+      <p>
+        <strong>Login.</strong> Anyone who can reach the UI can read it. Its actions need a
+        login once there's a user, or with <code>ORCA_UI_LOGIN=required</code> before there
+        is one:
+      </p>
+      <CodeBlock label="shell" code={`orca user add alice          # reads the password from standard input
+orca user list
+orca user remove alice       # and ends their sessions`} />
+      <p>
+        Passwords are kept as bcrypt hashes made by Postgres. A login is a session cookie,
+        <code>HttpOnly</code> and <code>SameSite=Strict</code>, and <code>Secure</code> with
+        <code>ORCA_UI_SECURE_COOKIES=1</code> behind HTTPS. Every action is recorded with
+        its user and shown on its run's page, and so is every failed login: after 5 for one
+        name, or 20 from one address, in 15 minutes, <code>/login</code> answers 429 without
+        checking the password. Behind a proxy, <code>ORCA_UI_TRUST_PROXY=1</code> takes the
+        address from <code>X-Forwarded-For</code>.
+      </p>
+      <p>
+        <strong>On a run's page</strong>, a run with Dista tasks draws its timeline: one lane
+        per worker, each task a bar coloured by its function. With
+        <code>ORCA_UI_URL</code> set to the UI's public address, an Open in Perfetto link
+        opens the full trace there. A run on EC2 lists its instances, with the number of
+        workers over the run, why each instance ended, and each one's log. The step names,
+        the pipeline and its Dista tasks link to their code (<a href="#versions">below</a>),
+        in a new tab, and the headings link to this page's sections
+        (<code>ORCA_DOCS_URL</code> changes where).
+      </p>
+
+      <h2 id="versions">Versions and code links</h2>
+      <p>
+        A pipeline binary can carry the repository and commit it was built from, which each
+        run records and the UI links to:
+      </p>
+      <CodeBlock label="shell" code={`mojo build -D ORCA_SOURCE=$(git remote get-url origin) \\
+    -D ORCA_COMMIT=$(git rev-parse HEAD) \\
+    -D ORCA_DIRTY=$(git diff --quiet HEAD && echo 0 || echo 1) \\
+    lake.mojo -o build/lake
+orca locate build/lake --root .       # writes build/lake.source.json
+orca register build/lake`} />
+      <p>
+        <code>describe</code> reports the source; the registry hash doesn't change with it.
+        <code>orca register</code> and every run and resume record a version: the registry
+        hash, the source, the commit, whether the tree had changes, and the image. A
+        pipeline's page lists its versions with their runs, and a run's page links the
+        commit it ran, at <code>&lt;repo&gt;/tree/&lt;commit&gt;</code>.
+        <code>orca locate</code> finds, in the source tree, the line of each step's
+        function, each Dista task and the pipeline's own declaration, and writes them beside
+        the binary, where <code>orca register</code> reads them; the UI then links each to
+        its line at the commit. A binary built without these just has no links.
       </p>
 
       <h2 id="state">Runs in Postgres</h2>
@@ -318,10 +474,10 @@ curl -H 'Accept: application/json' http://127.0.0.1:8270/runs/7`}</code></pre>
         partition, and every attempt, with the inputs and outputs of each. Each change of
         state is one transaction.
       </p>
-      <pre><code>{`ORCA_DATABASE_URL=postgresql:///orca ./build/toy run --partitions 2024-01..2024-03
+      <CodeBlock label="shell" code={`ORCA_DATABASE_URL=postgresql:///orca ./build/toy run --partitions 2024-01..2024-03
 ./build/toy status          # the latest runs
 ./build/toy status 7        # run 7's steps and attempts
-./build/toy resume 7`}</code></pre>
+./build/toy resume 7`} />
       <p>
         <code>resume</code> reruns every step that hasn't succeeded, in order, with its
         recorded input; steps that succeeded are read back, not run again. A run started by a
@@ -350,14 +506,14 @@ curl -H 'Accept: application/json' http://127.0.0.1:8270/runs/7`}</code></pre>
         A step reads and writes Iceberg tables through <code>orca.tables</code>, which is
         what makes a rerun safe:
       </p>
-      <pre><code>{`from orca.tables import append, scan
+      <CodeBlock label="Mojo" code={`from orca.tables import append, scan
 
 def load(mut ctx: Ctx, raw: RawFile) raises -> Loaded:
     var src = Table.load_local(raw.table)
     var batches = scan(ctx, src).to_batches()
     var dst = Table.load_local(OUT)
     var id = append(ctx, dst, transform(batches))
-    return Loaded(raw.month, id)`}</code></pre>
+    return Loaded(raw.month, id)`} />
       <p>
         <strong><code>scan</code></strong> reads a table at a pinned snapshot: its current
         one on the step's first attempt, which is recorded, and the same one on every retry
@@ -388,7 +544,7 @@ def load(mut ctx: Ctx, raw: RawFile) raises -> Loaded:
         <code>lake.clean</code> is the table at <code>&lt;warehouse&gt;/lake/clean</code>. A
         step declares the datasets it reads and writes, and loads them through its context:
       </p>
-      <pre><code>{`from orca.tables import append, ensure_table, scan, table
+      <CodeBlock label="Mojo" code={`from orca.tables import append, ensure_table, scan, table
 
 def clean(mut ctx: Ctx, m: Month) raises -> Int64:
     var src = scan(ctx, table(ctx, "lake.raw")).to_batches()
@@ -398,7 +554,7 @@ def clean(mut ctx: Ctx, m: Month) raises -> Int64:
 comptime Clean = Step[
     "clean", Month, Int64, clean, Mapped,
     reads=["lake.raw"], writes=["lake.clean"],
-]`}</code></pre>
+]`} />
       <p>
         <code>scan</code> fails the attempt on a dataset the step didn't declare in
         <code>reads=</code>, and <code>append</code> and <code>commit</code> on one it didn't
@@ -415,21 +571,21 @@ comptime Clean = Step[
         snapshots that attempt read, what made each of those, and so on, to sources no Orca
         run made. Forward: everything made from it. Both stop after 20 steps.
       </p>
-      <pre><code>{`$ ./build/orca lineage lake.report
+      <CodeBlock label="output" code={`$ ./build/orca lineage lake.report
 lake.report@3141592653
 made from:
   0 lake.report@3141592653 by report run 9 report code 0x5e1f... from lake.clean@2718281828
   1 lake.clean@2718281828 by clean run 8 clean 2024-02 code 0x9a0c... from lake.raw@1618033988
   2 lake.raw@1618033988 by ingest run 6 load 2024-02 code 0x77d2...
 made from it:
-  nothing`}</code></pre>
+  nothing`} />
 
       <h2 id="sensors">Sensors and rebuilds</h2>
       <p>
         <code>sensor=True</code> on a pipeline runs it when a dataset it reads, and doesn't
         write itself, gets a new snapshot:
       </p>
-      <pre><code>{`comptime Report = Pipeline["report", Summarise, partitions=Monthly["2024-01"], sensor=True]`}</code></pre>
+      <CodeBlock label="Mojo" code={`comptime Report = Pipeline["report", Summarise, partitions=Monthly["2024-01"], sensor=True]`} />
       <p>
         The scheduler finds snapshots in two ways. A snapshot a succeeded run of another
         pipeline committed is in Postgres, and is seen on the next tick. One that something
@@ -449,10 +605,10 @@ made from it:
         today falls in. A day upstream is the month that contains it downstream, and a month
         upstream is each of its days.
       </p>
-      <pre><code>{`$ ./build/orca rebuild raw.events 2024-03
+      <CodeBlock label="output" code={`$ ./build/orca rebuild raw.events 2024-03
 rebuild 1
   level 0 clean 2024-03
-  level 1 report 2024-03`}</code></pre>
+  level 1 report 2024-03`} />
       <p>
         A rebuild runs every pipeline downstream of a dataset, sensor or not, over the
         partitions given. Each pipeline is placed at its longest distance from the dataset,
@@ -468,7 +624,7 @@ rebuild 1
         The pipeline names the Dista tasks its steps use, and a step gets the run's
         runtime from its <code>Ctx</code>:
       </p>
-      <pre><code>{`from dista import ObjectRef, Task
+      <CodeBlock label="Mojo" code={`from dista import ObjectRef, Task
 from orca import Tasks
 
 comptime Trips = Task[Day, Int, trips]
@@ -484,7 +640,7 @@ def month_trips(mut ctx: Ctx, m: Month) raises -> Int:
         total += rt.get(r)
     return total
 
-comptime Fanout = Pipeline["fanout", MonthTrips, AllTrips, tasks=FanoutTasks]`}</code></pre>
+comptime Fanout = Pipeline["fanout", MonthTrips, AllTrips, tasks=FanoutTasks]`} />
       <p>
         Each run gets one Dista runtime, started before anything else so that the head and
         workers it forks inherit no database connection or thread. Locally it forks
@@ -502,7 +658,19 @@ comptime Fanout = Pipeline["fanout", MonthTrips, AllTrips, tasks=FanoutTasks]`}<
         timestamps. The path is recorded with the attempt and shown by
         <code>status &lt;run&gt;</code>. A run with Dista tasks writes the runtime's timeline
         beside them as <code>timeline.json</code>, in Chrome's trace format, which Perfetto
-        opens. Logs in S3 come with phase 5.
+        opens. The scheduler keeps a run's driver output as <code>driver.log</code>, and an
+        EC2 run's head and workers upload theirs to
+        <code>cluster/&lt;role&gt;-&lt;instance&gt;.log</code> every
+        <code>ORCA_CLUSTER_LOG_SECONDS</code> while they run, as an instance can go without
+        notice.
+      </p>
+      <p>
+        <code>ORCA_LOGS</code> and <code>ORCA_WAREHOUSE</code> can be locations in object
+        storage, <code>s3://bucket/prefix</code>, configured from the <code>AWS_*</code>
+        environment or the instance's role. An object can't be appended to, so a log is
+        written to a file under <code>ORCA_LOG_STAGE</code> and uploaded when it's complete:
+        an attempt's when the attempt ends, a timeline when the run does. The UI reads them
+        back from wherever they are.
       </p>
 
       <h2 id="env">Environment</h2>
@@ -541,13 +709,11 @@ comptime Fanout = Pipeline["fanout", MonthTrips, AllTrips, tasks=FanoutTasks]`}<
     scroll-margin-top: 5rem;
   }
   .docs p,
-  .docs pre,
   .docs .table-scroll,
   .docs .docs-list {
     max-width: var(--measure);
   }
   .docs p + p { margin-top: 0.6rem; }
-  .docs pre { margin: 1rem 0 1.1rem; }
   .docs .table-scroll { margin: 1rem 0 1.1rem; }
   .docs table { min-width: 0; }
   .docs-list {
