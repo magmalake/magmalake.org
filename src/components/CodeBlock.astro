@@ -1,0 +1,71 @@
+---
+/**
+ * A block of code or shell in a box, with a button that copies it. The
+ * button needs JavaScript and the clipboard API; without them the code is
+ * still there to select.
+ */
+interface Props {
+  code: string;
+  /** What the code is, for screen readers: "shell", "Mojo", "output". */
+  label?: string;
+}
+const { code, label = "code" } = Astro.props;
+---
+
+<div class="codeblock" data-codeblock>
+  <button type="button" class="codeblock__copy" data-copy aria-label={`Copy the ${label}`}>
+    Copy
+  </button>
+  <pre><code>{code}</code></pre>
+</div>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
+    if (button.dataset.bound) continue;
+    button.dataset.bound = "1";
+    button.addEventListener("click", async () => {
+      const code = button.parentElement?.querySelector("code")?.textContent ?? "";
+      try {
+        await navigator.clipboard.writeText(code);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Select it";
+      }
+      setTimeout(() => (button.textContent = "Copy"), 1600);
+    });
+  }
+</script>
+
+<style>
+  .codeblock {
+    position: relative;
+    max-width: var(--measure);
+    margin: 1rem 0 1.1rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+  .codeblock pre {
+    padding: 0.85rem 1rem;
+    padding-right: 4.75rem;
+  }
+  .codeblock__copy {
+    position: absolute;
+    top: 0.45rem;
+    right: 0.45rem;
+    font: inherit;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.2rem 0.55rem;
+    cursor: pointer;
+  }
+  .codeblock__copy:hover,
+  .codeblock__copy:focus-visible {
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+</style>
