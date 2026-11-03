@@ -73,8 +73,8 @@ const groups = [
             )}
             {g.tables.map((t) => {
               const total = t.rows.find((r) => r.label === "total");
-              const shown = total ? [total] : t.rows;
-              const rest = total ? t.rows.filter((r) => r !== total) : [];
+              const shown = t.detail ? t.rows : total ? [total] : t.rows;
+              const rest = t.detail ?? (total ? t.rows.filter((r) => r !== total) : []);
               return (
                 <div class="perf-block" id={t.id}>
                   <h2 class="perf-block__title">
@@ -138,6 +138,11 @@ const groups = [
                   <p class="perf-block__caption">
                     {t.caption}{" "}
                     <a href={`${RESULTS}/${t.source}`} rel="noopener">Results: <code>{t.source}</code></a>
+                    {t.also && (
+                      <>
+                        {" "}and <a href={`${RESULTS}/${t.also}`} rel="noopener"><code>{t.also}</code></a>
+                      </>
+                    )}
                   </p>
                 </div>
               );
