@@ -141,7 +141,9 @@ const exits = [
         <code>pixi shelf</code> installed, a new project adds it, and the tins it needs come
         with it:
       </p>
-      <CodeBlock label="shell" code={`pixi init lake && cd lake
+      <CodeBlock label="shell" code={`pixi init -c https://conda.modular.com/max-nightly -c conda-forge lake && cd lake
+sed -i.bak 's/^\\[workspace\\]/[workspace]\\npreview = ["pixi-build"]/' pixi.toml   # tins build with pixi-build
+pixi add "mojo-compiler==1.2.0"
 pixi shelf add orca-mojo`} />
       <p>
         A pipeline is one Mojo file whose <code>main</code> hands it to
