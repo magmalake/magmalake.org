@@ -13,7 +13,7 @@ const { code, label = "code" } = Astro.props;
 ---
 
 <div class="codeblock" data-codeblock>
-  <button type="button" class="codeblock__copy" data-copy aria-label={`Copy the ${label}`}>
+  <button type="button" class="codeblock__copy" data-copy data-pagefind-ignore aria-label={`Copy the ${label}`}>
     Copy
   </button>
   <pre><code>{code}</code></pre>

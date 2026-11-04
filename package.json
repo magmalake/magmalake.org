@@ -7,13 +7,14 @@
   "license": "Apache-2.0",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
+    "build": "astro build && pagefind --site dist",
     "preview": "astro preview",
     "check": "astro check",
-    "deploy": "astro build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy"
   },
   "devDependencies": {
     "astro": "^5.16.2",
+    "pagefind": "^1.6.0",
     "wrangler": "^4.48.0"
   },
   "dependencies": {
