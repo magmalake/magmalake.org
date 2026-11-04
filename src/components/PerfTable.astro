@@ -1,10 +1,22 @@
 ---
-import type { Group } from "../data/perf";
+import type { Group, Row } from "../data/perf";
+import { tins, pageOf } from "../data/tins";
 
 interface Props {
   group: Group;
+  /** Link each row to the tin pages it belongs to (the /performance highlights). */
+  tinLinks?: boolean;
 }
-const { group } = Astro.props;
+const { group, tinLinks = false } = Astro.props;
+
+const linksOf = (r: Row) =>
+  (r.tins ?? []).flatMap((name) => {
+    const t = tins.find((x) => x.name.toLowerCase() === name);
+    if (!t) return [];
+    // Dista keeps its numbers on a page of their own.
+    const href = t.site === "/s/dista" ? "/s/dista/performance" : `${pageOf(t)}#performance`;
+    return [{ href, label: t.name }];
+  });
 ---
 
 <div class="perf" id={`perf-${group.id}`}>
@@ -14,7 +26,7 @@ const { group } = Astro.props;
         {group.title}<span class="perf__hash" aria-hidden="true">#</span>
       </a>
     </h3>
-    <p class="perf__blurb">{group.blurb}</p>
+    {group.blurb && <p class="perf__blurb">{group.blurb}</p>}
   </div>
 
   <div class="table-scroll">
@@ -33,6 +45,9 @@ const { group } = Astro.props;
               <td>
                 <span class="perf__op">{r.op}</span>
                 {r.note && <span class="perf__note">{r.note}</span>}
+                {tinLinks && linksOf(r).map((l) => (
+                  <a class="perf__tin" href={l.href}>{l.label} &rarr;</a>
+                ))}
               </td>
               <td class="num">{r.lead ? <strong>{r.result}</strong> : r.result}</td>
               <td class="ref">{r.reference ?? "—"}</td>
@@ -76,6 +91,16 @@ const { group } = Astro.props;
     margin-top: 0.15rem;
     line-height: 1.4;
   }
+
+  .perf__tin {
+    display: inline-block;
+    margin-top: 0.3rem;
+    margin-right: 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    text-decoration: none;
+  }
+  .perf__tin:hover { text-decoration: underline; }
 
   .ref { font-size: 0.8125rem; }
   /* Each group is linkable: the id was already in the data, it just never

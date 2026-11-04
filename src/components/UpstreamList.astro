@@ -1,0 +1,103 @@
+---
+/** The upstream bugs a tin's oracle turned up, from src/data/upstream.ts. */
+import { STATUS_LABEL, UPSTREAM_BLURB, type UpstreamIssue } from "../data/upstream";
+
+interface Props {
+  issues: UpstreamIssue[];
+}
+const { issues } = Astro.props;
+---
+
+<div class="upstream">
+  <h3 class="upstream__title">Building it found bugs upstream</h3>
+  <p class="upstream__blurb">{UPSTREAM_BLURB}</p>
+  <ul class="upstream__list">
+    {
+      issues.map((u) => (
+        <li>
+          <a class="upstream__head" href={u.url} rel="noopener">
+            <span class="upstream__project">{u.project}</span>
+            <span class="upstream__ref">{u.ref}</span>
+            <span class:list={["upstream__tag", `upstream__tag--${u.status}`]}>
+              {STATUS_LABEL[u.status]}
+            </span>
+          </a>
+          <span class="upstream__bug">{u.bug}</span>
+        </li>
+      ))
+    }
+  </ul>
+</div>
+
+<style>
+  .upstream {
+    margin-top: 2.5rem;
+    border: 1px solid color-mix(in srgb, var(--ember) 28%, var(--border));
+    border-radius: var(--radius);
+    background: var(--ember-wash);
+    padding: 1.6rem 1.7rem;
+  }
+  .upstream__title {
+    font-size: 1.0625rem;
+    margin-bottom: 0.45rem;
+  }
+  .upstream__blurb {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    max-width: 72ch;
+    margin-bottom: 1.2rem;
+  }
+  .upstream__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: 1rem;
+  }
+  .upstream__list li {
+    border-left: 2px solid color-mix(in srgb, var(--ember) 45%, transparent);
+    padding-left: 0.85rem;
+  }
+  .upstream__head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.55rem;
+    margin-bottom: 0.3rem;
+    text-decoration: none;
+  }
+  .upstream__head:hover .upstream__ref { text-decoration: underline; }
+  .upstream__project {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--ember);
+  }
+  .upstream__ref {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  .upstream__tag {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    color: var(--text-faint);
+    white-space: nowrap;
+  }
+  .upstream__tag--filed {
+    color: var(--ember);
+    border-color: color-mix(in srgb, var(--ember) 45%, transparent);
+  }
+  .upstream__bug {
+    display: block;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+</style>

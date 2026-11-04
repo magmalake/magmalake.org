@@ -3,3 +3,8 @@
 # outlive the decision.
 /issues/*  https://github.com/magmalake/.github/issues/:splat  302
 /issues    https://github.com/magmalake/.github/issues         302
+
+# Pages folded into the per-tin pages at /s/<tin>: each tin's correctness
+# evidence and status now live on its own page, reached from /tins.
+/correctness  /tins  302
+/status       /tins  302

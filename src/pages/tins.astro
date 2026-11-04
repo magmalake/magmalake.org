@@ -1,38 +1,37 @@
 ---
 import Base from "../layouts/Base.astro";
-import TinCard from "../components/TinCard.astro";
 import StackDiagram from "../components/StackDiagram.astro";
 import CodeTabs from "../components/CodeTabs.astro";
-import { tinsByTier, TIER_LABEL, TIERS } from "../data/tins";
+import TakeATinCta from "../components/TakeATinCta.astro";
+import { tins, statusOf } from "../data/tins";
+
+const unpublished = tins.filter((t) => statusOf(t) !== "shelf").map((t) => t.name);
 
 const description =
-  "Every magmalake tin, layer by layer — execution, tables and catalogs, file formats, storage, primitives and utilities — with what each one is and what proves it.";
+  "Every magmalake tin, layer by layer — execution, tables and catalogs, file formats, storage, primitives and utilities — each linking to its own page: what it is, how to install it, what proves it and how fast it is.";
 ---
 
 <Base title="Tins" description={description}>
-  <section class="section section--alt">
+  <section class="section section--alt" id="stack">
     <div class="wrap wrap--wide">
       <p class="eyebrow">The tins</p>
-      <h1 class="section-title">What each one is, and what proves it</h1>
+      <h1 class="section-title">Every tin, layer by layer</h1>
       <p class="lede">
-        Every tin is Apache-2.0 and CI-tested on stable Mojo 1.2.0 and the current nightly,
-        across macOS and Linux. Most are published on mojoshelf; the newest build from source
-        until they are, and the planned ones say so. Each carries its own correctness oracle —
-        an outside implementation I made it agree with.
+        At the top, execution: Orca schedules pipelines, Dista runs Mojo functions across a
+        cluster, and restate makes a flow durable. Beneath it, Iceberg
+        tables and their catalogs; then the file formats a table is made of, and the
+        storage and databases it lives in; then the codecs, hashes and threads they all
+        share, and small utilities beside them. I kept every piece separate, so you can
+        take just the one you need.
       </p>
-
-      {
-        [...TIERS, "oracle" as const].map((tier) => (
-          <div class="tier">
-            <h3 class="tier__label">{TIER_LABEL[tier]}</h3>
-            <div class:list={["tin-grid", tier === "table" && "tin-grid--lead"]}>
-              {tinsByTier(tier).map((t) => (
-                <TinCard tin={t} featured={tier === "table"} />
-              ))}
-            </div>
-          </div>
-        ))
-      }
+      <p class="lede" style="margin-bottom: 2.5rem;">
+        magmalake's own tins are Apache-2.0 and CI-tested on stable Mojo 1.2.0 and the
+        current nightly, across macOS and Linux; the three republished ones keep upstream's
+        MIT licence. Every tin but {unpublished.join(" and ")} is published on mojoshelf.
+        Each of magmalake's own carries a correctness oracle — an outside implementation I
+        made it agree with. Its page says which, with its numbers and its install line.
+      </p>
+      <StackDiagram />
     </div>
   </section>
 
@@ -74,8 +73,8 @@ const description =
           <p>
             Magmalake leans on the packaging infrastructure defined by
             <a href="https://mojoshelf.org" rel="noopener">mojoshelf.org</a> — a registry for
-            Mojo <em>tins</em> on top of pixi. Every tin here is published there and installable with one
-            command.
+            Mojo <em>tins</em> on top of pixi. Nearly every tin here is published there and
+            installable with one command.
           </p>
           <a class="callout__link" href="https://mojoshelf.org" rel="noopener">
             mojoshelf.org
@@ -112,29 +111,13 @@ const description =
     </div>
   </section>
 
-  <!-- ============================== the stack ============================= -->
-  <section class="section section--alt" id="stack">
-    <div class="wrap wrap--wide">
-      <p class="eyebrow">The stack</p>
-      <h2 class="section-title">How they layer</h2>
-      <p class="lede" style="margin-bottom: 2.5rem;">
-        At the top, execution: Orca schedules pipelines, Dista runs Mojo functions across a
-        cluster, and restate makes a flow durable. Beneath it, Iceberg
-        tables and their catalogs; then the file formats a table is made of, and the
-        storage and databases it lives in; then the codecs, hashes and threads they all
-        share, and small utilities beside them. I kept every piece separate, so you can
-        take just the one you need.
-      </p>
-      <StackDiagram />
-    </div>
-  </section>
-
   <!-- ========================== one example per layer ===================== -->
-  <section class="section" id="examples">
+  <section class="section section--alt" id="examples">
     <div class="wrap wrap--wide">
       <p class="eyebrow">In code</p>
       <h2 class="section-title">One example per layer</h2>
       <CodeTabs />
+      <TakeATinCta />
     </div>
   </section>
 </Base>

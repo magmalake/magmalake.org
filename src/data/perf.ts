@@ -1,3 +1,5 @@
+import { headline, setup } from "./dista";
+
 export interface Row {
   op: string;
   /** Extra qualifier shown under the operation. */
@@ -6,6 +8,10 @@ export interface Row {
   /** Highlight the result as a headline number. */
   lead?: boolean;
   reference?: string;
+  /** The tins (by name, lower case) whose pages show this row. */
+  tins?: string[];
+  /** One of the few rows on /performance itself. */
+  highlight?: boolean;
 }
 
 export interface Group {
@@ -13,6 +19,9 @@ export interface Group {
   title: string;
   blurb: string;
   rows: Row[];
+  /** Tins whose pages show the whole group, because its rows only make
+   * sense side by side. */
+  tins?: string[];
 }
 
 /**
@@ -66,6 +75,8 @@ export const perfGroups: Group[] = [
       "Flat columnar Parquet is where the native stack pays off. Nested and mixed data is where it does not, and an Iceberg scan is still behind pyarrow at matched thread counts — both are in the table.",
     rows: [
       {
+        tins: ["parquet"],
+        highlight: true,
         op: "Parquet read, 1M rows — 1 core",
         note: "int64, double and two dictionary columns, uncompressed, four row groups",
         result: "3.77 ms p50 / 3.83 p90 — 265M rows/s",
@@ -73,6 +84,8 @@ export const perfGroups: Group[] = [
         reference: "pyarrow, one thread: 8.0 ms — we are 2.1× faster",
       },
       {
+        tins: ["parquet"],
+        highlight: true,
         op: "Parquet read, 1M rows — 4 workers",
         note: "the same file, ParquetReader.num_workers = 4",
         result: "1.96 ms p50 / 2.07 p90 — 510M rows/s",
@@ -81,6 +94,7 @@ export const perfGroups: Group[] = [
           "pyarrow, threaded across all 10 CPUs: 2.57 ms — we are 1.3× faster while using four threads to its ten",
       },
       {
+        tins: ["parquet"],
         op: "Parquet read, worker scaling",
         note: "the same file at 1 / 2 / 4 / 8 / 10 workers",
         result: "3.77 / 2.42 / 1.96 / 1.90 / 1.90 ms",
@@ -88,6 +102,8 @@ export const perfGroups: Group[] = [
           "it bends at four, which is how many performance cores this M4 has. Past four the p50 buys about 3% and the p90 gets worse — 2.07 ms at four workers, 2.50 ms at eight.",
       },
       {
+        tins: ["parquet"],
+        highlight: true,
         op: "Parquet read, 100k rows, nested and mixed",
         note: "int64, double, string, bool and a list<int32>, snappy — 1 core / 4 workers",
         result: "2.63 ms / 0.98 ms — 0.78 ms at eight workers",
@@ -95,16 +111,20 @@ export const perfGroups: Group[] = [
           "pyarrow 2.24 ms one thread, 0.66 ms threaded — 1.17× and 1.18× faster than us. Still the file we lose, but by a fifth rather than by half.",
       },
       {
+        tins: ["parquet"],
         op: "Parquet write, 1M rows",
         result: "32.8 ms",
         reference: "pyarrow 31.7 ms — parity, inside the run-to-run spread",
       },
       {
+        tins: ["parquet"],
         op: "Parquet footer",
         note: "1,000 columns × 50 row groups = 50,000 column chunks",
         result: "56.6 ms read / 2.6 ms write",
       },
       {
+        tins: ["iceberg"],
+        highlight: true,
         op: "Iceberg scan, 1M rows — 1 core / 4 workers",
         note: "zstd, six columns; best-of-three warm, not the percentile harness",
         result: "30.3 ms / 9.9 ms",
@@ -112,13 +132,15 @@ export const perfGroups: Group[] = [
           "pyarrow on the same four data files: 27.3 ms one thread, 8.8 ms threaded — about 1.1× ahead of us at either thread count. PyIceberg 0.11.1 does the whole scan in 8.0 ms on pyarrow's pool.",
       },
       {
+        tins: ["iceberg"],
         op: "Iceberg scan, nested columns, 200k rows",
         note: "a struct and a list column, 1 core",
         result: "8.7 ms",
         reference:
-          "PyIceberg 5 ms on pyarrow's thread pool in the same runs — about 1.7× faster. Nested reconstruction is the slowest path we have: on the mixed Parquet file above, Dremel assembly into Arrow buffers is 30% of the read and decompression another 25%.",
+          "PyIceberg 5 ms on pyarrow's thread pool in the same runs — about 1.7× faster. Nested reconstruction is the slowest path we have: on the mixed Parquet file in parquet's table, Dremel assembly into Arrow buffers is 30% of the read and decompression another 25%.",
       },
       {
+        tins: ["iceberg"],
         op: "Iceberg scan, 2M rows over eight files",
         note: "1 / 2 / 4 / 8 workers, to_batches",
         result: "60.2 / 32.1 / 19.3 / 14.9 ms — 4.0× at eight",
@@ -126,25 +148,29 @@ export const perfGroups: Group[] = [
           "eight files give the workers more to divide than the four-file table above; PyIceberg reads the same table in 15 ms",
       },
       {
+        tins: ["iceberg"],
         op: "Iceberg append, 1M rows",
         note: "data files, manifests and commit",
         result: "191 ms",
         reference: "PyIceberg 156 ms, writing three times the Parquet bytes",
       },
       {
+        tins: ["iceberg"],
         op: "Iceberg scan planning, 500 manifests",
         result: "19.5 ms for 2,000 file tasks",
         reference:
           "28.9 µs fixed per manifest, 10.2 µs of that the file read itself",
       },
       {
+        tins: ["avro"],
+        highlight: true,
         op: "Avro decode, manifest-shaped records",
         note: "the schema-compiled cursor, 1 core",
         result: "18.1M records/s — 25.9M with field selection",
         lead: true,
         reference: "fastavro 1.12.2 on the same file: 1.70M — 10.7× faster",
       },
-      { op: "Avro inflate", result: "1.0 GB/s" },
+      { tins: ["avro"], op: "Avro inflate", result: "1.0 GB/s" },
     ],
   },
   {
@@ -154,6 +180,8 @@ export const perfGroups: Group[] = [
       "Codecs, hashes and threads — the layer everything above is only as fast as. Single core except where a row counts workers.",
     rows: [
       {
+        tins: ["objectstore"],
+        highlight: true,
         op: "SHA-256",
         note: "pure Mojo with ARMv8 crypto intrinsics; a single timed pass, median of three",
         result: "2.70 GB/s — 590 MB/s scalar fallback",
@@ -161,13 +189,29 @@ export const perfGroups: Group[] = [
         reference: "OpenSSL 3.17 GB/s on the same 64 MiB, in the same process",
       },
       {
-        op: "zstd / lz4 / brotli decompress",
-        note: "FFI — these measure libzstd, liblz4 and libbrotli, not Mojo",
-        result: "11.1–32.9 / 13.5–20.2 / 2.4 GB/s",
+        tins: ["zstd"],
+        op: "zstd decompress",
+        note: "FFI — this measures libzstd, not Mojo",
+        result: "11.1–32.9 GB/s",
         reference:
-          "the zstd and lz4 ranges span compression levels and compressible versus random input",
+          "the range spans compression levels and compressible versus random input",
       },
       {
+        tins: ["lz4"],
+        op: "lz4 decompress",
+        note: "FFI — this measures liblz4, not Mojo",
+        result: "13.5–20.2 GB/s",
+        reference:
+          "the range spans compression levels and compressible versus random input",
+      },
+      {
+        tins: ["brotli"],
+        op: "brotli decompress",
+        note: "FFI — this measures libbrotli, not Mojo",
+        result: "2.4 GB/s",
+      },
+      {
+        tins: ["snappy"],
         op: "snappy decompress",
         note: "pure Mojo, 64 MiB",
         result: "3.15 GB/s compressible, 31.8 GB/s incompressible",
@@ -175,11 +219,13 @@ export const perfGroups: Group[] = [
           "the incompressible path is essentially a memcpy and swings like one — 17.5 GB/s at p90",
       },
       {
+        tins: ["hashes"],
         op: "CRC-32 / murmur3 / XXH64",
         note: "pure Mojo, scalar",
         result: "1.42 / 1.61 / 1.34 GB/s",
       },
       {
+        tins: ["roaring"],
         op: "Roaring bitmap, 10M random values",
         note: "add / serialize / deserialize",
         result: "1.30 s / 22.2 ms / 60.3 ms",
@@ -187,6 +233,7 @@ export const perfGroups: Group[] = [
           "the add figure was published as 5–11 s until the RNG was moved out of the timed loop",
       },
       {
+        tins: ["threads"],
         op: "threads: spawn and join",
         note: "500 sequential pthread round trips",
         result: "≈11 µs warm",
@@ -194,6 +241,7 @@ export const perfGroups: Group[] = [
           "15–20 µs for the first threads a process spawns, so a pool pays that once rather than per task",
       },
       {
+        tins: ["threads"],
         op: "threads: parallel_for over 100M Int64",
         note: "1 / 2 / 4 / 8 / 10 workers",
         result: "2.3× at four workers, 3.5× at ten",
@@ -209,6 +257,7 @@ export const perfGroups: Group[] = [
       "Measured against MinIO on the same machine, so the network is not the story. This repo's bench is a single timed pass rather than the percentile harness; these are the median of three runs.",
     rows: [
       {
+        tins: ["objectstore"],
         op: "S3 multipart upload, 16 MB",
         note: "8 MB parts, each signed with SigV4",
         result: "396 MB/s",
@@ -217,11 +266,14 @@ export const perfGroups: Group[] = [
           "the same object comes back down at 2.3 GB/s — the upload is what pays for hashing and part framing",
       },
       {
+        tins: ["objectstore"],
         op: "HTTP range read, pooled connection",
         note: "200 × 64 KiB, one request each",
         result: "0.147 ms local / 0.495 ms signed S3",
       },
       {
+        tins: ["objectstore"],
+        highlight: true,
         op: "The same 200 ranges, coalesced",
         note: "adjacent spans asked for at once — the shape a Parquet scan actually has",
         result: "0.022 ms local / 0.029 ms signed S3, per range",
@@ -231,6 +283,7 @@ export const perfGroups: Group[] = [
   },
   {
     id: "boundary",
+    tins: ["memory-region"],
     title: "Crossing the boundary",
     blurb:
       "One column of a 79,478,796-row table, read by the same engine — Daft — with nothing changing but how the rows arrive. Every row but one is pyarrow doing the reading, so the ratios are the boundary rather than two readers; the exception says so. Measured 19 September 2026 with pyarrow-flight.example's `pixi run transports`, p50 of five full reads after a discarded warm-up, every leg asserting the same row count.",
@@ -299,24 +352,102 @@ export const perfGroups: Group[] = [
 export interface Pass {
   found: string;
   fix: string;
+  /** The tin the fix landed in. */
+  tin: string;
 }
 
 /** The four optimisation passes, each of which found its bottleneck by profiling. */
 export const passes: Pass[] = [
   {
+    tin: "zstd",
     found: "A dlopen on every single decompress call",
     fix: "About 450 µs per call, spent opening a library that was already open.",
   },
   {
+    tin: "objectstore",
     found: "SHA-256 running 45× off what the hardware can do",
     fix: "The scalar implementation was correct and slow; the CPU had crypto instructions sitting idle.",
   },
   {
+    tin: "avro",
     found: "Avro boxing roughly 60 allocations per record",
     fix: "And JSON schema parsing turning out to be 72% of the cost of reading a manifest.",
   },
   {
+    tin: "iceberg",
     found: "500 byte-identical manifest schemas, each parsed from scratch",
     fix: "Caching the parsed schema and the plan is what puts scan planning at 21 ms; it was three times that before.",
   },
 ];
+
+/** Where and when the hand-measured rows were taken, for each tin page. */
+export const MEASURED_ON =
+  "Apple M4 — ten cores, four of them performance — macOS, stable Mojo 1.0.0, with nothing else building on the machine. Measured on 5 September 2026; the Iceberg rows on 15 September, the boundary rows on 19 September.";
+
+/** The rows a tin's page shows, grouped as on the old single table. */
+export const perfFor = (tin: string): Group[] =>
+  perfGroups
+    // A group shown in part loses its blurb, which speaks for the whole group.
+    .map((g) =>
+      g.tins?.includes(tin) ? g : { ...g, blurb: "", rows: g.rows.filter((r) => r.tins?.includes(tin)) },
+    )
+    .filter((g) => g.rows.length > 0);
+
+export const passesFor = (tin: string): Pass[] => passes.filter((p) => p.tin === tin);
+
+/** The few rows /performance keeps, in its order, plus Dista's headline. */
+export const highlights: Group = {
+  id: "highlights",
+  title: "Highlights",
+  blurb:
+    "The strongest numbers and the clearest losses. Every row links to the tin it belongs to, where the rest of its table is.",
+  rows: [
+    ...perfGroups.flatMap((g) => g.rows.filter((r) => r.highlight)),
+    {
+      tins: ["dista"],
+      op: "Dista: eight taxi queries over 1.4 billion rows in S3",
+      note: `3 × ${setup.machine.split(",")[0]}, median pass, ${setup.date} — measured on AWS, not on the M4`,
+      result: `${headline.dista.toFixed(1)} s a pass`,
+      lead: true,
+      reference: `Rust ${headline.rust.toFixed(1)} s, Ray ${headline.ray.toFixed(1)} s on the same queries, every answer matching`,
+    },
+  ],
+};
+
+/** /performance: its lede. */
+export const perfIntro = [
+  "Most of the rows on this site were measured on one machine, an Apple M4 with ten cores, four of them performance, with nothing else building on it. Same files, and every row reproducible from its own repository. The few below say the most, in both directions: magmalake beats pyarrow on flat columnar Parquet reads, on one core and on four; it loses on nested and mixed data; and an Iceberg scan is still behind pyarrow at matched thread counts. Each tin's page has the rest of its table.",
+];
+
+/** /performance: how the numbers were taken. May hold markup. */
+export const perfMethod = [
+  "Almost every number is a <em>p50 over real iterations</em>, with the p90 beside it where the spread is the point — not a mean, which one slow sample can move by 30%, and not a best-of-N. The two repos whose benchmarks are not on that harness yet, iceberg and objectstore, say so in their own rows. Each benchmark is <em>compiled and then run</em>: JIT-executing a suite with <code>mojo run</code> inflated one of these figures by 1.9×, and comparing a JIT number against a compiled one produced two confident wrong diagnoses before that was found. Rows are taken per benchmark rather than from one pass over a whole suite, and the harness times a reference kernel either side of every benchmark and reads the load average, so a run taken on a busy machine says so instead of quietly reporting inflated numbers. Where a row measures a C library rather than Mojo, it says so.",
+  "<strong>&ldquo;Single core&rdquo; is no longer a property of this stack.</strong> <code>ParquetReader.num_workers</code> and <code>ScanOptions.num_workers</code> both exist now, so every row carries its own thread count — and so does every pyarrow reference, which is quoted either as <em>one thread</em> (<code>set_cpu_count(1)</code>, <code>set_io_thread_count(1)</code>, <code>use_threads=False</code>) or as <em>threaded</em>, pyarrow's own default. On the 1M-row file those two legs are 2.9× apart, so a comparison that does not name the leg is not a comparison.",
+  "They were measured on stable Mojo 1.0.0. The toolchain has since moved to 1.1.0 and 1.2.0, and these numbers were not re-taken for either.",
+];
+
+/** /performance: the CI benchmark histories. May hold markup. */
+export const perfHistory = {
+  before:
+    "<strong>The tables are hand-measured; these are not.</strong> Those numbers were taken in one sitting on the M4, which is why they carry a date rather than a build number. Every merge also runs the same benchmarks on a GitHub runner and appends to a history each repository publishes itself:",
+  after:
+    "Expect those to be slower and noisier than the tables — a shared runner is not a workstation. They are worth reading as <em>trends</em>, not as absolute figures: each history is keyed by machine, so a run on a laptop and a run on CI stay separate series and are never averaged, and a benchmark is only flagged as regressed when it falls further than its own recent variance.",
+};
+
+/** /performance: reproducing a row. May hold markup. */
+export const perfReproduce = {
+  before:
+    'Every tin carries its own benchmarks and runs them through the same harness, <a href="https://github.com/magmalake/bench.mojo" rel="noopener">bench.mojo</a>. Clone the repo a row belongs to and run:',
+  commands: `git clone https://github.com/magmalake/parquet.mojo
+cd parquet.mojo
+
+pixi run -e bench bench                    # the table, with spread
+pixi run -e bench bench -- --json          # every repetition, machine-readable
+pixi run -e bench bench -- --list          # what this repo measures
+pixi run -e bench bench -- --only bench_read_wide`,
+  after: [
+    "The <code>bench</code> environment is stable Mojo 1.2.0: a precompiled Mojo package is stamped with the compiler version that built it, and every tin builds with 1.2.0. The libraries themselves test on stable and nightly.",
+    "One caveat on reproducing the numbers exactly: the worker ladders contend with each other if you run them together, so take them one at a time: <code>--only bench_read_wide_w4</code>.",
+    "A few benchmarks need a fixture that is generated rather than committed — parquet wants <code>python tools/bench_pyarrow.py --make</code> first, iceberg builds a warehouse, objectstore needs MinIO. Each repo's README says which, and the bench stops with instructions rather than measuring the wrong thing. Expect your absolute numbers to differ from an M4; the ratios are what travel.",
+  ],
+};

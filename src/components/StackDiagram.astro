@@ -3,14 +3,17 @@
  * The layering, drawn from src/data/tins.ts in CSS grid rather than SVG, so
  * the labels stay readable at every width, the whole thing reflows to a
  * single column on a phone, and a new tin appears by adding it to the data.
+ * It is also the list of tins: every box links to that tin's page.
  */
-import { tins, TIERS, TIER_LABEL, statusOf, STATUS_LABEL } from "../data/tins";
+import { tins, TIERS, BESIDE, TIER_LABEL, statusOf, STATUS_LABEL, pageOf } from "../data/tins";
 
-const bands = TIERS.map((tier) => ({
+const band = (tier: (typeof TIERS)[number]) => ({
   tier,
   label: TIER_LABEL[tier],
   tins: tins.filter((t) => t.tier === tier),
-}));
+});
+const bands = TIERS.map(band);
+const beside = BESIDE.map(band);
 ---
 
 <figure class="stack">
@@ -30,14 +33,13 @@ const bands = TIERS.map((tier) => ({
                     band.tier === "table" && "box--lead",
                     status === "planned" && "box--planned",
                   ]}
-                  href={t.site ?? t.repo}
-                  rel={t.site ? undefined : "noopener"}
+                  href={pageOf(t)}
                 >
                   <span class="box__name">
                     {t.name}
-                    {status !== "shelf" && (
-                      <span class="box__status">{STATUS_LABEL[status]}</span>
-                    )}
+                    <span class="box__status">
+                      {status === "shelf" ? t.version : STATUS_LABEL[status]}
+                    </span>
                   </span>
                   <span class="box__sub">{t.short}</span>
                 </a>
@@ -49,13 +51,36 @@ const bands = TIERS.map((tier) => ({
     ))
   }
 
+  <div class="stack__beside">
+    {
+      beside.map((band) => (
+        <div class="stack__band">
+          <span class="stack__tier">{band.label}</span>
+          <div class="stack__row">
+            {band.tins.map((t) => (
+              <a class="box box--beside" href={pageOf(t)}>
+                <span class="box__name">
+                  {t.name}
+                  <span class="box__status">{t.version}</span>
+                </span>
+                <span class="box__sub">{t.short}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      ))
+    }
+  </div>
+
   <figcaption>
-    Each box is a tin with its own repository, its own tests and its own release cadence,
-    and each layer uses only the ones below it. Outside the diagram there is only libzstd,
-    liblz4, libbrotli, libcurl, libpq, SQLite, the Restate Rust SDK and the system
-    pthreads. Boxes marked
-    <em>from source</em> work today but aren't on mojoshelf yet; <em>planned</em> ones are
-    designed, not built.
+    Each box is a tin with its own page, its own tests and its own release cadence, and
+    each layer uses only the ones below it; the number beside its name is the version on
+    mojoshelf. Outside the diagram there is only libzstd, liblz4, libbrotli, libcurl, libpq,
+    SQLite, the Restate Rust SDK and the system pthreads, plus OpenSSL and simdjson under
+    the republished packages. A box marked <em>from source</em>
+    works today but isn't on mojoshelf yet. Beside the stack are a second Iceberg
+    implementation kept only to check the native one, and three upstream libraries
+    republished so the tins can depend on them.
   </figcaption>
 </figure>
 
@@ -167,6 +192,16 @@ const bands = TIERS.map((tier) => ({
     );
   }
 
+  .stack__beside {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
+    gap: 1rem var(--gap);
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px dashed var(--border-strong);
+  }
+  .box--beside { background: var(--surface-2); }
+
   figcaption {
     margin-top: 1.5rem;
     font-size: 0.8125rem;
@@ -175,6 +210,7 @@ const bands = TIERS.map((tier) => ({
   }
 
   @media (max-width: 880px) {
+    .stack__beside { grid-template-columns: 1fr; }
     .stack__row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .stack__row--1 { grid-template-columns: 1fr; }
     .joins { display: none; }

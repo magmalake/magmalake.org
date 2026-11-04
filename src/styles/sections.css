@@ -1,7 +1,7 @@
 /*
  * Section furniture shared by more than one page (moved out of the old
  * single-page index.astro scoped style so it stops being duplicated as the
- * site splits into /tins, /performance, /correctness and /status). Anything
+ * site splits into /tins, /performance and a page per tin under /s/). Anything
  * used by exactly one page stays scoped in that page's own <style> block.
  */
 

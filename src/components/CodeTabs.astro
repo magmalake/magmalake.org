@@ -58,7 +58,7 @@ def main() raises:
 var table = Catalog.rest("https://polaris.example/api/catalog").load("db.events")
 var rows = table.scan().filter('["=", "region", "eu"]').select(["id", "amount"]).to_table()`,
     note: `Metadata, manifests, scan planning, Parquet decode, deletes and deletion vectors, S3 IO and the REST catalog — all of it Mojo.`,
-    href: "/tins",
+    href: "/s/iceberg",
   },
 ];
 
