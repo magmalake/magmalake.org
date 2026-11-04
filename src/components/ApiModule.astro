@@ -1,0 +1,121 @@
+---
+/**
+ * One module of a tin's API reference: its structs, traits, functions and
+ * aliases, each with its signature and docstrings, from src/data/api.
+ */
+import ApiOverload from "./ApiOverload.astro";
+import { anchorOf, docHtml, inlineHtml, type Module, type Struct, type Fn, type Alias, type Doc } from "../data/apiref";
+
+interface Props {
+  module: Module;
+}
+const { module: m } = Astro.props;
+
+const groups: { kind: string; title: string; items: Struct[] }[] = [
+  { kind: "struct", title: "Structs", items: m.structs ?? [] },
+  { kind: "trait", title: "Traits", items: m.traits ?? [] },
+];
+const fns: Fn[] = m.functions ?? [];
+const aliases: Alias[] = m.aliases ?? [];
+const toc = [
+  ...groups.flatMap((g) => g.items.map((s) => ({ href: `#${anchorOf(g.kind, s.name)}`, name: s.name }))),
+  ...fns.map((f) => ({ href: `#${anchorOf("fn", f.name)}`, name: `${f.name}()` })),
+  ...aliases.map((a) => ({ href: `#${anchorOf("alias", a.name)}`, name: a.name })),
+];
+const docList = (ds?: Doc[]) => ds ?? [];
+const aliasCode = (a: Alias) => `comptime ${a.name}${a.type ? `: ${a.type}` : ""}${a.value ? ` = ${a.value}` : ""}`;
+---
+
+{
+  toc.length > 0 && (
+    <nav class="api__toc" aria-label="In this module">
+      {toc.map((t) => <a href={t.href}><code>{t.name}</code></a>)}
+    </nav>
+  )
+}
+
+{
+  groups.map(
+    (g) =>
+      g.items.length > 0 && (
+        <section class="api__group">
+          <h2>{g.title}</h2>
+          {g.items.map((s) => (
+            <article class="api__item" id={anchorOf(g.kind, s.name)}>
+              <h3><code>{s.name}</code></h3>
+              <pre class="api__sig"><code>{s.signature}</code></pre>
+              {s.summary && <div class="api__doc" set:html={docHtml(s.summary)} />}
+              {s.description && <div class="api__doc" set:html={docHtml(s.description)} />}
+              {docList(s.parameters).length > 0 && (
+                <dl class="api__dl">
+                  <dt class="api__dl-head">Parameters</dt>
+                  {docList(s.parameters).map((p) => (
+                    <dd><code>{p.name}</code>: <span set:html={inlineHtml(p.doc)} /></dd>
+                  ))}
+                </dl>
+              )}
+              {s.traits && s.traits.length > 0 && (
+                <p class="api__traits">Implements {s.traits.map((t, i) => <>{i > 0 && ", "}<code>{t}</code></>)}</p>
+              )}
+              {s.fields && s.fields.length > 0 && (
+                <dl class="api__dl">
+                  <dt class="api__dl-head">Fields</dt>
+                  {s.fields.map((f) => (
+                    <dd>
+                      <code>{f.name}: {f.type}</code>
+                      {f.summary && <>: <span set:html={inlineHtml(f.summary)} /></>}
+                    </dd>
+                  ))}
+                </dl>
+              )}
+              {(s.aliases ?? []).map((a) => (
+                <div class="api__member" id={anchorOf(`${s.name}-alias`, a.name)}>
+                  <pre class="api__sig"><code>{aliasCode(a)}</code></pre>
+                  {a.summary && <div class="api__doc" set:html={docHtml(a.summary)} />}
+                </div>
+              ))}
+              {(s.functions ?? []).map((f) => (
+                <div class="api__member" id={anchorOf(`${s.name}-fn`, f.name)}>
+                  <h4><code>{f.name}</code></h4>
+                  {f.overloads.map((o) => (
+                    <ApiOverload overload={o} />
+                  ))}
+                </div>
+              ))}
+            </article>
+          ))}
+        </section>
+      ),
+  )
+}
+
+{
+  fns.length > 0 && (
+    <section class="api__group">
+      <h2>Functions</h2>
+      {fns.map((f) => (
+        <article class="api__item" id={anchorOf("fn", f.name)}>
+          <h3><code>{f.name}</code></h3>
+          {f.overloads.map((o) => (
+            <ApiOverload overload={o} />
+          ))}
+        </article>
+      ))}
+    </section>
+  )
+}
+
+{
+  aliases.length > 0 && (
+    <section class="api__group">
+      <h2>Aliases</h2>
+      {aliases.map((a) => (
+        <article class="api__item" id={anchorOf("alias", a.name)}>
+          <pre class="api__sig"><code>{aliasCode(a)}</code></pre>
+          {a.summary && <div class="api__doc" set:html={docHtml(a.summary)} />}
+          {a.description && <div class="api__doc" set:html={docHtml(a.description)} />}
+        </article>
+      ))}
+    </section>
+  )
+}

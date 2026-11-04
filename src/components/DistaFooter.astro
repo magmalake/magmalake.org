@@ -1,7 +1,11 @@
 ---
 // Dista's footer: SectionFooter with Dista's pages.
 import SectionFooter from "./SectionFooter.astro";
-import { DISTA_REPO, distaLinks } from "../data/dista";
+import { DISTA_REPO } from "../data/dista";
+import { tinLinks } from "../data/tinpages";
+import { tins } from "../data/tins";
+
+const links = tinLinks(tins.find((t) => t.site === "/s/dista")!);
 ---
 
-<SectionFooter name="Dista" links={distaLinks.slice(1)} repo={DISTA_REPO} />
+<SectionFooter name="Dista" links={links.slice(1)} repo={DISTA_REPO} />

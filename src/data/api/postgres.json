@@ -1,0 +1,3132 @@
+{
+ "tin": "postgres",
+ "version": "0.3.3",
+ "rev": "324b2bb61e2e80327654abecf70fd4b2defbc50d",
+ "package": "postgres",
+ "path": "src/postgres",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "`postgres` — a PostgreSQL client for Mojo, over libpq.",
+ "description": "Connections, parameterised statements, prepared statements, typed results,\ntransactions and ``COPY``, with every server error carrying its SQLSTATE.\nlibpq is loaded at run time from the conda-forge build in ``$CONDA_PREFIX``\n(which links OpenSSL, so ``sslmode=require`` works), and every C call lives\nbehind `postgres._ffi`.\n\n```mojo\nfrom postgres import Connection, Params, sqlstate_of\n\ndef main() raises:\n    var conn = Connection(\"postgresql://localhost/app?connect_timeout=5\")\n\n    _ = conn.execute(\n        \"CREATE TABLE IF NOT EXISTS people (\"\n        \"  id bigint primary key, name text not null, note text)\"\n    )\n    _ = conn.execute(\n        \"INSERT INTO people VALUES ($1, $2, $3)\",\n        Params().int64(1).text(\"Ada\").null(),\n    )\n\n    var res = conn.query(\n        \"SELECT id, name, note FROM people WHERE id >= $1\", Params().int64(1)\n    )\n    for row in res:\n        print(row.int64(\"id\"), row.text(\"name\"), row.is_null(\"note\"))\n\n    try:\n        _ = conn.execute(\"INSERT INTO people VALUES ($1, $2, $3)\",\n                         Params().int64(1).text(\"Ada\").null())\n    except e:\n        if sqlstate_of(e) == \"23505\":\n            print(\"already there\")\n```\n\n## What this tin promises\n\n**Text format on the wire.**  Parameters go out as text and results come back\nas text; `postgres.text` is the codec in both directions, and\n`result.Row`'s typed accessors are that codec applied to a cell.  Binary format\nis not implemented, so a `numeric` keeps every digit the server sent\n(`result.Row.numeric` hands back a `String`) and no value is ever silently\nrounded on the way through.\n\n**NULL is distinct from the empty string.**  libpq renders both as ``\"\"``.\n`result.Row.is_null` and `result.Row.opt_text` are the two ways to tell them\napart, and every typed accessor raises rather than inventing a zero value for a\nNULL cell.\n\n**No ORM and no async.**  One `Connection` is one `PGconn`, usable from one\nthread, and you write the SQL.\n\n**Pooling is opt-in and lives in `postgres.pool`.**  It is not re-exported\nhere, because it pulls in the `threads` tin for its mutex and condition\nvariable and a single-threaded caller should not carry that:\n\n```mojo\nfrom postgres.pool import ConnectionPool, PoolConfig\n\nvar pool = ConnectionPool(dsn, PoolConfig(max_size=8))\nwith pool.lease() as lease:\n    _ = lease.connection().execute(\"DELETE FROM sessions WHERE expires < now()\")\n```\n\n`pool.Lease` is what makes that safe to do from several threads: a connection\ngoes back into the pool only when nothing else is holding it, and a\n`Statement`, `Transaction` or COPY handle that outlives its `with` block costs\nthe connection rather than being handed to a second thread.  See\n`postgres.pool`.\n\n## Transactions and COPY\n\n`connection.Connection.begin` issues ``BEGIN`` and returns a\n`connection.Transaction` that **rolls back when it is destroyed** unless\n`connection.Transaction.commit` ran first -- so an early return or a raised\nerror leaves nothing behind rather than half a block.  Savepoints are\n`connection.Transaction.savepoint`, `connection.Transaction.rollback_to` and\n`connection.Transaction.release`; a savepoint is how a statement that failed\ninside a block is survived, because PostgreSQL otherwise refuses everything\nuntil the block ends.  Committing a block that has already failed raises\nSQLSTATE ``25P02`` rather than quietly rolling back the way the server would:\n\n```mojo\nvar tx = conn.begin()\n_ = tx.execute(\"INSERT INTO t VALUES ($1)\", Params().int64(1))\ntx.savepoint(\"maybe\")\ntry:\n    _ = tx.execute(\"INSERT INTO t VALUES ($1)\", Params().int64(1))\nexcept:\n    tx.rollback_to(\"maybe\")      # the duplicate is undone; the first row stays\ntx.commit()\n```\n\n``COPY`` is the bulk path -- no per-row parse, plan or round trip.\n`connection.Connection.copy_in` returns a `copy.CopyIn` to write rows into\n(`copyfmt.CopyEncoder` produces the bytes; `copy.CopyIn.finish` returns the\nrow count and is where a malformed row is reported), and\n`connection.Connection.copy_out` returns a `copy.CopyOut` to read them back\n(`copy.CopyOut.rows` pairs with `copyfmt.decode_row`).  Both handles clean up\nafter themselves if dropped, so an abandoned COPY leaves a usable connection:\n\n```mojo\nvar cp = conn.copy_in(\"COPY t (id, name) FROM STDIN\")\nvar enc = CopyEncoder()\nenc.row([Optional[String](\"1\"), Optional[String](\"Ada\")])\nenc.row([Optional[String](\"2\"), None])          # None is SQL NULL\ncp.write_rows(enc)\nprint(cp.finish(), \"rows\")                      # 2\n```\n\n**Typed accessors trust you, not the OID.**  `row.int64(\"n\")` parses the\ncell's text as an `int8` whatever the server called the column; a mismatch\nsurfaces as the codec's own error, naming the type and the text.\n`result.Result.column_oid` is there for callers who want to dispatch instead.\n\n## Errors\n\nEvery server error is raised as an `Error` whose message was formatted by\n`sqlstate.PostgresError`:\n\n```text\npostgres [SQLSTATE 23505] duplicate key value violates unique constraint \"people_pkey\"\n  DETAIL: Key (id)=(1) already exists.\n  SQL: INSERT INTO people VALUES ($1, $2, $3)\n```\n\nMojo 1.x can only raise a string, so the SQLSTATE travels *inside* the\nmessage; `sqlstate_of` reads it back out of a caught `Error`, and\n`connection.Connection.last_error` keeps the structured `sqlstate.PostgresError`\n-- severity, SQLSTATE, message, detail, hint, statement -- with its\n`is_unique_violation`-style predicates.\n\n## Modules\n\n- `postgres.connection` -- `Connection`, `Statement`, `Transaction`.\n- `postgres.pool` -- `ConnectionPool`, `Lease`, for a threaded service.  Not\n  re-exported; import it by name.\n- `postgres.copy` -- `CopyIn` and `CopyOut`, the ``COPY`` stream handles.\n- `postgres.result` -- `Result`, `Row` and the typed accessors.\n- `postgres.params` -- the `Params` builder for ``$1``-style parameters.\n- `postgres.config` -- `ConnectionConfig`, for callers who prefer typed fields\n  to a URI.\n- `postgres.sqlstate` -- `PostgresError`, `sqlstate_of`, the code constants.\n- `postgres.text` -- the text-format codec and the ``OID_*`` constants.\n- `postgres.copyfmt` -- the COPY text/CSV row codec.\n- `postgres._ffi` -- the libpq entry points.  Not for user code.",
+ "modules": [
+  {
+   "path": "postgres",
+   "summary": "`postgres` — a PostgreSQL client for Mojo, over libpq.",
+   "description": "Connections, parameterised statements, prepared statements, typed results,\ntransactions and ``COPY``, with every server error carrying its SQLSTATE.\nlibpq is loaded at run time from the conda-forge build in ``$CONDA_PREFIX``\n(which links OpenSSL, so ``sslmode=require`` works), and every C call lives\nbehind `postgres._ffi`.\n\n```mojo\nfrom postgres import Connection, Params, sqlstate_of\n\ndef main() raises:\n    var conn = Connection(\"postgresql://localhost/app?connect_timeout=5\")\n\n    _ = conn.execute(\n        \"CREATE TABLE IF NOT EXISTS people (\"\n        \"  id bigint primary key, name text not null, note text)\"\n    )\n    _ = conn.execute(\n        \"INSERT INTO people VALUES ($1, $2, $3)\",\n        Params().int64(1).text(\"Ada\").null(),\n    )\n\n    var res = conn.query(\n        \"SELECT id, name, note FROM people WHERE id >= $1\", Params().int64(1)\n    )\n    for row in res:\n        print(row.int64(\"id\"), row.text(\"name\"), row.is_null(\"note\"))\n\n    try:\n        _ = conn.execute(\"INSERT INTO people VALUES ($1, $2, $3)\",\n                         Params().int64(1).text(\"Ada\").null())\n    except e:\n        if sqlstate_of(e) == \"23505\":\n            print(\"already there\")\n```\n\n## What this tin promises\n\n**Text format on the wire.**  Parameters go out as text and results come back\nas text; `postgres.text` is the codec in both directions, and\n`result.Row`'s typed accessors are that codec applied to a cell.  Binary format\nis not implemented, so a `numeric` keeps every digit the server sent\n(`result.Row.numeric` hands back a `String`) and no value is ever silently\nrounded on the way through.\n\n**NULL is distinct from the empty string.**  libpq renders both as ``\"\"``.\n`result.Row.is_null` and `result.Row.opt_text` are the two ways to tell them\napart, and every typed accessor raises rather than inventing a zero value for a\nNULL cell.\n\n**No ORM and no async.**  One `Connection` is one `PGconn`, usable from one\nthread, and you write the SQL.\n\n**Pooling is opt-in and lives in `postgres.pool`.**  It is not re-exported\nhere, because it pulls in the `threads` tin for its mutex and condition\nvariable and a single-threaded caller should not carry that:\n\n```mojo\nfrom postgres.pool import ConnectionPool, PoolConfig\n\nvar pool = ConnectionPool(dsn, PoolConfig(max_size=8))\nwith pool.lease() as lease:\n    _ = lease.connection().execute(\"DELETE FROM sessions WHERE expires < now()\")\n```\n\n`pool.Lease` is what makes that safe to do from several threads: a connection\ngoes back into the pool only when nothing else is holding it, and a\n`Statement`, `Transaction` or COPY handle that outlives its `with` block costs\nthe connection rather than being handed to a second thread.  See\n`postgres.pool`.\n\n## Transactions and COPY\n\n`connection.Connection.begin` issues ``BEGIN`` and returns a\n`connection.Transaction` that **rolls back when it is destroyed** unless\n`connection.Transaction.commit` ran first -- so an early return or a raised\nerror leaves nothing behind rather than half a block.  Savepoints are\n`connection.Transaction.savepoint`, `connection.Transaction.rollback_to` and\n`connection.Transaction.release`; a savepoint is how a statement that failed\ninside a block is survived, because PostgreSQL otherwise refuses everything\nuntil the block ends.  Committing a block that has already failed raises\nSQLSTATE ``25P02`` rather than quietly rolling back the way the server would:\n\n```mojo\nvar tx = conn.begin()\n_ = tx.execute(\"INSERT INTO t VALUES ($1)\", Params().int64(1))\ntx.savepoint(\"maybe\")\ntry:\n    _ = tx.execute(\"INSERT INTO t VALUES ($1)\", Params().int64(1))\nexcept:\n    tx.rollback_to(\"maybe\")      # the duplicate is undone; the first row stays\ntx.commit()\n```\n\n``COPY`` is the bulk path -- no per-row parse, plan or round trip.\n`connection.Connection.copy_in` returns a `copy.CopyIn` to write rows into\n(`copyfmt.CopyEncoder` produces the bytes; `copy.CopyIn.finish` returns the\nrow count and is where a malformed row is reported), and\n`connection.Connection.copy_out` returns a `copy.CopyOut` to read them back\n(`copy.CopyOut.rows` pairs with `copyfmt.decode_row`).  Both handles clean up\nafter themselves if dropped, so an abandoned COPY leaves a usable connection:\n\n```mojo\nvar cp = conn.copy_in(\"COPY t (id, name) FROM STDIN\")\nvar enc = CopyEncoder()\nenc.row([Optional[String](\"1\"), Optional[String](\"Ada\")])\nenc.row([Optional[String](\"2\"), None])          # None is SQL NULL\ncp.write_rows(enc)\nprint(cp.finish(), \"rows\")                      # 2\n```\n\n**Typed accessors trust you, not the OID.**  `row.int64(\"n\")` parses the\ncell's text as an `int8` whatever the server called the column; a mismatch\nsurfaces as the codec's own error, naming the type and the text.\n`result.Result.column_oid` is there for callers who want to dispatch instead.\n\n## Errors\n\nEvery server error is raised as an `Error` whose message was formatted by\n`sqlstate.PostgresError`:\n\n```text\npostgres [SQLSTATE 23505] duplicate key value violates unique constraint \"people_pkey\"\n  DETAIL: Key (id)=(1) already exists.\n  SQL: INSERT INTO people VALUES ($1, $2, $3)\n```\n\nMojo 1.x can only raise a string, so the SQLSTATE travels *inside* the\nmessage; `sqlstate_of` reads it back out of a caught `Error`, and\n`connection.Connection.last_error` keeps the structured `sqlstate.PostgresError`\n-- severity, SQLSTATE, message, detail, hint, statement -- with its\n`is_unique_violation`-style predicates.\n\n## Modules\n\n- `postgres.connection` -- `Connection`, `Statement`, `Transaction`.\n- `postgres.pool` -- `ConnectionPool`, `Lease`, for a threaded service.  Not\n  re-exported; import it by name.\n- `postgres.copy` -- `CopyIn` and `CopyOut`, the ``COPY`` stream handles.\n- `postgres.result` -- `Result`, `Row` and the typed accessors.\n- `postgres.params` -- the `Params` builder for ``$1``-style parameters.\n- `postgres.config` -- `ConnectionConfig`, for callers who prefer typed fields\n  to a URI.\n- `postgres.sqlstate` -- `PostgresError`, `sqlstate_of`, the code constants.\n- `postgres.text` -- the text-format codec and the ``OID_*`` constants.\n- `postgres.copyfmt` -- the COPY text/CSV row codec.\n- `postgres._ffi` -- the libpq entry points.  Not for user code."
+  },
+  {
+   "path": "postgres.config",
+   "summary": "Typed connection configuration.",
+   "description": "`ConnectionConfig` is a small builder that emits a libpq conninfo string on\ndemand. Field names match libpq's documented keyword/value parameters (see\nhttps://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS),\nwith underscores only where Mojo requires them.\n\n`Connection` (elsewhere in this package) also accepts a URI directly —\n`postgresql://user:pass@host:port/dbname?sslmode=require` — since libpq\nparses both a conninfo string and a URI through the same entry point. This\nbuilder exists for callers who would rather set typed fields than assemble a\nURI by hand.",
+   "structs": [
+    {
+     "name": "ConnectionConfig",
+     "signature": "struct ConnectionConfig",
+     "summary": "Connection parameters for a libpq connection.",
+     "description": "Build a `Connection` from this directly, or call `to_conninfo()` if you\nwant the raw libpq conninfo string for debugging or logging.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "host",
+       "type": "String"
+      },
+      {
+       "name": "port",
+       "type": "Int"
+      },
+      {
+       "name": "dbname",
+       "type": "String"
+      },
+      {
+       "name": "user",
+       "type": "String"
+      },
+      {
+       "name": "password",
+       "type": "String"
+      },
+      {
+       "name": "application_name",
+       "type": "String"
+      },
+      {
+       "name": "sslmode",
+       "type": "String"
+      },
+      {
+       "name": "connect_timeout",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, host: String = \"localhost\", port: Int = Int(5432), dbname: String = \"\", user: String = \"\", password: String = \"\", application_name: String = \"postgres.mojo\", sslmode: String = \"prefer\", connect_timeout: Int = Int(10))"
+        }
+       ]
+      },
+      {
+       "name": "set",
+       "overloads": [
+        {
+         "signature": "def set(mut self, key: String, value: String)",
+         "summary": "Escape hatch for any libpq conninfo keyword not exposed as a typed field above (e.g. `target_session_attrs`, `options`).",
+         "description": "Setting a key that was already set — by an earlier `set()` call —\nreplaces its value in place rather than adding a duplicate, so\n`to_conninfo()` stays deterministic and each keyword appears at\nmost once."
+        }
+       ]
+      },
+      {
+       "name": "to_conninfo",
+       "overloads": [
+        {
+         "signature": "def to_conninfo(self) -> String",
+         "summary": "Render to a libpq conninfo string (`key=value key=value ...`).",
+         "description": "Extra keys set via `set()` are emitted last, in the order they were\nfirst set."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "postgres.connection",
+   "summary": "`postgres.connection` — the connection, its statements and its transactions.",
+   "description": "`Connection` is the way in to one libpq `PGconn`.  Everything a caller does\nwith a database goes through it: `Connection.execute`\nfor commands, `Connection.query` for rows, `Connection.prepare` for a\nserver-side statement to run more than once, `Connection.begin` for a\ntransaction, and `Connection.copy_in`/`Connection.copy_out` for bulk transfer\n(the handles those return live in `postgres.copy`).\n\nValues are never interpolated into SQL.  Write ``$1``, ``$2``, ... and pass a\n`Params`; libpq sends the values out of band, so there is nothing to escape and\nno injection surface:\n\n```mojo\nfrom postgres import Connection, Params\n\nvar conn = Connection(\"postgresql://localhost/app?connect_timeout=5\")\n_ = conn.execute(\"CREATE TABLE t (id bigint primary key, name text)\")\n_ = conn.execute(\"INSERT INTO t VALUES ($1, $2)\",\n                 Params().int64(1).text(\"Alice\"))\n\nvar res = conn.query(\"SELECT id, name FROM t WHERE id = $1\", Params().int64(1))\nfor row in res:\n    print(row.int64(\"id\"), row.text(\"name\"))\n```\n\n**Errors carry their SQLSTATE.**  Every failure the server reports is raised as\na `PostgresError` formatted by `sqlstate.PostgresError.format` --\n``postgres [SQLSTATE 23505] duplicate key value ...`` -- so a `try`/`except`\nthat only has an `Error` in hand can still branch on `sqlstate.sqlstate_of`.\nThe structured value is also kept in `Connection.last_error`, where the\n`is_unique_violation`-style predicates are available without any parsing.\n\n**Transactions are explicit.**  `Connection.begin` issues ``BEGIN`` and hands\nback a `Transaction` that rolls itself back if it is destroyed without a\n`Transaction.commit` -- so an early return or a raised error cannot leave a\nblock half-applied:\n\n```mojo\nvar tx = conn.begin()\n_ = tx.execute(\"UPDATE accounts SET balance = balance - $1 WHERE id = $2\",\n               Params().numeric(\"10.00\").int64(1))\ntx.savepoint(\"maybe\")\n_ = tx.execute(\"INSERT INTO audit VALUES ($1)\", Params().int64(1))\ntx.commit()\n```\n\n**A handle keeps the session open.**  The `PGconn` is owned jointly by the\n`Connection` and by every `Statement`, `Transaction`, `copy.CopyIn` and\n`copy.CopyOut` made from it, and it is closed when the last of them is\ndestroyed.  That matters because Mojo destroys a value after its last *use*,\nnot at the end of the block, so this is the ordinary case rather than an\nexotic one:\n\n```mojo\nvar out = conn.copy_out(\"COPY t TO STDOUT\")   # the last mention of `conn`,\nfor line in out.rows():                       # and the session is still up\n    ...\n```\n\n`Connection.close` is the exception, and it is the point of having it: it ends\nthe session immediately, and every handle still holding the connection then\nraises SQLSTATE ``08006`` rather than reaching a freed `PGconn`.\n\n**One connection, one thread.**  libpq's `PGconn` is not safe to use from two\nthreads at once, and nothing here adds a lock.  Shared ownership is about\nlifetime, not concurrency.\n\n**Notices go to stderr.**  A ``NOTICE``/``WARNING`` the server raises -- from a\n``RAISE NOTICE``, or from ``CREATE TABLE IF NOT EXISTS`` finding the table\nalready there -- is printed to standard error by libpq's default notice\nprocessor.  This tin installs none of its own, so those messages are visible\nbut not capturable; a hook for them is not in v1.",
+   "aliases": [
+    {
+     "name": "IN_FAILED_SQL_TRANSACTION",
+     "value": "StringSpan(\"25P02\")",
+     "summary": "The block has already failed, so ``COMMIT`` would silently roll back."
+    },
+    {
+     "name": "ACTIVE_SQL_TRANSACTION",
+     "value": "StringSpan(\"25001\")",
+     "summary": "A transaction block is already open on this connection."
+    },
+    {
+     "name": "NO_ACTIVE_SQL_TRANSACTION",
+     "value": "StringSpan(\"25P01\")",
+     "summary": "The transaction is over -- committed or rolled back already."
+    },
+    {
+     "name": "WRONG_OBJECT_TYPE",
+     "value": "StringSpan(\"42809\")",
+     "summary": "The statement was not the ``COPY`` the call needed it to be."
+    }
+   ],
+   "structs": [
+    {
+     "name": "Statement",
+     "signature": "struct Statement",
+     "summary": "A statement prepared on the server, ready to run with new parameters.",
+     "description": "Created by `Connection.prepare`.  Preparing pays for parsing and planning\nonce; each `Statement.execute` or `Statement.query` then sends only the\nname and the parameter values.\n\nA prepared statement is **session-local**: it lives on the connection it\nwas prepared on, until that connection closes or `Statement.deallocate`\nruns.  Holding a `Statement` **keeps that connection open** -- it shares\nownership of the `PGconn` rather than borrowing it -- so a statement may\nsafely outlive the `Connection` value it came from, which matters because\nMojo destroys a value after its last *use*:\n\n```mojo\nvar stmt = conn.prepare(\"s\", \"SELECT 1\")   # the last mention of `conn`,\nvar res = stmt.query()                     # and the session is still up\n```\n\nAn explicit `Connection.close` is the exception: it closes the session\nthere and then, and every statement on it raises SQLSTATE ``08006``\nafterwards.\n\nExample:\n\n```mojo\nvar stmt = conn.prepare(\"insert_row\", \"INSERT INTO t VALUES ($1, $2)\")\nfor i in range(1000):\n    _ = stmt.execute(Params().int64(i).text(\"row\"))\n```\n\nNote:\nErrors raised through a `Statement` *are* recorded in\n`Connection.last_error`: the statement holds a share of the same cell\nthe connection does.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, cell: ArcPointer[_ConnCell], name: String, sql: String)",
+         "summary": "Record an already-prepared statement.",
+         "description": "`Connection.prepare` is the only intended caller: it issues\n`PQprepare` and checks the status before constructing this.",
+         "args": [
+          {
+           "name": "cell",
+           "doc": "The shared cell of the connection it was prepared on; a\n    share of it is kept, so the connection stays open at least as\n    long as this statement does."
+          },
+          {
+           "name": "name",
+           "doc": "The server-side statement name."
+          },
+          {
+           "name": "sql",
+           "doc": "The SQL it was prepared from."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name(self) -> String",
+         "summary": "The server-side statement name."
+        }
+       ]
+      },
+      {
+       "name": "sql",
+       "overloads": [
+        {
+         "signature": "def sql(self) -> String",
+         "summary": "The SQL this statement was prepared from."
+        }
+       ]
+      },
+      {
+       "name": "execute",
+       "overloads": [
+        {
+         "signature": "def execute(self, params: Params = Params()) -> Int",
+         "summary": "Run the statement and discard any rows.",
+         "args": [
+          {
+           "name": "params",
+           "doc": "The values for ``$1``, ``$2``, ...."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the server rejected the\ncommand."
+        }
+       ]
+      },
+      {
+       "name": "query",
+       "overloads": [
+        {
+         "signature": "def query(self, params: Params = Params()) -> Result",
+         "summary": "Run the statement and return its rows.",
+         "args": [
+          {
+           "name": "params",
+           "doc": "The values for ``$1``, ``$2``, ...."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the server rejected the\ncommand."
+        }
+       ]
+      },
+      {
+       "name": "deallocate",
+       "overloads": [
+        {
+         "signature": "def deallocate(mut self)",
+         "summary": "Drop the statement from the server session.",
+         "description": "Rarely needed -- closing the connection drops every statement it\nprepared -- but a long-lived connection that prepares statements\ndynamically will otherwise accumulate them.",
+         "raises": "Error: A `sqlstate.PostgresError` if ``DEALLOCATE`` failed, which\nfor an already-deallocated statement is SQLSTATE ``26000``."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Connection",
+     "signature": "struct Connection",
+     "summary": "One connection to a PostgreSQL server.",
+     "description": "Opening blocks until the connection succeeds or fails.  **Set\n``connect_timeout``** in the conninfo (or on the `ConnectionConfig`, where\nit defaults to 10 seconds): without it, a host that silently drops packets\nblocks for the operating system's TCP timeout, which can be minutes.\n\nThe connection is closed when the last thing holding it is destroyed --\nthe `Connection` and every `Statement`, `Transaction`, `copy.CopyIn` and\n`copy.CopyOut` made from it share ownership of the `PGconn` -- or at once\nby `Connection.close`, which invalidates all of them.  Not copyable: a\nsecond `Connection` on one session is what a handle is for.\n\nExample:\n\n```mojo\nvar conn = Connection(\"postgresql://user@localhost/app?connect_timeout=5\")\nvar n = conn.execute(\"DELETE FROM sessions WHERE expires < now()\")\nprint(n, \"sessions expired\")\n```",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, conninfo: String)",
+         "summary": "Connect using a libpq conninfo string or URI.",
+         "args": [
+          {
+           "name": "conninfo",
+           "doc": "Either a URI --\n    ``postgresql://user:pass@host:5432/db?sslmode=require`` -- or\n    a keyword string -- ``host=localhost dbname=app\n    connect_timeout=5``.  libpq parses both through the same entry\n    point, and an empty string means \"everything from the\n    environment\" (``PGHOST``, ``PGDATABASE``, ...)."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` with SQLSTATE\n`sqlstate.SQLCLIENT_UNABLE_TO_ESTABLISH` (08001) if the\nconnection could not be established, carrying libpq's own\nexplanation."
+        },
+        {
+         "signature": "def __init__(out self, config: ConnectionConfig)",
+         "summary": "Connect using a typed `config.ConnectionConfig`.",
+         "args": [
+          {
+           "name": "config",
+           "doc": "The connection parameters; rendered with\n    `config.ConnectionConfig.to_conninfo`."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` with SQLSTATE 08001 if the\nconnection could not be established."
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Drop this share of the connection.",
+         "description": "The `PGconn` itself is closed by `_ConnCell`, when the last share of\nit goes -- which is this one unless a `Statement`, a `Transaction` or\na COPY handle made from it is still alive, in which case the session\nstays up for them.  `Connection.close` is how to end it now."
+        }
+       ]
+      },
+      {
+       "name": "close",
+       "overloads": [
+        {
+         "signature": "def close(mut self)",
+         "summary": "Close the connection now, whatever else is still holding it. Idempotent.",
+         "description": "Every `Result` already handed out stays valid -- their rows were\ncopied out of libpq's memory.  Everything that reaches the *server*\ndoes not: a `Statement`, `Transaction`, `copy.CopyIn` or\n`copy.CopyOut` made from this connection raises SQLSTATE ``08006``\nfrom here on, rather than touching a freed handle."
+        }
+       ]
+      },
+      {
+       "name": "is_open",
+       "overloads": [
+        {
+         "signature": "def is_open(self) -> Bool",
+         "summary": "Whether the connection is open and usable."
+        }
+       ]
+      },
+      {
+       "name": "is_alive",
+       "overloads": [
+        {
+         "signature": "def is_alive(self) -> Bool",
+         "summary": "Whether the socket is still there, without asking the server.",
+         "description": "Between `Connection.is_open`, which is free but blind, and\n`Connection.ping`, which is honest but costs a round trip.  This one\nreads whatever the server has *already* sent -- a non-blocking\n`PQconsumeInput` -- and then asks `PQstatus`.  Nothing is sent, so\nthere is no round trip; but a peer that has gone away has sent\nsomething (an ``ErrorResponse``, or just the close), and this is what\ncollects it.\n\nThe difference is not academic.  A backend killed with\n``pg_terminate_backend``, a server restarted underneath a long-lived\nclient, a failover: `Connection.is_open` reports True through all of\nthem, because libpq's status is a cached opinion that only changes\nwhen a command fails.  This reports False.\n\nNote:\nCheap, not certain.  It cannot see a death whose notification has\nnot arrived yet, and it cannot see one that has not happened yet;\nno local check can.  Use it to *avoid* handing out a connection\nalready known to be dead -- `pool.ConnectionPool` does exactly\nthat -- and keep handling the error from the next command anyway.\n\nOnly meaningful on an idle connection: mid-``COPY``, or with an\nunread result outstanding, the bytes waiting on the socket belong\nto whoever is driving that exchange."
+        }
+       ]
+      },
+      {
+       "name": "backend_pid",
+       "overloads": [
+        {
+         "signature": "def backend_pid(self) -> Int",
+         "summary": "The process ID of the backend serving this connection.",
+         "description": "Free -- it was read from the server's startup packet, and no round\ntrip is involved.  It is the value ``pg_terminate_backend`` takes, and\nit changes across a `Connection.reset`, which makes it the way to tell\na recycled session from a reused one."
+        }
+       ]
+      },
+      {
+       "name": "reset",
+       "overloads": [
+        {
+         "signature": "def reset(mut self) -> Bool",
+         "summary": "Reconnect in place: same handle, same parameters, new session.",
+         "description": "Blocks for as long as opening would.  The `PGconn` pointer does not\nchange, so every `Statement`, `Transaction` and COPY handle sharing\nthis connection stays valid -- but what they are pointed at is a\n*different session*: no prepared statements, no temp tables, no open\ntransaction, and a different `Connection.backend_pid`.  A `Statement`\nthat survives a reset will therefore fail with SQLSTATE ``26000``,\nwhich is the honest answer.\n\n`pool.ConnectionPool` uses this to recycle a connection whose backend\ndied, rather than paying for a fresh `PGconn`."
+        }
+       ]
+      },
+      {
+       "name": "ping",
+       "overloads": [
+        {
+         "signature": "def ping(mut self) -> Bool",
+         "summary": "Whether the server answers a trivial query right now.",
+         "description": "Stronger than `Connection.is_open`, which only reports libpq's cached\nview: this actually goes to the server, so it notices a connection\nthat has died since the last command."
+        }
+       ]
+      },
+      {
+       "name": "server_version",
+       "overloads": [
+        {
+         "signature": "def server_version(self) -> Int",
+         "summary": "The version of the server on the other end.",
+         "raises": "Error: Only if libpq itself could not be reached."
+        }
+       ]
+      },
+      {
+       "name": "transaction_status",
+       "overloads": [
+        {
+         "signature": "def transaction_status(self) -> Int",
+         "summary": "Whether a transaction block is open on this connection.",
+         "raises": "Error: Only if libpq itself could not be reached."
+        }
+       ]
+      },
+      {
+       "name": "last_error",
+       "overloads": [
+        {
+         "signature": "def last_error(self) -> PostgresError",
+         "summary": "The most recent error raised through this connection.",
+         "description": "The structured form of what was raised, so the SQLSTATE predicates are\navailable without parsing the message back:\n\n```mojo\ntry:\n    _ = conn.execute(\"INSERT INTO t VALUES (1)\")\nexcept:\n    if conn.last_error().is_unique_violation():\n        ...\n```"
+        }
+       ]
+      },
+      {
+       "name": "execute",
+       "overloads": [
+        {
+         "signature": "def execute(mut self, sql: String, params: Params = Params()) -> Int",
+         "summary": "Run a command and discard any rows it returned.",
+         "description": "With no parameters this goes through `PQexec`, which accepts\n**several statements separated by semicolons** -- handy for a schema\nscript, and the only reason to prefer it.  The return value is then\nthe last statement's count, and the first failure aborts the rest.\nWith parameters it goes through `PQexecParams`, which allows exactly\none statement.\n\nRunning a ``SELECT`` here is allowed: the rows are fetched and\ndropped, and the count of them is returned.  Use `Connection.query` if\nyou want the rows themselves.",
+         "args": [
+          {
+           "name": "sql",
+           "doc": "The statement text, with ``$1``-style placeholders if\n    `params` is non-empty."
+          },
+          {
+           "name": "params",
+           "doc": "The parameter values; empty by default."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the connection is closed or\nthe server rejected the command.  The SQLSTATE is recoverable\nfrom the message with `sqlstate.sqlstate_of`, and the whole\nstructured error from `Connection.last_error`."
+        }
+       ]
+      },
+      {
+       "name": "query",
+       "overloads": [
+        {
+         "signature": "def query(mut self, sql: String, params: Params = Params()) -> Result",
+         "summary": "Run a command and return its rows.",
+         "args": [
+          {
+           "name": "sql",
+           "doc": "The statement text, with ``$1``-style placeholders if\n    `params` is non-empty.  With parameters libpq allows exactly\n    one statement."
+          },
+          {
+           "name": "params",
+           "doc": "The parameter values; empty by default."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the connection is closed or\nthe server rejected the command."
+        }
+       ]
+      },
+      {
+       "name": "prepare",
+       "overloads": [
+        {
+         "signature": "def prepare(mut self, name: String, sql: String) -> Statement",
+         "summary": "Prepare `sql` on the server under `name`.",
+         "description": "Parameter types are left to the server to infer from the statement --\nwhich is what you want in almost every case, and why there is no OID\nargument.  Add a cast (``$1::int``) where the inference would\notherwise land on ``text``.",
+         "args": [
+          {
+           "name": "name",
+           "doc": "The statement name.  ``\"\"`` is libpq's unnamed statement,\n    which the next `Connection.prepare` on this connection\n    replaces.  Any other name persists until the session ends or\n    `Statement.deallocate` runs, and re-preparing the same name\n    is an error (SQLSTATE ``42P05``)."
+          },
+          {
+           "name": "sql",
+           "doc": "The statement text, with ``$1``, ``$2``, ... placeholders."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the statement did not parse\nor the name is already taken."
+        }
+       ]
+      },
+      {
+       "name": "execute_prepared",
+       "overloads": [
+        {
+         "signature": "def execute_prepared(mut self, name: String, params: Params = Params()) -> Int",
+         "summary": "Run the prepared statement `name` and discard any rows.",
+         "description": "The method `Statement.execute` is a convenience over; use it directly\nwhen the statement was prepared elsewhere -- by another library, or by\na ``PREPARE`` statement -- and there is no `Statement` value in hand.",
+         "args": [
+          {
+           "name": "name",
+           "doc": "The server-side statement name."
+          },
+          {
+           "name": "params",
+           "doc": "The values for ``$1``, ``$2``, ...."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the connection is closed, no\nsuch statement is prepared (SQLSTATE ``26000``), or the server\nrejected the command."
+        }
+       ]
+      },
+      {
+       "name": "query_prepared",
+       "overloads": [
+        {
+         "signature": "def query_prepared(mut self, name: String, params: Params = Params()) -> Result",
+         "summary": "Run the prepared statement `name` and return its rows.",
+         "args": [
+          {
+           "name": "name",
+           "doc": "The server-side statement name."
+          },
+          {
+           "name": "params",
+           "doc": "The values for ``$1``, ``$2``, ...."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the connection is closed, no\nsuch statement is prepared, or the server rejected the\ncommand."
+        }
+       ]
+      },
+      {
+       "name": "begin",
+       "overloads": [
+        {
+         "signature": "def begin(mut self) -> Transaction",
+         "summary": "Issue ``BEGIN`` and return the guard that ends the block.",
+         "description": "The returned `Transaction` rolls back when it is destroyed unless\n`Transaction.commit` or `Transaction.rollback` ran first, so the\nfailure mode of forgetting about it is \"nothing happened\" rather than\n\"half of it happened\".  Statements inside the block go through the\n`Transaction`'s own `Transaction.execute` and `Transaction.query`,\nwhich are the same calls with the same error path.",
+         "raises": "Error: A `sqlstate.PostgresError` if the connection is closed, if\n``BEGIN`` itself failed, or -- SQLSTATE ``25001`` -- if a\ntransaction block is **already** open on this connection.\nPostgreSQL answers a nested ``BEGIN`` with a warning and\nignores it, which would leave the second guard's ``COMMIT``\nending the first one's block; raising is the only way to keep\nthe guard's promise."
+        }
+       ]
+      },
+      {
+       "name": "copy_in",
+       "overloads": [
+        {
+         "signature": "def copy_in(mut self, sql: String) -> CopyIn",
+         "summary": "Start a ``COPY ... FROM STDIN`` and return the handle to write to.",
+         "description": "The fast path for bulk loading: one statement, then rows streamed\nstraight into the table with no per-row parse, plan or round trip.\nEncode the rows with `copyfmt.CopyEncoder` and hand them to\n`copy.CopyIn.write_rows`, or write already-formatted bytes with\n`copy.CopyIn.write`.",
+         "args": [
+          {
+           "name": "sql",
+           "doc": "The full ``COPY`` statement, for example ``COPY t (a, b)\n    FROM STDIN`` or ``COPY t FROM STDIN (FORMAT csv)``.  It takes\n    no parameters -- ``COPY`` never has -- so this goes through\n    `PQexec`."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the connection is closed, the\nserver rejected the statement (a missing table is ``42P01``),\nor -- SQLSTATE ``42809`` -- the statement was valid but did\nnot start a ``COPY ... FROM STDIN``."
+        }
+       ]
+      },
+      {
+       "name": "copy_out",
+       "overloads": [
+        {
+         "signature": "def copy_out(mut self, sql: String) -> CopyOut",
+         "summary": "Start a ``COPY ... TO STDOUT`` and return the handle to read from.",
+         "args": [
+          {
+           "name": "sql",
+           "doc": "The full ``COPY`` statement, for example ``COPY t TO\n    STDOUT`` or ``COPY (SELECT ...) TO STDOUT (FORMAT csv)``."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the connection is closed, the\nserver rejected the statement, or -- SQLSTATE ``42809`` -- the\nstatement did not start a ``COPY ... TO STDOUT``."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Transaction",
+     "signature": "struct Transaction",
+     "summary": "An open transaction block, and the guard that ends it.",
+     "description": "Created by `Connection.begin`, which issues ``BEGIN``.  Run the block's\nstatements through `Transaction.execute` and `Transaction.query` -- the\nsame calls as the `Connection`'s, with the same parameters and the same\nerrors -- and finish with `Transaction.commit`:\n\n```mojo\nvar tx = conn.begin()\n_ = tx.execute(\"INSERT INTO orders VALUES ($1)\", Params().int64(1))\n_ = tx.execute(\"INSERT INTO items VALUES ($1, $2)\",\n               Params().int64(1).int32(3))\ntx.commit()\n```\n\n**Destruction rolls back.**  If the guard is destroyed without a\n`Transaction.commit` -- an early return, a raised error, a forgotten call\n-- its destructor issues ``ROLLBACK``.  The failure mode of losing track\nof a transaction is therefore \"nothing happened\", never \"half of it\nhappened\".  Since a `with` block ends by destroying the guard, that is\nalso what makes this shape work:\n\n```mojo\nwith conn.begin() as tx:\n    _ = tx.execute(\"INSERT INTO orders VALUES ($1)\", Params().int64(1))\n    tx.commit()          # explicit: leaving the block does NOT commit\n```\n\nLeaving that block without the `Transaction.commit` line -- by falling off\nthe end, by returning, or by raising -- rolls back.  There is no implicit\ncommit anywhere in this type.\n\n**A failed block cannot be committed.**  PostgreSQL turns a ``COMMIT``\ninside a failed transaction into a ``ROLLBACK`` and reports success;\n`Transaction.commit` raises SQLSTATE ``25P02`` instead, after issuing the\n``ROLLBACK`` itself so the connection is left clean.  Recover from a\nfailed statement with `Transaction.savepoint` and\n`Transaction.rollback_to`.\n\nLike `Statement`, this shares ownership of the connection rather than\nborrowing it: the session stays open for as long as the transaction does,\nso a `Transaction` may outlive the `Connection` value it came from -- and\nit routinely does, since Mojo destroys a value after its last *use*.  An\nexplicit `Connection.close` is the exception, and ends the block: every\ncall on the transaction then raises SQLSTATE ``08006``.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, cell: ArcPointer[_ConnCell])",
+         "summary": "Issue ``BEGIN`` on the cell's connection.",
+         "description": "`Connection.begin` is the only intended caller: it checks that the\nconnection is open and that no block is open already.",
+         "args": [
+          {
+           "name": "cell",
+           "doc": "The shared cell of the connection to open a transaction on;\n    a share of it is kept, so the connection stays open at least\n    as long as this transaction does."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if ``BEGIN`` failed."
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Roll back unless the block was already committed or rolled back.",
+         "description": "Unconditional: a ``ROLLBACK`` is accepted in every transaction state,\nincluding the failed one where nothing else is, and it is the only\nstatement that leaves the connection idle again.  Errors are swallowed\n-- a destructor has nobody to raise to -- and a connection that has\nbeen closed has already lost the transaction, so nothing is sent."
+        }
+       ]
+      },
+      {
+       "name": "__enter__",
+       "overloads": [
+        {
+         "signature": "def __enter__(deinit self) -> Self",
+         "summary": "Hand the guard to ``with conn.begin() as tx:``.",
+         "description": "The guard is transferred into the block rather than borrowed, so it is\ndestroyed -- and therefore rolled back, unless `Transaction.commit`\nran -- when the block ends, however it ends."
+        }
+       ]
+      },
+      {
+       "name": "is_open",
+       "overloads": [
+        {
+         "signature": "def is_open(self) -> Bool",
+         "summary": "Whether the block is still open."
+        }
+       ]
+      },
+      {
+       "name": "execute",
+       "overloads": [
+        {
+         "signature": "def execute(mut self, sql: String, params: Params = Params()) -> Int",
+         "summary": "Run a command inside the block and discard any rows.",
+         "description": "`Connection.execute`'s behaviour exactly, including the `PQexec` path\nfor a parameterless call and the multi-statement strings that allows.",
+         "args": [
+          {
+           "name": "sql",
+           "doc": "The statement text, with ``$1``-style placeholders if\n    `params` is non-empty."
+          },
+          {
+           "name": "params",
+           "doc": "The parameter values; empty by default."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the transaction is finished\nor the server rejected the command.  A rejected statement puts\nthe block in the failed state, where nothing but a rollback --\nwhole, or to a savepoint -- will be accepted."
+        }
+       ]
+      },
+      {
+       "name": "query",
+       "overloads": [
+        {
+         "signature": "def query(mut self, sql: String, params: Params = Params()) -> Result",
+         "summary": "Run a command inside the block and return its rows.",
+         "args": [
+          {
+           "name": "sql",
+           "doc": "The statement text, with ``$1``-style placeholders if\n    `params` is non-empty."
+          },
+          {
+           "name": "params",
+           "doc": "The parameter values; empty by default."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the transaction is finished\nor the server rejected the command."
+        }
+       ]
+      },
+      {
+       "name": "savepoint",
+       "overloads": [
+        {
+         "signature": "def savepoint(mut self, name: String)",
+         "summary": "Mark a point inside the block to come back to.",
+         "description": "The way to survive a *failed* statement without losing the whole\ntransaction: set a savepoint, try the statement, and\n`Transaction.rollback_to` the savepoint if it fails.  The block is\nusable again afterwards.",
+         "args": [
+          {
+           "name": "name",
+           "doc": "The savepoint name, spliced into the SQL as a quoted\n    identifier -- ``SAVEPOINT`` takes an identifier, and\n    identifiers cannot be parameters.  Any embedded double quotes\n    are doubled, so a name can never end the quoting early.\n    Re-using a name is allowed: the newer savepoint hides the\n    older one, which is still there after a\n    `Transaction.release`."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the transaction is finished,\nor if the block has already failed -- a savepoint cannot be\n*set* in the failed state, only rolled back to."
+        }
+       ]
+      },
+      {
+       "name": "rollback_to",
+       "overloads": [
+        {
+         "signature": "def rollback_to(mut self, name: String)",
+         "summary": "Undo everything after the savepoint `name`, keeping the block open.",
+         "description": "Also clears the failed state, which is the point: after this the\ntransaction accepts statements again and can still be committed.",
+         "args": [
+          {
+           "name": "name",
+           "doc": "The savepoint name, quoted as an identifier."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the transaction is finished,\nor if there is no such savepoint (SQLSTATE ``3B001``)."
+        }
+       ]
+      },
+      {
+       "name": "release",
+       "overloads": [
+        {
+         "signature": "def release(mut self, name: String)",
+         "summary": "Forget the savepoint `name`, keeping everything done since it.",
+         "description": "The opposite of `Transaction.rollback_to`: the work stays, and the\nsavepoint -- along with every savepoint set after it -- is gone.",
+         "args": [
+          {
+           "name": "name",
+           "doc": "The savepoint name, quoted as an identifier."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the transaction is finished,\nor if there is no such savepoint (SQLSTATE ``3B001``)."
+        }
+       ]
+      },
+      {
+       "name": "commit",
+       "overloads": [
+        {
+         "signature": "def commit(mut self)",
+         "summary": "Commit the block, making everything in it permanent.",
+         "description": "The destructor becomes a no-op afterwards, and the `Transaction` is\nfinished: any further use raises.",
+         "raises": "Error: A `sqlstate.PostgresError` if the transaction is already\nfinished, if ``COMMIT`` itself failed, or -- SQLSTATE\n``25P02``, ``transaction is aborted`` -- if a statement inside\nthe block failed and was not rolled back to a savepoint.\nPostgreSQL would answer that ``COMMIT`` with ``ROLLBACK`` and\nreport success, so a caller who did not check every statement\nwould believe the block had been committed; the ``ROLLBACK``\nis issued here too, leaving the connection idle, but the\noutcome is *reported* rather than hidden."
+        }
+       ]
+      },
+      {
+       "name": "rollback",
+       "overloads": [
+        {
+         "signature": "def rollback(mut self)",
+         "summary": "Roll the block back, discarding everything in it.",
+         "description": "Accepted in every state, including the failed one.  The destructor\nbecomes a no-op afterwards, and the `Transaction` is finished: any\nfurther use raises.",
+         "raises": "Error: A `sqlstate.PostgresError` if the transaction is already\nfinished, or if ``ROLLBACK`` itself failed -- which in\npractice means the connection has gone."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "drain_results",
+     "overloads": [
+      {
+       "signature": "def drain_results(conn: Int, cell: ArcPointer[_ConnCell], sql: String) -> Int",
+       "summary": "Collect every outstanding result, then report on the first one.",
+       "description": "This is how a ``COPY`` ends.  `LibpqFFI.PQgetResult` must be called until\nit returns ``0`` or the connection stays busy and every later command\nfails, so the drain happens **first, unconditionally** -- only then is the\nfirst result's status examined and, if it failed, raised.  A malformed\n``COPY`` row therefore surfaces as the server's own error (``22P02`` with\nits ``DETAIL``/``CONTEXT``) on a connection that is already clean.",
+       "args": [
+        {
+         "name": "conn",
+         "doc": "The connection handle."
+        },
+        {
+         "name": "cell",
+         "doc": "The connection's shared cell."
+        },
+        {
+         "name": "sql",
+         "doc": "The statement text, attached to any error raised."
+        }
+       ],
+       "raises": "Error: A `sqlstate.PostgresError` if the first result reports a\nfailure."
+      }
+     ]
+    },
+    {
+     "name": "drain_results_quietly",
+     "overloads": [
+      {
+       "signature": "def drain_results_quietly(conn: Int)",
+       "summary": "Collect and discard every outstanding result, reporting nothing.",
+       "description": "The destructor's half of `drain_results`: a handle that is dropped rather\nthan finished still has to leave the connection idle, and a destructor has\nnobody to raise to.",
+       "args": [
+        {
+         "name": "conn",
+         "doc": "The connection handle."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "discard_copy_quietly",
+     "overloads": [
+      {
+       "signature": "def discard_copy_quietly(conn: Int, status: Int)",
+       "summary": "End whatever COPY `status` says is in progress, and drain it, silently.",
+       "description": "A COPY holds the connection until it is finished one way or another, and\nthe way out depends on the direction: a ``COPY FROM STDIN`` is ended by\ntelling libpq the stream failed, while a ``COPY TO STDOUT`` can only be\nconsumed -- PostgreSQL offers no cancel for it.  This does whichever\napplies and then drains the results, so the connection comes back idle.\n\nUsed by the COPY destructors, which have nobody to raise to, and by\n`Connection.copy_in`/`Connection.copy_out` when the statement started a\nCOPY in the *other* direction.",
+       "args": [
+        {
+         "name": "conn",
+         "doc": "The connection handle."
+        },
+        {
+         "name": "status",
+         "doc": "`_ffi.PGRES_COPY_IN`, `_ffi.PGRES_COPY_OUT` or\n    `_ffi.PGRES_COPY_BOTH` -- the state the connection is in.  Any\n    other value only drains."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "postgres.copy",
+   "summary": "`postgres.copy` — bulk transfer with ``COPY``, in both directions.",
+   "description": "``COPY`` is PostgreSQL's bulk path: one statement sets up the stream, and rows\nthen flow over the connection with no per-row parse, plan or round trip.  It is\nthe fastest way to load a table by a wide margin, and the fastest way to read\none out whole.\n\nTwo handles, both from a `connection.Connection`:\n\n```mojo\nfrom postgres import Connection, CopyEncoder, decode_row, COPY_TEXT\n\nvar conn = Connection(\"postgresql://localhost/app\")\n_ = conn.execute(\"CREATE TABLE t (id bigint, name text)\")\n\nvar cp = conn.copy_in(\"COPY t (id, name) FROM STDIN\")\nvar enc = CopyEncoder()\nfor i in range(100_000):\n    enc.field(String(i))\n    enc.field(\"row\")\n    enc.end_row()\n    if enc.size() > 1 << 16:\n        cp.write_rows(enc)          # flush whole rows as they accumulate\ncp.write_rows(enc)\nprint(cp.finish(), \"rows loaded\")   # 100000\n\nvar out = conn.copy_out(\"COPY t TO STDOUT\")\nfor line in out.rows():\n    var fields = decode_row(line, COPY_TEXT, \"\\t\", \"\\N\")\n    print(fields[0].value(), fields[1].value())\n```\n\n`copyfmt.CopyEncoder` and `copyfmt.decode_row` are the codec for what flows\nthrough the pipe -- text or CSV, escaping and NULLs -- and know nothing about\nlibpq.  This module is the pipe: it owns the protocol state, and the rule that\nstate imposes.\n\n**A COPY holds the connection.**  From the moment `connection.Connection.copy_in`\nor `connection.Connection.copy_out` returns until the handle is finished,\naborted or destroyed, the connection is in COPY mode and will accept nothing\nelse -- and the handle keeps that connection open for as long as it lives, so\nthe `Connection` value may be dropped in the meantime.  Both handles therefore clean up after themselves when destroyed --\n`CopyIn` aborts, `CopyOut` drains -- so a handle that goes out of scope early\nleaves a connection that still works.  Draining is the only way out of a\n``COPY TO STDOUT`` short of closing the connection: PostgreSQL has no cancel\nfor it, so `CopyOut.__deinit__` reads the rest of the stream and throws it\naway, which for a large table costs the time to transfer it.\n\n**Errors arrive at the end.**  The server validates rows as it reads them, but\na `CopyIn.write` only queues bytes: a malformed row surfaces from\n`CopyIn.finish`, as the server's own error (``22P02`` for a bad number, with\nthe offending line in its ``CONTEXT``).  Do not read a `CopyIn.write` returning\nnormally as \"the rows were accepted\".",
+   "structs": [
+    {
+     "name": "CopyIn",
+     "signature": "struct CopyIn",
+     "summary": "A ``COPY ... FROM STDIN`` in progress: write rows, then finish.",
+     "description": "Created by `connection.Connection.copy_in`.  Bytes written here are the\nCOPY data itself in the format the statement declared -- text by default,\nCSV with ``(FORMAT csv)`` -- which `copyfmt.CopyEncoder` produces.\n\nChunks need not align with rows on the way to `CopyIn.write`, but\n`CopyIn.finish` must not be called mid-row: flush whole rows.\n`CopyIn.write_rows` does that for you.\n\n**Finish it, or it is aborted.**  `CopyIn.finish` is what commits the\nrows; if the handle is destroyed first -- an early return, a raised error\n-- `CopyIn.abort` runs instead and the server discards everything the\nstream carried.  Nothing is half-loaded either way, since ``COPY`` is a\nsingle statement and rolls back as one.\n\nLike `connection.Statement`, this shares ownership of the connection\nrather than borrowing it, so the session stays open for as long as the\nCOPY does even if the `Connection` value was dropped first -- which Mojo\ndoes at its last use.  An explicit `connection.Connection.close` ends the\nCOPY: every call then raises SQLSTATE ``08006``.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, cell: ArcPointer[_ConnCell], sql: String)",
+         "summary": "Record a COPY that libpq has already put into `PGRES_COPY_IN`.",
+         "description": "`connection.Connection.copy_in` is the only intended caller: it runs\nthe statement and checks the status before constructing this.",
+         "args": [
+          {
+           "name": "cell",
+           "doc": "The shared cell of the connection the COPY is running on; a\n    share of it is kept, so the connection stays open at least as\n    long as this handle does."
+          },
+          {
+           "name": "sql",
+           "doc": "The ``COPY`` statement text."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Abort the COPY unless it was already finished or aborted.",
+         "description": "The server is told the stream failed and discards it, and the\noutstanding results are drained so the connection is idle again.\nErrors are swallowed -- a destructor has nobody to raise to -- and a\nconnection that has been closed is left alone."
+        }
+       ]
+      },
+      {
+       "name": "is_open",
+       "overloads": [
+        {
+         "signature": "def is_open(self) -> Bool",
+         "summary": "Whether the COPY is still accepting data."
+        }
+       ]
+      },
+      {
+       "name": "write",
+       "overloads": [
+        {
+         "signature": "def write(mut self, data: Span[UInt8])",
+         "summary": "Queue `data` as the next bytes of the COPY stream.",
+         "description": "libpq copies the bytes into its own buffer before returning, so\nnothing has to be kept alive afterwards.",
+         "args": [
+          {
+           "name": "data",
+           "doc": "Raw COPY data, in the format the statement declared.  Not\n    required to end on a row boundary; an empty span is a no-op."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the COPY is already finished,\nor if libpq could not queue the data -- which means the\nconnection has gone.  A row the *server* rejects is not\nreported here; see `CopyIn.finish`."
+        },
+        {
+         "signature": "def write(mut self, data: String)",
+         "summary": "Queue `data` as the next bytes of the COPY stream.",
+         "description": "The overload for callers holding text rather than bytes -- both COPY\nsub-formats this tin encodes are text.",
+         "args": [
+          {
+           "name": "data",
+           "doc": "Raw COPY data, in the format the statement declared."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the COPY is already finished\nor the data could not be queued."
+        }
+       ]
+      },
+      {
+       "name": "write_rows",
+       "overloads": [
+        {
+         "signature": "def write_rows(mut self, mut encoder: CopyEncoder)",
+         "summary": "Flush everything buffered in `encoder` into the stream.",
+         "description": "The usual way to drive a COPY: append rows to the encoder, and call\nthis whenever `copyfmt.CopyEncoder.size` has grown enough to be worth\na write.  The encoder is emptied, so the same one can be refilled and\nflushed again as many times as the load needs.",
+         "args": [
+          {
+           "name": "encoder",
+           "doc": "The encoder to take the buffered bytes from.  Flush only\n    after `copyfmt.CopyEncoder.end_row`: a partial row would split\n    across writes correctly, but `CopyIn.finish` must not land in\n    the middle of one."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the COPY is already finished\nor the data could not be queued."
+        }
+       ]
+      },
+      {
+       "name": "finish",
+       "overloads": [
+        {
+         "signature": "def finish(mut self) -> Int",
+         "summary": "End the stream, commit the rows, and report how many there were.",
+         "description": "Every write so far is flushed, the server finishes reading, and the\noutstanding results are drained -- which is where the server's verdict\non the data arrives.",
+         "raises": "Error: A `sqlstate.PostgresError` if the COPY was already\nfinished, or if the server rejected the data.  A malformed row\nis the usual cause and reports the type's own SQLSTATE --\n``22P02`` for text that is not a valid number -- with the\noffending line in the error's ``CONTEXT``.  The connection is\nidle and usable afterwards either way."
+        }
+       ]
+      },
+      {
+       "name": "abort",
+       "overloads": [
+        {
+         "signature": "def abort(mut self, reason: String = \"COPY aborted by the client\")",
+         "summary": "End the stream by failing it, so the server discards every row.",
+         "description": "The deliberate counterpart to `CopyIn.finish`, and what the destructor\ndoes on its own.  This does *not* raise: the failure is the point.",
+         "args": [
+          {
+           "name": "reason",
+           "doc": "The text the server attaches to the error it records for\n    the aborted COPY.  It appears in the server log, not in\n    anything raised here."
+          }
+         ],
+         "raises": "Error: Only if the COPY was already finished or aborted.  The\nabort itself is silent, whatever libpq makes of it."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "CopyOut",
+     "signature": "struct CopyOut",
+     "summary": "A ``COPY ... TO STDOUT`` in progress: read rows until they run out.",
+     "description": "Created by `connection.Connection.copy_out`.  libpq delivers **one whole\nrow per call** whatever the chunking on the wire, so `CopyOut.next` never\nhands back a partial line and a field containing a raw newline cannot be\nmistaken for a row boundary.\n\n```mojo\nvar out = conn.copy_out(\"COPY t TO STDOUT\")\nvar chunk = List[UInt8]()\nwhile out.next(chunk):\n    ...                    # `chunk` is one row, newline included\n```\n\n`CopyOut.rows` is the same loop with the newline stripped and each row as\na `String`, ready for `copyfmt.decode_row`; `CopyOut.read_all` is the whole\nstream in one buffer, for `copyfmt.split_rows`.\n\n**Abandoning one costs the transfer.**  PostgreSQL cannot cancel a ``COPY\nTO STDOUT``: the only ways out are to consume it or to close the\nconnection.  Dropping the handle early therefore drains the rest of the\nstream in `CopyOut.__deinit__` -- correct, and on a large table not free.\n\nLike `connection.Statement`, this shares ownership of the connection\nrather than borrowing it, which matters most here: the handle is normally\nused *after* the last mention of the connection, and Mojo destroys a value\nat its last use.  The session stays open for the stream either way.\n\n```mojo\nvar out = conn.copy_out(\"COPY t TO STDOUT\")   # last mention of `conn`,\nvar lines = out.rows()                        # and the stream is still up\n```\n\nAn explicit `connection.Connection.close` is the exception, and ends the\nstream: every call then raises SQLSTATE ``08006``.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, cell: ArcPointer[_ConnCell], sql: String)",
+         "summary": "Record a COPY that libpq has already put into `PGRES_COPY_OUT`.",
+         "description": "`connection.Connection.copy_out` is the only intended caller: it runs\nthe statement and checks the status before constructing this.",
+         "args": [
+          {
+           "name": "cell",
+           "doc": "The shared cell of the connection the COPY is running on; a\n    share of it is kept, so the connection stays open at least as\n    long as this handle does."
+          },
+          {
+           "name": "sql",
+           "doc": "The ``COPY`` statement text."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Consume whatever is left of the stream, leaving the connection idle.",
+         "description": "There is no way to tell the server to stop, so the rest of the rows\nare read and dropped and the outstanding results are drained.  Errors\nare swallowed -- a destructor has nobody to raise to -- and a\nconnection that has been closed is left alone."
+        }
+       ]
+      },
+      {
+       "name": "is_open",
+       "overloads": [
+        {
+         "signature": "def is_open(self) -> Bool",
+         "summary": "Whether there may be more rows to read."
+        }
+       ]
+      },
+      {
+       "name": "next",
+       "overloads": [
+        {
+         "signature": "def next(mut self, mut chunk: List[UInt8]) -> Bool",
+         "summary": "Read the next row into `chunk`.",
+         "args": [
+          {
+           "name": "chunk",
+           "doc": "The destination, **cleared first**.  On True it holds\n    exactly one row, including its trailing newline; on False it\n    is empty.  Passing the same list back each time reuses its\n    allocation."
+          }
+         ],
+         "raises": "Error: A `sqlstate.PostgresError` if the transfer failed, either\nwhile reading (libpq reports it, so ``08006``) or in the\nserver's terminating result -- a ``COPY (SELECT ...)`` whose\nquery fails halfway through reports it there."
+        }
+       ]
+      },
+      {
+       "name": "read_all",
+       "overloads": [
+        {
+         "signature": "def read_all(mut self) -> List[UInt8]",
+         "summary": "Read the whole stream into one buffer.",
+         "description": "Convenient for a result that comfortably fits in memory; for anything\nelse, loop on `CopyOut.next`.",
+         "raises": "Error: A `sqlstate.PostgresError` if the transfer failed."
+        }
+       ]
+      },
+      {
+       "name": "rows",
+       "overloads": [
+        {
+         "signature": "def rows(mut self) -> List[String]",
+         "summary": "Read the whole stream as one `String` per row.",
+         "raises": "Error: A `sqlstate.PostgresError` if the transfer failed, or if a\nrow is not valid UTF-8."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "postgres.copyfmt",
+   "summary": "`postgres.copyfmt` — encode and parse rows for PostgreSQL's COPY text and CSV sub-formats.",
+   "description": "`COPY ... TO/FROM STDOUT/STDIN` streams raw bytes over\n`PQputCopyData`/`PQgetCopyData` (wired up separately, in `copy.mojo`). This\nmodule is the pure-Mojo codec for what flows through that pipe: `CopyEncoder`\nbuilds row bytes a caller hands to `PQputCopyData` in chunks via `take()`;\n`CopyDecoder` (and the free `decode_row`/`split_rows` functions) turn bytes\ndelivered by `PQgetCopyData` back into typed fields. Neither type touches\nlibpq — see\nhttps://www.postgresql.org/docs/current/sql-copy.html (\"Text Format\" and\n\"CSV Format\") for the wire formats implemented here.\n\nA COPY row is a list of fields, each either NULL or a text value; this module\nrepresents that as `List[Optional[String]]` — `None` is NULL, `Optional[String](\"\")`\nis a real empty string, which text format and (quoted) CSV can both express\ndistinctly from NULL.",
+   "aliases": [
+    {
+     "name": "COPY_TEXT",
+     "value": "0",
+     "summary": "PostgreSQL's default COPY sub-format: tab-delimited, `\\N` for NULL, backslash escapes."
+    },
+    {
+     "name": "COPY_CSV",
+     "value": "1",
+     "summary": "`COPY ... (FORMAT CSV)`: comma-delimited, double-quote quoting, empty unquoted string for NULL."
+    }
+   ],
+   "structs": [
+    {
+     "name": "CopyEncoder",
+     "signature": "struct CopyEncoder",
+     "summary": "Builds COPY row bytes in `format`, ready for `PQputCopyData` in chunks via `take()`.",
+     "description": "Field values are escaped/quoted as they are appended, so the buffer is\nalways valid COPY data up to the last completed row — `size()`/`take()`\ncan be called mid-row, though a caller normally flushes only after\n`end_row()`.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "format",
+       "type": "Int"
+      },
+      {
+       "name": "delimiter",
+       "type": "String"
+      },
+      {
+       "name": "null_string",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, format: Int = Int(0), delimiter: Optional[String] = None, null: Optional[String] = None)",
+         "summary": "Configure the encoder.",
+         "args": [
+          {
+           "name": "format",
+           "doc": "`COPY_TEXT` or `COPY_CSV`."
+          },
+          {
+           "name": "delimiter",
+           "doc": "One-byte field separator. Defaults to tab (text) or\n    comma (CSV)."
+          },
+          {
+           "name": "null",
+           "doc": "The NULL marker. Defaults to `\\N` (text) or the empty\n    string (CSV) — PostgreSQL's own defaults for each sub-format."
+          }
+         ],
+         "raises": "Error: If `format` is neither sub-format, or `delimiter` is not\nexactly one byte."
+        }
+       ]
+      },
+      {
+       "name": "field",
+       "overloads": [
+        {
+         "signature": "def field(mut self, v: StringSpan)",
+         "summary": "Append a non-NULL field, escaping/quoting it for `self.format`."
+        }
+       ]
+      },
+      {
+       "name": "null",
+       "overloads": [
+        {
+         "signature": "def null(mut self)",
+         "summary": "Append a NULL field (the raw, unescaped null marker)."
+        }
+       ]
+      },
+      {
+       "name": "end_row",
+       "overloads": [
+        {
+         "signature": "def end_row(mut self)",
+         "summary": "Terminate the current row with `\\n` and reset for the next one."
+        }
+       ]
+      },
+      {
+       "name": "row",
+       "overloads": [
+        {
+         "signature": "def row(mut self, values: List[Optional[String]])",
+         "summary": "Convenience: append a whole row (`None` entries as NULL) and terminate it."
+        }
+       ]
+      },
+      {
+       "name": "size",
+       "overloads": [
+        {
+         "signature": "def size(self) -> Int",
+         "summary": "Bytes currently buffered."
+        }
+       ]
+      },
+      {
+       "name": "take",
+       "overloads": [
+        {
+         "signature": "def take(mut self) -> List[UInt8]",
+         "summary": "Hand back the buffered bytes and reset the buffer, so a caller can flush in chunks without losing anything already appended."
+        }
+       ]
+      },
+      {
+       "name": "bytes",
+       "overloads": [
+        {
+         "signature": "def bytes(ref self) -> Span[UInt8, origin_of(self._buf)]",
+         "summary": "A read-only view of the currently buffered bytes, without taking them."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "CopyDecoder",
+     "signature": "struct CopyDecoder",
+     "summary": "`decode_row` bound to a fixed format/delimiter/null configuration, for callers decoding many rows of the same COPY stream.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "format",
+       "type": "Int"
+      },
+      {
+       "name": "delimiter",
+       "type": "String"
+      },
+      {
+       "name": "null_string",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, format: Int = Int(0), delimiter: Optional[String] = None, null: Optional[String] = None)"
+        }
+       ]
+      },
+      {
+       "name": "decode_row",
+       "overloads": [
+        {
+         "signature": "def decode_row(self, line: StringSpan) -> List[Optional[String]]"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "decode_row",
+     "overloads": [
+      {
+       "signature": "def decode_row(line: StringSpan, format: Int, delimiter: String, null: String) -> List[Optional[String]]",
+       "summary": "Parse one line of `COPY ... TO STDOUT` output into its fields.",
+       "description": "`line` must not include the trailing newline (`split_rows` strips it)."
+      }
+     ]
+    },
+    {
+     "name": "split_rows",
+     "overloads": [
+      {
+       "signature": "def split_rows(buffer: Span[UInt8]) -> Tuple[List[String], String]",
+       "summary": "Split a buffer of concatenated COPY row bytes on `\\n`, returning the complete lines (newline stripped) and any trailing partial line still waiting for more bytes.",
+       "description": "This is a byte-oriented batching helper for the common case where\n`PQgetCopyData` results have been concatenated before parsing — it does\nnot track CSV quote state, so a row containing a *raw* embedded newline\n(a CSV field with a real newline inside quotes) is indistinguishable here\nfrom a row boundary. `PQgetCopyData` itself always delivers one complete\nrow per call regardless of embedded newlines; feed `decode_row` from\nthose calls directly if embedded raw newlines are possible."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "postgres.params",
+   "summary": "`postgres.params` — the `Params` builder for `PQexecParams` / `PQexecPrepared`.",
+   "description": "Collects `$1`-style query parameters, always in text format (this tin never\nsends binary-format parameters). `Params` keeps three parallel lists —\nvalues, null flags, and OIDs — that the FFI layer reads by index when it\nbuilds the `char* const*`/`Oid*`/`int*` arrays libpq wants.\n\nEvery typed builder method encodes through `postgres.text` and is chainable\nby consuming and returning `self`, so a call reads like::\n\n    var p = Params().text(\"gold\").int64(7).timestamptz_micros(now)\n\n`.text()` binds OID 0 — the server infers the parameter's type from query\ncontext, which is what you want for an untyped literal. Use `.typed()` as an\nescape hatch for a value/OID pair this module has no dedicated method for.",
+   "structs": [
+    {
+     "name": "Params",
+     "signature": "struct Params",
+     "summary": "A builder for one query's parameter list.",
+     "description": "`Params()` starts empty. Each builder method appends one parameter and\nreturns `self` so calls chain; `__len__`, `value(i)`, `is_null(i)`, and\n`oid(i)` are the read side the FFI layer uses to fill libpq's parameter\narrays.",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "Sized"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "__len__",
+       "overloads": [
+        {
+         "signature": "def __len__(self) -> Int",
+         "summary": "Number of parameters bound so far."
+        }
+       ]
+      },
+      {
+       "name": "value",
+       "overloads": [
+        {
+         "signature": "def value(self, i: Int) -> String",
+         "summary": "The text form of parameter `i` (0-based). Meaningless — and conventionally the empty string — when `is_null(i)` is `True`."
+        }
+       ]
+      },
+      {
+       "name": "is_null",
+       "overloads": [
+        {
+         "signature": "def is_null(self, i: Int) -> Bool",
+         "summary": "Whether parameter `i` is SQL NULL."
+        }
+       ]
+      },
+      {
+       "name": "oid",
+       "overloads": [
+        {
+         "signature": "def oid(self, i: Int) -> UInt32",
+         "summary": "The OID parameter `i` was bound with; `0` lets the server infer the type from query context."
+        }
+       ]
+      },
+      {
+       "name": "text",
+       "overloads": [
+        {
+         "signature": "def text(var self, v: String) -> Self",
+         "summary": "Bind `v` untyped (OID 0) — the server infers the type from context."
+        }
+       ]
+      },
+      {
+       "name": "int16",
+       "overloads": [
+        {
+         "signature": "def int16(var self, v: Int16) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "int32",
+       "overloads": [
+        {
+         "signature": "def int32(var self, v: Int32) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "int64",
+       "overloads": [
+        {
+         "signature": "def int64(var self, v: Int64) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "float32",
+       "overloads": [
+        {
+         "signature": "def float32(var self, v: Float32) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "float64",
+       "overloads": [
+        {
+         "signature": "def float64(var self, v: Float64) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "bool",
+       "overloads": [
+        {
+         "signature": "def bool(var self, v: Bool) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "numeric",
+       "overloads": [
+        {
+         "signature": "def numeric(var self, v: String) -> Self",
+         "summary": "Bind an already-formatted `numeric` literal. Kept a `String` — see `postgres.text`'s module docstring for why."
+        }
+       ]
+      },
+      {
+       "name": "bytea",
+       "overloads": [
+        {
+         "signature": "def bytea(var self, v: Span[UInt8]) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "date_days",
+       "overloads": [
+        {
+         "signature": "def date_days(var self, v: Int32) -> Self",
+         "summary": "`v` is days since 1970-01-01, as returned by `text.decode_date`."
+        }
+       ]
+      },
+      {
+       "name": "time_micros",
+       "overloads": [
+        {
+         "signature": "def time_micros(var self, v: Int64) -> Self",
+         "summary": "`v` is microseconds since midnight, as returned by `text.decode_time`."
+        }
+       ]
+      },
+      {
+       "name": "timestamp_micros",
+       "overloads": [
+        {
+         "signature": "def timestamp_micros(var self, v: Int64) -> Self",
+         "summary": "`v` is microseconds since 1970-01-01 00:00:00 (naive, no zone), as returned by `text.decode_timestamp`."
+        }
+       ]
+      },
+      {
+       "name": "timestamptz_micros",
+       "overloads": [
+        {
+         "signature": "def timestamptz_micros(var self, v: Int64) -> Self",
+         "summary": "`v` is UTC microseconds since 1970-01-01 00:00:00, as returned by `text.decode_timestamptz`."
+        }
+       ]
+      },
+      {
+       "name": "uuid",
+       "overloads": [
+        {
+         "signature": "def uuid(var self, v: String) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "json",
+       "overloads": [
+        {
+         "signature": "def json(var self, v: String) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "jsonb",
+       "overloads": [
+        {
+         "signature": "def jsonb(var self, v: String) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "null",
+       "overloads": [
+        {
+         "signature": "def null(var self, oid: UInt32 = UInt32(0)) -> Self",
+         "summary": "Bind SQL NULL, optionally typed with `oid` (default 0, server infers)."
+        }
+       ]
+      },
+      {
+       "name": "typed",
+       "overloads": [
+        {
+         "signature": "def typed(var self, value: String, oid: UInt32) -> Self",
+         "summary": "Escape hatch: bind an already-formatted text value with an explicit OID this module has no dedicated method for."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "postgres.pool",
+   "summary": "`postgres.pool` — connections shared safely between threads.",
+   "description": "A `ConnectionPool` keeps a small set of open sessions and hands them out one at\na time.  It is built for a **long-lived service**: one pool for the process\nlifetime, several threads checking connections out of it, and connections\nrecycled underneath so a failover or a nightly restart is survivable without a\nrestart of your own.\n\n```mojo\nfrom postgres.pool import ConnectionPool, PoolConfig\n\nvar cfg = PoolConfig(max_size=8, acquire_timeout_ms=2000)\nvar pool = ConnectionPool(\"postgresql://localhost/app?connect_timeout=5\", cfg)\n\nwith pool.lease() as lease:\n    var res = lease.connection().query(\"SELECT id FROM t WHERE id = $1\",\n                                       Params().int64(1))\n    for row in res:\n        print(row.int64(\"id\"))\n```\n\nThis module is **not** re-exported from `postgres`.  Import it by name, as\nabove: it pulls in the `threads` tin for its mutex and condition variable, and\na single-threaded caller should not have to carry that.\n\n## The one invariant\n\n`Connection` shares its `PGconn` with every `connection.Statement`,\n`connection.Transaction`, `copy.CopyIn` and `copy.CopyOut` made from it, so\nthat a handle can keep the session open after the `Connection` value is gone.\nThat is deliberate, documented, and exactly what makes pooling delicate:\nlibpq forbids two threads touching one `PGconn`, and breaking that rule\ncorrupts the protocol stream silently rather than crashing.\n\nSo the pool's invariant is:\n\n> **A connection goes back into the pool only when nothing else is holding\n> it.**\n\n`Lease` enforces it rather than asking for it.  When the lease ends it reads\n`Connection._shares`; anything above one means a handle outlived the block, and\nthe connection is **closed instead of pooled** and counted in\n`PoolStats.escaped`.  The escapee then gets SQLSTATE ``08006`` from its next\ncall, which is loud, local and immediate.\n\nThe pool's promise is therefore the same shape as `connection.Transaction`'s:\n*the failure mode of losing track is \"you lost a connection\", never \"two\nthreads share one\".*\n\n## Scope the lease with `with`\n\n```mojo\nwith pool.lease() as lease:\n    _ = lease.connection().execute(\"...\")\n```\n\nLeaving the block ends the lease, however it is left -- off the end, by\n`return`, or by a raise.  Mojo destroys a value after its last *use* rather\nthan at the end of its scope, so a lease held in a plain `var` also ends\nearlier than the indentation suggests; `with` is what makes the extent\nvisible, and it is the supported form.\n\nA transaction is expected to begin and end inside one lease.  That is not an\nhonour system either: a `connection.Transaction` still alive when the lease\nends *is* a share, so the connection is discarded rather than handed on with a\nblock open.\n\n## What happens on return\n\nIn order, and only when nothing escaped:\n\n1. If `PQtransactionStatus` is not idle, ``ROLLBACK``.  A lease that left a\n   block open, or left it failed, does not leak that into the next caller.\n2. With `PoolConfig.on_return` set to `ON_RETURN_DISCARD_ALL`, ``DISCARD\n   ALL``.  Opt-in, because it is safer *and* throws away the prepared\n   statements a service reissuing the same queries is paying to keep.\n3. If the session is older than `PoolConfig.max_lifetime_ms`, or no longer\n   alive, it is discarded rather than pooled.\n\n## What happens on checkout\n\nAn idle connection is taken most-recently-returned first, then checked:\nexpired by `PoolConfig.max_lifetime_ms` or `PoolConfig.max_idle_ms`, or no\nlonger alive.  A connection that fails the check is **recycled in place** with\n`Connection.reset` -- one blocking reconnect on a `PGconn` that is already\nallocated -- and only closed outright if that fails too.\n\nThe liveness check is `Connection.is_alive`: a non-blocking read of what the\nserver has already sent, with no round trip.  It is not `Connection.ping`,\nwhich is a ``SELECT 1`` per checkout, and it is deliberately *not*\n`Connection.is_open`, which cannot see this at all -- `PQstatus` reports a\ncached opinion, and a backend killed by ``pg_terminate_backend`` still reads\n`CONNECTION_OK` until a command fails on it.\n\nNo local check can be certain; a connection can die in the microsecond after\nit passes.  The point is not certainty, it is that a *known*-dead connection is\nnever handed out, and that a connection which dies in a caller's hands is\ndiscarded on return instead of going back in the pool.\n\n## Growth, waiting and reaping\n\nThe pool grows lazily to `PoolConfig.max_size`.  `PoolConfig.min_idle` is\nopened at construction and kept warm; everything above that is opened when\nsomebody actually waits for it, because opening blocks and pre-opening the\nwhole pool would turn a typo in the conninfo into a slow startup failure.\n\nA caller that finds every connection busy blocks on a real\n``pthread_cond_t`` -- no spin, no poll -- until one comes back or\n`PoolConfig.acquire_timeout_ms` elapses, at which point `ConnectionPool.lease`\nraises SQLSTATE ``53300``.\n\n**Reaping is lazy, plus an explicit `ConnectionPool.reap`.**  Idle connections\nare aged out when they are next picked up, and `ConnectionPool.reap` does the\nsame sweep on demand, closing anything past `PoolConfig.max_idle_ms` (never\nbelow `PoolConfig.min_idle`) and reopening back up to `PoolConfig.min_idle`.\nThere is deliberately no reaper thread: a thread inside a library owes its\ncaller a lifecycle -- when it starts, how it stops, what happens if the pool is\ndropped while it sleeps -- and a detached thread waiting on a condition\nvariable that is about to be destroyed is precisely the use-after-free this\nmodule exists to rule out.  A service that must not pin backends overnight\nalready has a timer; `ConnectionPool.reap` is one call on it, and it is the\nsame code the checkout path runs.\n\n## Threads\n\n`ConnectionPool` is the owner.  `ConnectionPool.ref` hands out a `PoolRef`,\nwhich is copyable, shares the same state, and is what travels into a worker\nthread's context.  Every `PoolRef` and every outstanding `Lease` holds a share\nof the pool's state, so the state cannot be destroyed underneath a thread that\nis still using it.\n\n**A lease may outlive the pool value**, and routinely does: Mojo destroys a\nvalue at its last *use*, so a `ConnectionPool` whose final mention is\n`pool.lease()` is gone before the lease it produced, leaving that lease\nholding the last share.  Returning the connection then means returning it to a\npool nobody else can see, which is fine and is what the share is for -- but it\nalso means the pool's mutex is destroyed by the lease that is using it, so\nevery critical section in this module lives in a function that takes the state\nas a *borrowed* argument.  A borrowed argument cannot be destroyed during the\ncall, which is what keeps the mutex alive across its own unlock; see\n`_put_back`.\n\n`ConnectionPool.__init__` checks `PQisthreadsafe` and refuses to build a pool\non a libpq that was compiled without thread safety, because nothing here --\nor anywhere else -- is safe on one.",
+   "aliases": [
+    {
+     "name": "ON_RETURN_ROLLBACK",
+     "value": "Int(0)",
+     "summary": "Roll back an open block and pool the connection.  The default.",
+     "description": "Cheap -- a ``ROLLBACK`` only when `PQtransactionStatus` says one is needed, so\nthe common case of a clean lease costs nothing -- and it keeps the session's\nprepared statements, temp tables and session GUCs, which is what a service\nreissuing the same queries is paying for."
+    },
+    {
+     "name": "ON_RETURN_DISCARD_ALL",
+     "value": "Int(1)",
+     "summary": "Issue ``DISCARD ALL`` on every return, on top of the rollback.",
+     "description": "Safer and more expensive: it resets the session to its just-connected state,\nwhich also throws away every prepared statement, temp table, cursor,\n``SET``-in-session and advisory lock.  Worth it when leases cannot be trusted\nto leave the session alone; not worth it otherwise."
+    }
+   ],
+   "structs": [
+    {
+     "name": "PoolConfig",
+     "signature": "struct PoolConfig",
+     "summary": "How big the pool gets, how long a caller waits, and when to recycle.",
+     "description": "Every default is chosen for a long-lived service rather than a script: a\nsmall pool, a bounded wait, and connections that age out on their own so a\nserver restarted underneath the process is recovered from rather than\nhoarded through.\n\nExample:\n\n```mojo\nvar cfg = PoolConfig(\n    max_size=16,\n    min_idle=2,\n    acquire_timeout_ms=2000,\n    max_lifetime_ms=900_000,\n)\n```",
+     "traits": [
+      "Copyable",
+      "ImplicitlyCopyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "max_size",
+       "type": "Int",
+       "summary": "The most connections that may exist at once, idle and busy together."
+      },
+      {
+       "name": "min_idle",
+       "type": "Int",
+       "summary": "Connections opened at construction and kept warm."
+      },
+      {
+       "name": "acquire_timeout_ms",
+       "type": "Int",
+       "summary": "How long `ConnectionPool.lease` waits for a connection before raising."
+      },
+      {
+       "name": "max_lifetime_ms",
+       "type": "Int",
+       "summary": "Retire a connection this long after it was opened.  ``0`` disables it."
+      },
+      {
+       "name": "max_idle_ms",
+       "type": "Int",
+       "summary": "Close a connection idle this long.  ``0`` disables it."
+      },
+      {
+       "name": "on_return",
+       "type": "Int",
+       "summary": "`ON_RETURN_ROLLBACK` or `ON_RETURN_DISCARD_ALL`; see both."
+      },
+      {
+       "name": "validate_on_checkout",
+       "type": "Bool",
+       "summary": "Check `Connection.is_alive` before handing a connection out."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, max_size: Int = Int(10), min_idle: Int = Int(0), acquire_timeout_ms: Int = Int(5000), max_lifetime_ms: Int = Int(1800000), max_idle_ms: Int = Int(600000), on_return: Int = Int(0), validate_on_checkout: Bool = True)",
+         "summary": "Build a configuration, taking the defaults for what you do not set.",
+         "args": [
+          {
+           "name": "max_size",
+           "doc": "See `PoolConfig.max_size`; ten by default."
+          },
+          {
+           "name": "min_idle",
+           "doc": "See `PoolConfig.min_idle`; none by default, so nothing is\n    opened until something is leased."
+          },
+          {
+           "name": "acquire_timeout_ms",
+           "doc": "See `PoolConfig.acquire_timeout_ms`; five\n    seconds by default."
+          },
+          {
+           "name": "max_lifetime_ms",
+           "doc": "See `PoolConfig.max_lifetime_ms`; thirty minutes\n    by default."
+          },
+          {
+           "name": "max_idle_ms",
+           "doc": "See `PoolConfig.max_idle_ms`; ten minutes by default."
+          },
+          {
+           "name": "on_return",
+           "doc": "See `PoolConfig.on_return`; `ON_RETURN_ROLLBACK` by\n    default."
+          },
+          {
+           "name": "validate_on_checkout",
+           "doc": "See `PoolConfig.validate_on_checkout`; on by\n    default."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "PoolStats",
+     "signature": "struct PoolStats",
+     "summary": "A snapshot of what the pool has been doing.  Cheap; takes the lock.",
+     "description": "The counters are cumulative since the pool was built; `PoolStats.idle` and\n`PoolStats.busy` are instantaneous.",
+     "traits": [
+      "Copyable",
+      "ImplicitlyCopyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "idle",
+       "type": "Int",
+       "summary": "Connections in the pool right now, ready to hand out."
+      },
+      {
+       "name": "busy",
+       "type": "Int",
+       "summary": "Connections checked out right now, plus slots reserved by a caller that is in the middle of opening one."
+      },
+      {
+       "name": "opened",
+       "type": "Int",
+       "summary": "Connections opened, ever -- at construction, on growth, and by `ConnectionPool.reap` topping back up to `PoolConfig.min_idle`."
+      },
+      {
+       "name": "recycled",
+       "type": "Int",
+       "summary": "Connections reconnected in place by `Connection.reset` after failing a checkout validation.  A rising count is a server that is dropping sessions, not a bug in the pool."
+      },
+      {
+       "name": "discarded",
+       "type": "Int",
+       "summary": "Connections closed rather than pooled: expired, dead beyond recycling, escaped, or returned after `ConnectionPool.close`.  Includes `PoolStats.escaped`."
+      },
+      {
+       "name": "escaped",
+       "type": "Int",
+       "summary": "Leases that ended with something still holding the connection."
+      },
+      {
+       "name": "waits",
+       "type": "Int",
+       "summary": "Times a caller blocked because every connection was busy."
+      },
+      {
+       "name": "timeouts",
+       "type": "Int",
+       "summary": "Times that block ran out of `PoolConfig.acquire_timeout_ms` and `ConnectionPool.lease` raised ``53300``."
+      }
+     ],
+     "functions": [
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)",
+         "summary": "Render as one line, for a log.",
+         "args": [
+          {
+           "name": "writer",
+           "doc": "The sink to write to."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Lease",
+     "signature": "struct Lease",
+     "summary": "One connection, checked out, for the extent of a `with` block.",
+     "description": "Produced by `ConnectionPool.lease`.  Reach the connection through\n`Lease.connection`:\n\n```mojo\nwith pool.lease() as lease:\n    var res = lease.connection().query(\"SELECT 1\")\n    print(res.num_rows())\n```\n\n**The lease ends when this value is destroyed**, which for a `with` block\nis when the block ends -- off the end, by `return`, or by a raise -- and\nfor a plain `var` is at its last *use*, which is usually earlier than it\nlooks.  Prefer `with`; it is the form that makes the extent match the\nindentation.\n\nEnding the lease does one of two things.  If nothing else is holding the\nconnection, the session is cleaned -- rolled back if a block was left open\n-- and it goes back into the pool.  If something *is* holding it -- a\n`connection.Statement`, a `connection.Transaction`, a `copy.CopyIn` or a\n`copy.CopyOut` that outlived the block -- the connection is **closed**, and\n`PoolStats.escaped` records it.\n\nThat second branch is the whole reason this type exists.  Those handles\nshare the `PGconn` on purpose, so one of them can outlive the `Connection`\nvalue; pooled and handed to a second thread, that sharing becomes two\nthreads on one `PGconn`, which libpq forbids and which corrupts the\nprotocol stream without crashing.  Closing costs one connection and reports\nitself.  Pooling would cost correctness and say nothing.\n\nNot copyable: a lease is exclusive use, and two of them would not be.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, state: ArcPointer[_PoolState], var conn: Connection, opened_at_ms: Int)",
+         "summary": "Take a checked-out connection.  `ConnectionPool.lease` builds these.",
+         "args": [
+          {
+           "name": "state",
+           "doc": "The pool's shared state."
+          },
+          {
+           "name": "conn",
+           "doc": "The connection, already counted in `PoolStats.busy`."
+          },
+          {
+           "name": "opened_at_ms",
+           "doc": "From `_now_ms`, when the session began."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "End the lease: return the connection, or discard it.",
+         "description": "The refcount check is here rather than in an `__exit__`, because Mojo\nrefuses a type that has both a consuming `__enter__` and an `__exit__`\n-- and a consuming `__enter__` is what makes `with` transfer the guard\ninto the block.  `connection.Transaction` is shaped the same way for\nthe same reason.  It is also the stronger of the two: a `Lease` that\nnever reaches a `with` block at all still ends here."
+        }
+       ]
+      },
+      {
+       "name": "__enter__",
+       "overloads": [
+        {
+         "signature": "def __enter__(deinit self) -> Self",
+         "summary": "Hand the lease to ``with pool.lease() as lease:``.",
+         "description": "The lease is transferred into the block rather than borrowed, so it is\ndestroyed -- and the connection therefore returned or discarded -- when\nthe block ends, however it ends."
+        }
+       ]
+      },
+      {
+       "name": "connection",
+       "overloads": [
+        {
+         "signature": "def connection(mut self) -> ref[self._conn] Connection",
+         "summary": "The leased connection."
+        }
+       ]
+      },
+      {
+       "name": "backend_pid",
+       "overloads": [
+        {
+         "signature": "def backend_pid(self) -> Int",
+         "summary": "The backend serving this lease, for logging and for tests."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "PoolRef",
+     "signature": "struct PoolRef",
+     "summary": "A copyable handle on a pool, for the threads that share it.",
+     "description": "A worker thread reaches its pool through one of these -- put it in the\ncontext struct `threads.parallel_for` or `threads.pool.TypedPool` hands\naround, and every worker leases from the same pool:\n\n```mojo\n@fieldwise_init\nstruct Ctx(Copyable, Movable):\n    var pool: PoolRef\n\ndef worker(i: Int, mut ctx: Ctx) -> None:\n    try:\n        with ctx.pool.lease() as lease:\n            _ = lease.connection().execute(\"SELECT 1\")\n    except:\n        pass\n\nparallel_for[worker](64, ctx, num_workers=8)\n```\n\nIt holds a share of the pool's state, so the state stays alive for as long\nas any thread can still reach it.  What it does *not* carry is ownership of\nthe pool's lifecycle: `ConnectionPool.close` remains the owner's call.",
+     "traits": [
+      "Copyable",
+      "ImplicitlyCopyable",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "lease",
+       "overloads": [
+        {
+         "signature": "def lease(self) -> Lease",
+         "summary": "Check a connection out.  See `ConnectionPool.lease`.",
+         "raises": "Error: A `sqlstate.PostgresError`; see `ConnectionPool.lease`."
+        }
+       ]
+      },
+      {
+       "name": "stats",
+       "overloads": [
+        {
+         "signature": "def stats(self) -> PoolStats",
+         "summary": "A snapshot of the pool's counters.  See `ConnectionPool.stats`."
+        }
+       ]
+      },
+      {
+       "name": "reap",
+       "overloads": [
+        {
+         "signature": "def reap(self)",
+         "summary": "Age out idle connections.  See `ConnectionPool.reap`."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ConnectionPool",
+     "signature": "struct ConnectionPool",
+     "summary": "A pool of connections, safe to lease from several threads.",
+     "description": "Build one per process and keep it for the process lifetime; see the module\ndocstring for the invariant it enforces and how.\n\nExample:\n\n```mojo\nfrom postgres.pool import ConnectionPool, PoolConfig\n\nvar pool = ConnectionPool(\n    \"postgresql://localhost/app?connect_timeout=5\",\n    PoolConfig(max_size=8, min_idle=1, acquire_timeout_ms=2000),\n)\n\nwith pool.lease() as lease:\n    _ = lease.connection().execute(\"DELETE FROM sessions WHERE expired\")\n```\n\nNot copyable -- `ConnectionPool.ref` is how a second holder is made, and it\nis deliberately not an owner.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, conninfo: String, config: PoolConfig = PoolConfig(Int(10), Int(0), Int(5000), Int(1800000), Int(600000), Int(0), True))",
+         "summary": "Build a pool over `conninfo`, opening `PoolConfig.min_idle` now.",
+         "args": [
+          {
+           "name": "conninfo",
+           "doc": "A libpq URI or keyword string, exactly as\n    `connection.Connection` takes it.  **Set ``connect_timeout``**:\n    a pool whose opens can block for the OS TCP timeout blocks\n    every waiter behind them."
+          },
+          {
+           "name": "config",
+           "doc": "The pool's configuration."
+          }
+         ],
+         "raises": "Error: If libpq was built without thread safety -- a pool is not\nsafe on such a build and this refuses to pretend otherwise --\nif `PoolConfig.max_size` is below one or `PoolConfig.min_idle`\nis above it, or if one of the `PoolConfig.min_idle`\nconnections could not be opened.  Opening those eagerly is\nwhat turns a wrong conninfo into a failure here rather than a\nfailure in whichever thread happens to lease first."
+        }
+       ]
+      },
+      {
+       "name": "ref",
+       "overloads": [
+        {
+         "signature": "def ref(self) -> PoolRef",
+         "summary": "A copyable handle on this pool, for a worker thread's context."
+        }
+       ]
+      },
+      {
+       "name": "lease",
+       "overloads": [
+        {
+         "signature": "def lease(self) -> Lease",
+         "summary": "Check a connection out, blocking until one is free.",
+         "description": "Takes the most recently returned idle connection, or opens a new one if\nthe pool is below `PoolConfig.max_size`, or blocks on the pool's\ncondition variable until somebody returns one.  An idle connection that\nhas expired or is no longer alive is recycled with `Connection.reset`\nbefore it is handed out, and closed if that fails.\n\nWaiters are not queued.  A returning connection wakes one of them, and\na thread arriving at that moment may take it first -- so a waiter can\nbe passed over, and `PoolConfig.acquire_timeout_ms` rather than its\nplace in a line is what bounds how long it waits.  That is the usual\ntrade for a pool (a fair queue costs a handoff per return and starves\nthroughput under load), and it is worth knowing before reading a\nlatency histogram with a long tail on it.",
+         "raises": "Error: A `sqlstate.PostgresError` with SQLSTATE ``53300`` if\n`PoolConfig.acquire_timeout_ms` elapsed with every connection\nbusy; ``08003`` if `ConnectionPool.close` has run; or ``08001``\nif a new connection was needed and could not be opened."
+        }
+       ]
+      },
+      {
+       "name": "stats",
+       "overloads": [
+        {
+         "signature": "def stats(self) -> PoolStats",
+         "summary": "A snapshot of the pool's counters.",
+         "description": "Takes the lock, so it is consistent with itself; it is a snapshot all\nthe same, and another thread may have changed it before you read it."
+        }
+       ]
+      },
+      {
+       "name": "reap",
+       "overloads": [
+        {
+         "signature": "def reap(self)",
+         "summary": "Close idle connections that have aged out, and top back up.",
+         "description": "Closes every idle connection past `PoolConfig.max_idle_ms` or\n`PoolConfig.max_lifetime_ms`, never going below `PoolConfig.min_idle`,\nand then opens whatever it takes to get back *to*\n`PoolConfig.min_idle`.  Safe to call from any thread, at any time, as\noften as you like.\n\nThis is the pool's maintenance tick, and it is deliberately yours to\ncall rather than a thread of the pool's own; the module docstring says\nwhy.  A service that leases at least occasionally does not need it --\nthe same ageing happens on checkout -- but one that goes quiet\novernight does, or it holds its backends until morning.\n\nNever raises: a connection it could not reopen leaves the pool smaller,\nand the next `ConnectionPool.lease` will try again."
+        }
+       ]
+      },
+      {
+       "name": "close",
+       "overloads": [
+        {
+         "signature": "def close(self)",
+         "summary": "Close every idle connection and refuse every later lease. Idempotent.",
+         "description": "Safe to call with leases outstanding, and it does not touch them: a\nconnection another thread is using is that thread's, and reaching into\nit is the exact race this module exists to prevent.  Each outstanding\nlease finds the pool closed when it ends and closes its connection\ninstead of pooling it, so the pool drains as its leases come home.\n`PoolStats.busy` is how many are still out.\n\nWaiters blocked in `ConnectionPool.lease` are woken and raise ``08003``."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "postgres.result",
+   "summary": "`postgres.result` — the rows a query returned, and the typed accessors.",
+   "description": "`Connection.query` hands back a `Result`: an owned `PGresult` plus the column\nmetadata read out of it once.  Cells are read on demand -- libpq has already\nmaterialised the whole result set in its own memory, so there is nothing to be\ngained by copying it eagerly, and a `Result` costs one `PQclear` no matter how\nmany rows it holds.\n\n`Row` is the other half, and it is a **snapshot**: `Result.row` copies one\nrow's cells into owned `String`s, so the `Row` stays valid after the `Result`\nthat produced it is destroyed.  That is what makes\n\n```mojo\ndef newest(mut conn: Connection) raises -> Row:\n    var res = conn.query(\"SELECT id, name FROM t ORDER BY id DESC LIMIT 1\")\n    return res.row(0)          # `res` is cleared here; the Row survives\n```\n\nwork, and it is why `for row in res:` yields values rather than references.\nColumn *names* would be expensive to copy per row, so both types share one\n`ArcPointer[_Columns]` -- the names and OIDs, read once from the `PGresult`.\n\n**Typed accessors do not check the column's OID.**  `row.int64(\"n\")` parses\nthe cell's text as an `int8` whatever the server called it, because the\ncontract is \"you asked for int64, we parse the text as int64\"; a mismatch\nsurfaces as the codec's own error, which names both the type and the offending\ntext (``postgres.text: invalid int8 text: 'abc'``).  Call `column_oid` first if\nyou would rather dispatch on what the server actually sent.\n\n**NULL is not the empty string.**  libpq renders both as ``\"\"``; `is_null` is\nthe only thing that separates them.  Every typed accessor raises on NULL, so a\nnullable column is read with `Row.is_null` first, or with `Row.opt_text`.",
+   "structs": [
+    {
+     "name": "Row",
+     "signature": "struct Row",
+     "summary": "One result row, copied out of the `PGresult` and independent of it.",
+     "description": "Obtained from `Result.row` or by iterating a `Result`.  Every cell is an\nowned `String` plus a NULL flag, so a `Row` may outlive the `Result` --\nand may be stored, returned, or copied freely.\n\nEach accessor comes in two overloads: one taking a 0-based column index,\none taking the column name.  The name form resolves through the shared\ncolumn metadata, so it works on a `Row` whose `Result` is long gone.\n\nExample:\n\n```mojo\nvar res = conn.query(\"SELECT id, name, note FROM t\")\nfor row in res:\n    print(row.int64(\"id\"), row.text(\"name\"), row.opt_text(\"note\"))\n```",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var values: List[String], var nulls: List[Bool], cols: ArcPointer[_Columns])",
+         "summary": "Build a snapshot from already-copied cells.",
+         "args": [
+          {
+           "name": "values",
+           "doc": "One text-format value per column."
+          },
+          {
+           "name": "nulls",
+           "doc": "True where the cell is SQL NULL, parallel to `values`."
+          },
+          {
+           "name": "cols",
+           "doc": "The result's shared column metadata."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "num_cols",
+       "overloads": [
+        {
+         "signature": "def num_cols(self) -> Int",
+         "summary": "The number of columns in this row."
+        }
+       ]
+      },
+      {
+       "name": "column_name",
+       "overloads": [
+        {
+         "signature": "def column_name(self, col: Int) -> String",
+         "summary": "The name of column `col`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If `col` is out of range."
+        }
+       ]
+      },
+      {
+       "name": "column_index",
+       "overloads": [
+        {
+         "signature": "def column_index(self, name: String) -> Int",
+         "summary": "The index of the column called `name`.",
+         "args": [
+          {
+           "name": "name",
+           "doc": "The column name, matched exactly (see `_Columns.index_of`)."
+          }
+         ],
+         "raises": "Error: If there is no such column; the message lists the ones\nthere are."
+        }
+       ]
+      },
+      {
+       "name": "column_oid",
+       "overloads": [
+        {
+         "signature": "def column_oid(self, col: Int) -> UInt32",
+         "summary": "The ``pg_type.oid`` of column `col`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If `col` is out of range."
+        }
+       ]
+      },
+      {
+       "name": "is_null",
+       "overloads": [
+        {
+         "signature": "def is_null(self, col: Int) -> Bool",
+         "summary": "Whether column `col` is SQL NULL.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If `col` is out of range."
+        },
+        {
+         "signature": "def is_null(self, col: String) -> Bool",
+         "summary": "Whether the column named `col` is SQL NULL.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column."
+        }
+       ]
+      },
+      {
+       "name": "opt_text",
+       "overloads": [
+        {
+         "signature": "def opt_text(self, col: Int) -> Optional[String]",
+         "summary": "Column `col` as text, or `None` when it is SQL NULL.",
+         "description": "The NULL-tolerant counterpart to `Row.text`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If `col` is out of range."
+        },
+        {
+         "signature": "def opt_text(self, col: String) -> Optional[String]",
+         "summary": "The column named `col` as text, or `None` when it is SQL NULL.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column."
+        }
+       ]
+      },
+      {
+       "name": "text",
+       "overloads": [
+        {
+         "signature": "def text(self, col: Int) -> String",
+         "summary": "Column `col` exactly as the server rendered it.",
+         "description": "The escape hatch for every type this module has no accessor for, and\nthe only way to read the values the typed decoders refuse -- an\n``infinity`` date, a ``BC`` timestamp, an array, a composite.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If `col` is out of range, or the cell is SQL NULL."
+        },
+        {
+         "signature": "def text(self, col: String) -> String",
+         "summary": "The column named `col`, exactly as the server rendered it.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, or the cell is SQL NULL."
+        }
+       ]
+      },
+      {
+       "name": "bool",
+       "overloads": [
+        {
+         "signature": "def bool(self, col: Int) -> Bool",
+         "summary": "Column `col` decoded as `bool` (`t`/`f`).",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If the cell is NULL or is not valid `bool` text."
+        },
+        {
+         "signature": "def bool(self, col: String) -> Bool",
+         "summary": "The column named `col`, decoded as `bool`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, the cell is NULL, or the text\nis not valid `bool`."
+        }
+       ]
+      },
+      {
+       "name": "int16",
+       "overloads": [
+        {
+         "signature": "def int16(self, col: Int) -> Int16",
+         "summary": "Column `col` decoded as `int2`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If the cell is NULL, or the text is not an in-range `int2`."
+        },
+        {
+         "signature": "def int16(self, col: String) -> Int16",
+         "summary": "The column named `col`, decoded as `int2`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, the cell is NULL, or the text\nis not an in-range `int2`."
+        }
+       ]
+      },
+      {
+       "name": "int32",
+       "overloads": [
+        {
+         "signature": "def int32(self, col: Int) -> Int32",
+         "summary": "Column `col` decoded as `int4`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If the cell is NULL, or the text is not an in-range `int4`."
+        },
+        {
+         "signature": "def int32(self, col: String) -> Int32",
+         "summary": "The column named `col`, decoded as `int4`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, the cell is NULL, or the text\nis not an in-range `int4`."
+        }
+       ]
+      },
+      {
+       "name": "int64",
+       "overloads": [
+        {
+         "signature": "def int64(self, col: Int) -> Int64",
+         "summary": "Column `col` decoded as `int8`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If the cell is NULL, or the text is not an in-range `int8`."
+        },
+        {
+         "signature": "def int64(self, col: String) -> Int64",
+         "summary": "The column named `col`, decoded as `int8`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, the cell is NULL, or the text\nis not an in-range `int8`."
+        }
+       ]
+      },
+      {
+       "name": "float32",
+       "overloads": [
+        {
+         "signature": "def float32(self, col: Int) -> Float32",
+         "summary": "Column `col` decoded as `float4`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If the cell is NULL, or the text is not a valid float."
+        },
+        {
+         "signature": "def float32(self, col: String) -> Float32",
+         "summary": "The column named `col`, decoded as `float4`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, the cell is NULL, or the text\nis not a valid float."
+        }
+       ]
+      },
+      {
+       "name": "float64",
+       "overloads": [
+        {
+         "signature": "def float64(self, col: Int) -> Float64",
+         "summary": "Column `col` decoded as `float8`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If the cell is NULL, or the text is not a valid float."
+        },
+        {
+         "signature": "def float64(self, col: String) -> Float64",
+         "summary": "The column named `col`, decoded as `float8`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, the cell is NULL, or the text\nis not a valid float."
+        }
+       ]
+      },
+      {
+       "name": "numeric",
+       "overloads": [
+        {
+         "signature": "def numeric(self, col: Int) -> String",
+         "summary": "Column `col` as a `numeric` literal, kept as text.",
+         "description": "`numeric` is arbitrary precision; turning it into a `Float64` would\nsilently lose digits, so this hands back exactly the digits the server\nsent -- trailing zeros of the column's scale included.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If `col` is out of range, or the cell is SQL NULL."
+        },
+        {
+         "signature": "def numeric(self, col: String) -> String",
+         "summary": "The column named `col` as a `numeric` literal, kept as text.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, or the cell is SQL NULL."
+        }
+       ]
+      },
+      {
+       "name": "bytea",
+       "overloads": [
+        {
+         "signature": "def bytea(self, col: Int) -> List[UInt8]",
+         "summary": "Column `col` decoded as `bytea`.",
+         "description": "Both text sub-formats are accepted: the ``\\x``-prefixed hex the\nserver emits by default, and the legacy octal-escape format.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If the cell is NULL, or the text is not valid `bytea`."
+        },
+        {
+         "signature": "def bytea(self, col: String) -> List[UInt8]",
+         "summary": "The column named `col`, decoded as `bytea`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, the cell is NULL, or the text\nis not valid `bytea`."
+        }
+       ]
+      },
+      {
+       "name": "date_days",
+       "overloads": [
+        {
+         "signature": "def date_days(self, col: Int) -> Int32",
+         "summary": "Column `col` decoded as `date`, in days since 1970-01-01.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If the cell is NULL, the text is not a valid date, or the\ndate is ``infinity``/``-infinity`` or a ``BC`` year -- neither\nof which the epoch encoding can carry.  Read `Row.text` for\nthose."
+        },
+        {
+         "signature": "def date_days(self, col: String) -> Int32",
+         "summary": "The column named `col`, decoded as `date` in days since the epoch.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, the cell is NULL, or the date\ncannot be expressed as an epoch day count."
+        }
+       ]
+      },
+      {
+       "name": "time_micros",
+       "overloads": [
+        {
+         "signature": "def time_micros(self, col: Int) -> Int64",
+         "summary": "Column `col` decoded as `time`, in microseconds since midnight.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If the cell is NULL, or the text is not a valid time."
+        },
+        {
+         "signature": "def time_micros(self, col: String) -> Int64",
+         "summary": "The column named `col`, decoded as `time` in microseconds.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, the cell is NULL, or the text\nis not a valid time."
+        }
+       ]
+      },
+      {
+       "name": "timestamp_micros",
+       "overloads": [
+        {
+         "signature": "def timestamp_micros(self, col: Int) -> Int64",
+         "summary": "Column `col` decoded as naive `timestamp`, in epoch microseconds.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If the cell is NULL, the text is not a valid timestamp, or\nit is infinite or ``BC``."
+        },
+        {
+         "signature": "def timestamp_micros(self, col: String) -> Int64",
+         "summary": "The column named `col`, decoded as naive `timestamp`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, the cell is NULL, or the\ntimestamp cannot be expressed in epoch microseconds."
+        }
+       ]
+      },
+      {
+       "name": "timestamptz_micros",
+       "overloads": [
+        {
+         "signature": "def timestamptz_micros(self, col: Int) -> Int64",
+         "summary": "Column `col` decoded as `timestamptz`, in **UTC** epoch microseconds.",
+         "description": "The server renders `timestamptz` in the session's ``TimeZone``, with\nthe offset appended; the offset is applied here, so the result is UTC\nregardless of what the session is set to.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If the cell is NULL, the text is not a valid zoned\ntimestamp, or it is infinite or ``BC``."
+        },
+        {
+         "signature": "def timestamptz_micros(self, col: String) -> Int64",
+         "summary": "The column named `col`, decoded as `timestamptz` in UTC micros.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, the cell is NULL, or the\ntimestamp cannot be expressed in epoch microseconds."
+        }
+       ]
+      },
+      {
+       "name": "uuid",
+       "overloads": [
+        {
+         "signature": "def uuid(self, col: Int) -> String",
+         "summary": "Column `col` as `uuid` text, e.g. ``\"a0ee-...-4f1b\"``.",
+         "description": "The server always renders a `uuid` in the canonical lower-case\n8-4-4-4-12 form, so this is the raw text.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If `col` is out of range, or the cell is SQL NULL."
+        },
+        {
+         "signature": "def uuid(self, col: String) -> String",
+         "summary": "The column named `col` as `uuid` text.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, or the cell is SQL NULL."
+        }
+       ]
+      },
+      {
+       "name": "json",
+       "overloads": [
+        {
+         "signature": "def json(self, col: Int) -> String",
+         "summary": "Column `col` as `json`/`jsonb` text.",
+         "description": "Not parsed -- this tin has no JSON model.  `json` comes back exactly\nas it was stored; `jsonb` comes back in the server's normalised form\n(keys reordered, whitespace canonical).",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If `col` is out of range, or the cell is SQL NULL."
+        },
+        {
+         "signature": "def json(self, col: String) -> String",
+         "summary": "The column named `col` as `json`/`jsonb` text.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column, or the cell is SQL NULL."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Result",
+     "signature": "struct Result",
+     "summary": "The rows one command returned, owning the underlying `PGresult`.",
+     "description": "Built by `Connection.query` from an already status-checked result handle,\nand cleared exactly once when it is destroyed.  Not copyable: two owners\nwould mean two `PQclear`s.\n\nA command that returns no rows -- an ``INSERT``, a ``CREATE TABLE`` --\nstill yields a `Result`, with `num_rows` and `num_cols` both ``0`` and\n`affected_rows` carrying the count.\n\nExample:\n\n```mojo\nvar res = conn.query(\"SELECT id, name FROM t WHERE id > $1\",\n                     Params().int64(10))\nprint(res.num_rows(), \"rows\")\nfor row in res:\n    print(row.int64(\"id\"), row.text(\"name\"))\n```",
+     "traits": [
+      "Iterable",
+      "Movable",
+      "Sized"
+     ],
+     "aliases": [
+      {
+       "name": "IteratorType",
+       "type": "Iterator",
+       "value": "_RowIter[iterable_origin]",
+       "summary": "The iterator `for row in res:` uses; it yields `Row` snapshots."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, res: Int)",
+         "summary": "Take ownership of an already status-checked result handle.",
+         "description": "The status check belongs to the caller: by the time a `Result` exists\nthe command has succeeded, so none of its accessors have to answer for\n`PGRES_FATAL_ERROR`.  `Connection.query` is the only intended caller.",
+         "args": [
+          {
+           "name": "res",
+           "doc": "A `PGresultPtr` whose `PQresultStatus` is `PGRES_TUPLES_OK`,\n    `PGRES_COMMAND_OK` or `PGRES_EMPTY_QUERY`.  This `Result` now\n    owns it and will `PQclear` it exactly once."
+          }
+         ],
+         "raises": "Error: Only if libpq itself could not be reached, which cannot\nhappen once a `Connection` exists."
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Clear the `PGresult`, releasing libpq's copy of every row."
+        }
+       ]
+      },
+      {
+       "name": "num_rows",
+       "overloads": [
+        {
+         "signature": "def num_rows(self) -> Int",
+         "summary": "The number of rows."
+        }
+       ]
+      },
+      {
+       "name": "num_cols",
+       "overloads": [
+        {
+         "signature": "def num_cols(self) -> Int",
+         "summary": "The number of columns."
+        }
+       ]
+      },
+      {
+       "name": "__len__",
+       "overloads": [
+        {
+         "signature": "def __len__(self) -> Int",
+         "summary": "The number of rows, so `len(res)` reads naturally."
+        }
+       ]
+      },
+      {
+       "name": "column_name",
+       "overloads": [
+        {
+         "signature": "def column_name(self, col: Int) -> String",
+         "summary": "The name of column `col`.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If `col` is out of range."
+        }
+       ]
+      },
+      {
+       "name": "column_index",
+       "overloads": [
+        {
+         "signature": "def column_index(self, name: String) -> Int",
+         "summary": "The index of the column called `name`.",
+         "description": "Matching is exact, as in `PQfnumber`: an unquoted SQL identifier\narrives folded to lower case, so ask for ``\"userid\"``, not\n``\"userId\"``.",
+         "args": [
+          {
+           "name": "name",
+           "doc": "The column name."
+          }
+         ],
+         "raises": "Error: If there is no such column; the message lists the ones\nthere are."
+        }
+       ]
+      },
+      {
+       "name": "column_oid",
+       "overloads": [
+        {
+         "signature": "def column_oid(self, col: Int) -> UInt32",
+         "summary": "The ``pg_type.oid`` of column `col`.",
+         "description": "The hook for callers who want to dispatch on the server's actual type\nrather than assert one -- `Row`'s typed accessors deliberately do not\nconsult it.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If `col` is out of range."
+        }
+       ]
+      },
+      {
+       "name": "affected_rows",
+       "overloads": [
+        {
+         "signature": "def affected_rows(self) -> Int",
+         "summary": "Rows inserted, updated, deleted or retrieved by the command.",
+         "raises": "Error: If libpq reported a count that is not an integer, which\nwould mean a libpq bug rather than a user error."
+        }
+       ]
+      },
+      {
+       "name": "is_null",
+       "overloads": [
+        {
+         "signature": "def is_null(self, row: Int, col: Int) -> Bool",
+         "summary": "Whether the cell at (`row`, `col`) is SQL NULL.",
+         "args": [
+          {
+           "name": "row",
+           "doc": "The 0-based row index."
+          },
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If either index is out of range."
+        }
+       ]
+      },
+      {
+       "name": "text",
+       "overloads": [
+        {
+         "signature": "def text(self, row: Int, col: Int) -> String",
+         "summary": "The cell at (`row`, `col`) as the server rendered it.",
+         "args": [
+          {
+           "name": "row",
+           "doc": "The 0-based row index."
+          },
+          {
+           "name": "col",
+           "doc": "The 0-based column index."
+          }
+         ],
+         "raises": "Error: If either index is out of range, or the cell is SQL NULL --\ncheck `Result.is_null` first, or read the whole row with\n`Result.row` and use `Row.opt_text`."
+        }
+       ]
+      },
+      {
+       "name": "row",
+       "overloads": [
+        {
+         "signature": "def row(self, row: Int) -> Row",
+         "summary": "Copy row `row` into a standalone `Row` snapshot.",
+         "description": "The snapshot owns its cells and shares only the column metadata, so it\nstays usable after this `Result` is destroyed.",
+         "args": [
+          {
+           "name": "row",
+           "doc": "The 0-based row index."
+          }
+         ],
+         "raises": "Error: If `row` is out of range."
+        }
+       ]
+      },
+      {
+       "name": "__iter__",
+       "overloads": [
+        {
+         "signature": "def __iter__(ref self) -> _RowIter[origin_of(self)]",
+         "summary": "Iterate the rows, yielding one `Row` snapshot at a time.",
+         "description": "Rows are copied lazily -- only the row the loop is on exists as a\n`Row` -- so a large result costs one row's worth of `String`s at a\ntime on top of what libpq already holds."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "postgres.sqlstate",
+   "summary": "SQLSTATE handling: structured errors, and the codes libpq reports.",
+   "description": "Every error a PostgreSQL server sends carries a five-character SQLSTATE code\n(`23505`, `40P01`, ...) alongside a human-readable message — see\nhttps://www.postgresql.org/docs/current/errcodes-appendix.html. Mojo 1.x can\nonly `raise Error(String)`, so there is no field to hang the code on when an\nerror crosses a `raises` boundary. Instead this module packs the code into a\nparseable token inside the message text (`\"[SQLSTATE 23505]\"`), and gives\ncallers two ways back out:\n\n- `PostgresError` is the structured value: build one from a libpq result,\n  call `.to_error()` to raise it, and keep the original struct around\n  wherever a `try`/`except` block has an `Error` in hand and wants the\n  fields back — reconstruct a `PostgresError(...)`, or just pull the code\n  via `sqlstate_of(err)`.\n- `sqlstate_of()` recovers the raw code from an `Error` or a `String` even\n  when the `PostgresError` itself is gone — the common case, since Mojo's\n  `except err:` only ever hands back an `Error`.\n\n`08001` and `08006` are not real server SQLSTATEs — libpq itself reports no\nSQLSTATE at all for a connection that never came up or that dropped mid-use\n(`PQerrorMessage` on a failed/lost connection carries only free text). The FFI\nlayer synthesizes `SQLCLIENT_UNABLE_TO_ESTABLISH` (08001) for a failed\n`PQconnectdb` and `CONNECTION_FAILURE` (08006) for a connection lost after it\nwas established, mirroring the meaning class 08 has for every other client.",
+   "aliases": [
+    {
+     "name": "UNIQUE_VIOLATION",
+     "value": "StringSpan(\"23505\")"
+    },
+    {
+     "name": "FOREIGN_KEY_VIOLATION",
+     "value": "StringSpan(\"23503\")"
+    },
+    {
+     "name": "NOT_NULL_VIOLATION",
+     "value": "StringSpan(\"23502\")"
+    },
+    {
+     "name": "CHECK_VIOLATION",
+     "value": "StringSpan(\"23514\")"
+    },
+    {
+     "name": "SERIALIZATION_FAILURE",
+     "value": "StringSpan(\"40001\")"
+    },
+    {
+     "name": "DEADLOCK_DETECTED",
+     "value": "StringSpan(\"40P01\")"
+    },
+    {
+     "name": "UNDEFINED_TABLE",
+     "value": "StringSpan(\"42P01\")"
+    },
+    {
+     "name": "UNDEFINED_COLUMN",
+     "value": "StringSpan(\"42703\")"
+    },
+    {
+     "name": "SYNTAX_ERROR",
+     "value": "StringSpan(\"42601\")"
+    },
+    {
+     "name": "INSUFFICIENT_PRIVILEGE",
+     "value": "StringSpan(\"42501\")"
+    },
+    {
+     "name": "DUPLICATE_TABLE",
+     "value": "StringSpan(\"42P07\")"
+    },
+    {
+     "name": "QUERY_CANCELED",
+     "value": "StringSpan(\"57014\")"
+    },
+    {
+     "name": "INVALID_TEXT_REPRESENTATION",
+     "value": "StringSpan(\"22P02\")"
+    },
+    {
+     "name": "NUMERIC_VALUE_OUT_OF_RANGE",
+     "value": "StringSpan(\"22003\")"
+    },
+    {
+     "name": "DIVISION_BY_ZERO",
+     "value": "StringSpan(\"22012\")"
+    },
+    {
+     "name": "LOCK_NOT_AVAILABLE",
+     "value": "StringSpan(\"55P03\")"
+    },
+    {
+     "name": "ADMIN_SHUTDOWN",
+     "value": "StringSpan(\"57P01\")"
+    },
+    {
+     "name": "CONNECTION_FAILURE",
+     "value": "StringSpan(\"08006\")"
+    },
+    {
+     "name": "SQLCLIENT_UNABLE_TO_ESTABLISH",
+     "value": "StringSpan(\"08001\")"
+    },
+    {
+     "name": "CONNECTION_DOES_NOT_EXIST",
+     "value": "StringSpan(\"08003\")",
+     "summary": "Raised by `pool.ConnectionPool.lease` for a lease taken after `pool.ConnectionPool.close`."
+    },
+    {
+     "name": "TOO_MANY_CONNECTIONS",
+     "value": "StringSpan(\"53300\")",
+     "summary": "Raised by `pool.ConnectionPool.lease` when `pool.PoolConfig.acquire_timeout_ms` elapses with every connection checked out.  The server uses this same code when it runs out of backends, which is the same condition one layer down."
+    }
+   ],
+   "structs": [
+    {
+     "name": "PostgresError",
+     "signature": "struct PostgresError",
+     "summary": "A PostgreSQL error, decomposed the way `PQresultErrorField` reports it: severity, SQLSTATE, primary message, and the optional detail/hint the server adds to explain or suggest a fix.",
+     "description": "All fields are `String` and empty when the server didn't supply them.\n`sql` is not one of libpq's fields — it's the statement text the caller\nwas executing, attached here so the formatted error is self-contained\nin a log line.",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "severity",
+       "type": "String",
+       "summary": "`ERROR`, `FATAL`, `PANIC`, or a localized equivalent. Empty if unknown."
+      },
+      {
+       "name": "sqlstate",
+       "type": "String",
+       "summary": "The five-character SQLSTATE code, e.g. `23505`. Empty if the source of this error didn't have one (see the module docstring)."
+      },
+      {
+       "name": "message",
+       "type": "String",
+       "summary": "The primary human-readable message."
+      },
+      {
+       "name": "detail",
+       "type": "String",
+       "summary": "An optional secondary message with more detail. Empty if absent."
+      },
+      {
+       "name": "hint",
+       "type": "String",
+       "summary": "An optional suggestion of how to fix the problem. Empty if absent."
+      },
+      {
+       "name": "sql",
+       "type": "String",
+       "summary": "The SQL text being executed when the error occurred. Empty if not attached."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, severity: String = \"\", sqlstate: String = \"\", message: String = \"\", detail: String = \"\", hint: String = \"\", sql: String = \"\")"
+        }
+       ]
+      },
+      {
+       "name": "format",
+       "overloads": [
+        {
+         "signature": "def format(self) -> String",
+         "summary": "Render the multi-line form this type prints and raises as.",
+         "description": "Line one is `\"postgres [SQLSTATE 23505] <message>\"`, or\n`\"postgres: <message>\"` when there's no SQLSTATE to report. A\n`DETAIL:` line follows if `detail` is set, then a `HINT:` line if\n`hint` is set, then a `SQL:` line — collapsed to one line and\ncapped at 200 characters — if `sql` is set."
+        }
+       ]
+      },
+      {
+       "name": "__str__",
+       "overloads": [
+        {
+         "signature": "def __str__(self) -> String",
+         "summary": "Same as `format()`."
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)",
+         "summary": "Write `format()` to `writer` — what makes `String(err)` and `print(err)` produce the formatted form."
+        }
+       ]
+      },
+      {
+       "name": "to_error",
+       "overloads": [
+        {
+         "signature": "def to_error(self) -> Error",
+         "summary": "Wrap `format()` in an `Error`, ready to `raise`.",
+         "description": "`sqlstate_of()` recovers `self.sqlstate` back out of the raised\n`Error` on the far side of a `try`/`except`."
+        }
+       ]
+      },
+      {
+       "name": "is_unique_violation",
+       "overloads": [
+        {
+         "signature": "def is_unique_violation(self) -> Bool",
+         "summary": "See the free function of the same name."
+        }
+       ]
+      },
+      {
+       "name": "is_serialization_failure",
+       "overloads": [
+        {
+         "signature": "def is_serialization_failure(self) -> Bool",
+         "summary": "See the free function of the same name."
+        }
+       ]
+      },
+      {
+       "name": "is_deadlock",
+       "overloads": [
+        {
+         "signature": "def is_deadlock(self) -> Bool",
+         "summary": "See the free function of the same name."
+        }
+       ]
+      },
+      {
+       "name": "is_integrity_violation",
+       "overloads": [
+        {
+         "signature": "def is_integrity_violation(self) -> Bool",
+         "summary": "See the free function of the same name."
+        }
+       ]
+      },
+      {
+       "name": "is_connection_error",
+       "overloads": [
+        {
+         "signature": "def is_connection_error(self) -> Bool",
+         "summary": "See the free function of the same name."
+        }
+       ]
+      },
+      {
+       "name": "is_retryable",
+       "overloads": [
+        {
+         "signature": "def is_retryable(self) -> Bool",
+         "summary": "See the free function of the same name."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "sqlstate_of",
+     "overloads": [
+      {
+       "signature": "def sqlstate_of(message: String) -> String",
+       "summary": "Extract the code inside the first `\"[SQLSTATE XXXXX]\"` token in `message`.",
+       "description": "Returns `\"\"` if no such token is present, or if what's between the\nbrackets isn't exactly five uppercase-alphanumeric characters (a\ntruncated or hand-edited message)."
+      },
+      {
+       "signature": "def sqlstate_of(err: Error) -> String",
+       "summary": "Extract the SQLSTATE code from a caught `Error` — the usual case, since Mojo's `except err:` hands back only an `Error`. See the `String` overload for the parsing rules."
+      }
+     ]
+    },
+    {
+     "name": "sqlstate_class",
+     "overloads": [
+      {
+       "signature": "def sqlstate_class(code: String) -> String",
+       "summary": "The two-character SQLSTATE class (`\"23\"` for `\"23505\"`), or `\"\"` if `code` is shorter than two characters.",
+       "description": "The class is the coarse-grained grouping PostgreSQL itself uses in the\nerrcodes appendix — class `23` is every integrity-constraint violation,\nclass `08` is every connection error, and so on."
+      }
+     ]
+    },
+    {
+     "name": "is_unique_violation",
+     "overloads": [
+      {
+       "signature": "def is_unique_violation(code: String) -> Bool",
+       "summary": "True for `UNIQUE_VIOLATION` (`23505`)."
+      }
+     ]
+    },
+    {
+     "name": "is_serialization_failure",
+     "overloads": [
+      {
+       "signature": "def is_serialization_failure(code: String) -> Bool",
+       "summary": "True for `SERIALIZATION_FAILURE` (`40001`), the code a `SERIALIZABLE` transaction gets when it loses a conflict."
+      }
+     ]
+    },
+    {
+     "name": "is_deadlock",
+     "overloads": [
+      {
+       "signature": "def is_deadlock(code: String) -> Bool",
+       "summary": "True for `DEADLOCK_DETECTED` (`40P01`)."
+      }
+     ]
+    },
+    {
+     "name": "is_integrity_violation",
+     "overloads": [
+      {
+       "signature": "def is_integrity_violation(code: String) -> Bool",
+       "summary": "True for class `23` — every constraint violation (unique, foreign key, not-null, check)."
+      }
+     ]
+    },
+    {
+     "name": "is_connection_error",
+     "overloads": [
+      {
+       "signature": "def is_connection_error(code: String) -> Bool",
+       "summary": "True for class `08` — every connection-establishment or connection-loss error, including the synthesized `08001`/`08006` documented at the top of this module."
+      }
+     ]
+    },
+    {
+     "name": "is_retryable",
+     "overloads": [
+      {
+       "signature": "def is_retryable(code: String) -> Bool",
+       "summary": "True for `SERIALIZATION_FAILURE` or `DEADLOCK_DETECTED` — the two codes PostgreSQL's own docs recommend retrying the whole transaction for, rather than surfacing to the caller."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "postgres.text",
+   "summary": "`postgres.text` — the PostgreSQL text-format codec.",
+   "description": "libpq hands back every result cell as text (`PQgetvalue` never returns binary\nunless the caller asked for binary-format results, which this tin does not).\nThis module is the two-way bridge between that text and Mojo values:\n`decode_*` turns a column's text into a typed value given its OID; `encode_*`\nturns a Mojo value back into the text `PQexecParams`/`COPY` expect. Pure\nMojo — no FFI, no libpq call, so it is usable and testable without a server.\n\nDates and timestamps decode to integers (days/microseconds since the Unix\nepoch, 1970-01-01) using the proleptic Gregorian calendar via Howard\nHinnant's `days_from_civil` / `civil_from_days` — see\nhttp://howardhinnant.github.io/date_algorithms.html. `numeric` deliberately\nstays a `String`: coercing arbitrary-precision decimals to `Float64` would\nsilently lose precision, so callers that want a number parse it themselves.\n`bytea` decodes both text sub-formats libpq can emit — hex (the\n`bytea_output=hex` server default) and the legacy octal-escape format — so no\n`PQunescapeBytea` call is needed either.",
+   "aliases": [
+    {
+     "name": "OID_BOOL",
+     "value": "UInt32(16)"
+    },
+    {
+     "name": "OID_BYTEA",
+     "value": "UInt32(17)"
+    },
+    {
+     "name": "OID_INT8",
+     "value": "UInt32(20)"
+    },
+    {
+     "name": "OID_INT2",
+     "value": "UInt32(21)"
+    },
+    {
+     "name": "OID_INT4",
+     "value": "UInt32(23)"
+    },
+    {
+     "name": "OID_TEXT",
+     "value": "UInt32(25)"
+    },
+    {
+     "name": "OID_JSON",
+     "value": "UInt32(114)"
+    },
+    {
+     "name": "OID_FLOAT4",
+     "value": "UInt32(700)"
+    },
+    {
+     "name": "OID_FLOAT8",
+     "value": "UInt32(701)"
+    },
+    {
+     "name": "OID_BPCHAR",
+     "value": "UInt32(1042)"
+    },
+    {
+     "name": "OID_VARCHAR",
+     "value": "UInt32(1043)"
+    },
+    {
+     "name": "OID_DATE",
+     "value": "UInt32(1082)"
+    },
+    {
+     "name": "OID_TIME",
+     "value": "UInt32(1083)"
+    },
+    {
+     "name": "OID_TIMESTAMP",
+     "value": "UInt32(1114)"
+    },
+    {
+     "name": "OID_TIMESTAMPTZ",
+     "value": "UInt32(1184)"
+    },
+    {
+     "name": "OID_NUMERIC",
+     "value": "UInt32(1700)"
+    },
+    {
+     "name": "OID_UUID",
+     "value": "UInt32(2950)"
+    },
+    {
+     "name": "OID_JSONB",
+     "value": "UInt32(3802)"
+    }
+   ],
+   "functions": [
+    {
+     "name": "oid_name",
+     "overloads": [
+      {
+       "signature": "def oid_name(oid: UInt32) -> String",
+       "summary": "Return the PostgreSQL type name for a well-known OID, or `\"oid:<n>\"` for anything this tin does not special-case."
+      }
+     ]
+    },
+    {
+     "name": "is_text_oid",
+     "overloads": [
+      {
+       "signature": "def is_text_oid(oid: UInt32) -> Bool",
+       "summary": "True for OIDs whose natural Mojo representation is `String` — TEXT/VARCHAR/BPCHAR/UUID/JSON/JSONB, and NUMERIC (kept a `String` on purpose; see the module docstring)."
+      }
+     ]
+    },
+    {
+     "name": "decode_bool",
+     "overloads": [
+      {
+       "signature": "def decode_bool(s: StringSpan) -> Bool",
+       "summary": "Decode `bool` text. The server always emits `t`/`f`; `true`/`false` are also accepted because COPY CSV round-trips can carry them."
+      }
+     ]
+    },
+    {
+     "name": "encode_bool",
+     "overloads": [
+      {
+       "signature": "def encode_bool(v: Bool) -> String"
+      }
+     ]
+    },
+    {
+     "name": "decode_int16",
+     "overloads": [
+      {
+       "signature": "def decode_int16(s: StringSpan) -> Int16"
+      }
+     ]
+    },
+    {
+     "name": "decode_int32",
+     "overloads": [
+      {
+       "signature": "def decode_int32(s: StringSpan) -> Int32"
+      }
+     ]
+    },
+    {
+     "name": "decode_int64",
+     "overloads": [
+      {
+       "signature": "def decode_int64(s: StringSpan) -> Int64"
+      }
+     ]
+    },
+    {
+     "name": "encode_int16",
+     "overloads": [
+      {
+       "signature": "def encode_int16(v: Int16) -> String"
+      }
+     ]
+    },
+    {
+     "name": "encode_int32",
+     "overloads": [
+      {
+       "signature": "def encode_int32(v: Int32) -> String"
+      }
+     ]
+    },
+    {
+     "name": "encode_int64",
+     "overloads": [
+      {
+       "signature": "def encode_int64(v: Int64) -> String"
+      }
+     ]
+    },
+    {
+     "name": "decode_float32",
+     "overloads": [
+      {
+       "signature": "def decode_float32(s: StringSpan) -> Float32",
+       "summary": "`atof` already accepts PostgreSQL's `NaN`/`Infinity`/`-Infinity` spellings case-insensitively (and the `inf`/`nan` short forms), plus standard decimal/scientific notation, so this is a thin wrapper that narrows to `Float32` and rewraps the error with the offending text."
+      }
+     ]
+    },
+    {
+     "name": "decode_float64",
+     "overloads": [
+      {
+       "signature": "def decode_float64(s: StringSpan) -> Float64"
+      }
+     ]
+    },
+    {
+     "name": "encode_float32",
+     "overloads": [
+      {
+       "signature": "def encode_float32(v: Float32) -> String"
+      }
+     ]
+    },
+    {
+     "name": "encode_float64",
+     "overloads": [
+      {
+       "signature": "def encode_float64(v: Float64) -> String"
+      }
+     ]
+    },
+    {
+     "name": "decode_bytea",
+     "overloads": [
+      {
+       "signature": "def decode_bytea(s: StringSpan) -> List[UInt8]",
+       "summary": "Decode `bytea` text — either the `\\x`-prefixed hex format (`bytea_output=hex`, the server default) or the legacy escape format (`\\\\` for a literal backslash, `\\ooo` three-octal-digit byte escapes, every other byte literal)."
+      }
+     ]
+    },
+    {
+     "name": "encode_bytea",
+     "overloads": [
+      {
+       "signature": "def encode_bytea(data: Span[UInt8]) -> String",
+       "summary": "`\\x` + lowercase hex — the format `bytea_output=hex` expects."
+      }
+     ]
+    },
+    {
+     "name": "is_infinite",
+     "overloads": [
+      {
+       "signature": "def is_infinite(s: StringSpan) -> Bool",
+       "summary": "True for the literal spellings PostgreSQL uses for the unbounded date/timestamp values, `infinity` and `-infinity`."
+      }
+     ]
+    },
+    {
+     "name": "decode_date",
+     "overloads": [
+      {
+       "signature": "def decode_date(s: StringSpan) -> Int32",
+       "summary": "Decode `date` text (`YYYY-MM-DD`, year may exceed 4 digits) to days since 1970-01-01. `infinity`/`-infinity` and a ` BC` suffix raise — read `Result.value()`'s raw text for those instead of the epoch encoding."
+      }
+     ]
+    },
+    {
+     "name": "decode_time",
+     "overloads": [
+      {
+       "signature": "def decode_time(s: StringSpan) -> Int64",
+       "summary": "Decode `time` text (`HH:MM:SS[.ffffff]`) to microseconds since midnight."
+      }
+     ]
+    },
+    {
+     "name": "decode_timestamp",
+     "overloads": [
+      {
+       "signature": "def decode_timestamp(s: StringSpan) -> Int64",
+       "summary": "Decode naive `timestamp` text (`YYYY-MM-DD HH:MM:SS[.ffffff]`, no zone) to microseconds since 1970-01-01 00:00:00."
+      }
+     ]
+    },
+    {
+     "name": "decode_timestamptz",
+     "overloads": [
+      {
+       "signature": "def decode_timestamptz(s: StringSpan) -> Int64",
+       "summary": "Decode zoned `timestamptz` text (`YYYY-MM-DD HH:MM:SS[.ffffff]` plus an offset `+HH`, `+HH:MM`, or `+HH:MM:SS`, either sign) to UTC microseconds since 1970-01-01 00:00:00."
+      }
+     ]
+    },
+    {
+     "name": "encode_date",
+     "overloads": [
+      {
+       "signature": "def encode_date(days: Int32) -> String"
+      }
+     ]
+    },
+    {
+     "name": "encode_time",
+     "overloads": [
+      {
+       "signature": "def encode_time(micros: Int64) -> String"
+      }
+     ]
+    },
+    {
+     "name": "encode_timestamp",
+     "overloads": [
+      {
+       "signature": "def encode_timestamp(micros: Int64) -> String",
+       "summary": "Always 6 fractional digits: `YYYY-MM-DD HH:MM:SS.ffffff`. Negative `micros` (dates before 1970) work because `//`/`%` are floor division/modulo."
+      }
+     ]
+    },
+    {
+     "name": "encode_timestamptz",
+     "overloads": [
+      {
+       "signature": "def encode_timestamptz(micros: Int64) -> String",
+       "summary": "Same as `encode_timestamp`, with a `+00` suffix — `micros` is already UTC, so there is no original offset to restore."
+      }
+     ]
+    },
+    {
+     "name": "decode_text",
+     "overloads": [
+      {
+       "signature": "def decode_text(s: StringSpan) -> String",
+       "summary": "Identity decode, so a dispatch-by-OID table can call every decoder uniformly."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

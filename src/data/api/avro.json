@@ -1,0 +1,3250 @@
+{
+ "tin": "avro",
+ "version": "0.4.4",
+ "rev": "db833d86ddbd7cbaba4dbd79377b0a06009181ec",
+ "package": "avro",
+ "path": "src/avro",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "Apache Avro in pure Mojo — the `avro` package of avro.mojo.",
+ "description": "Part of magmalake: data lake building blocks in Mojo.\n\n```mojo\nfrom avro import DataFileReader\n\nvar r = DataFileReader.open(\"manifest.avro\")\nwhile r.has_next():\n    var rec = r.next()\n    print(rec.field(\"manifest_path\").as_string())\n```\n\n`Value` is the general reader. When the schema is known and the file is\nlarge — a scan planner walking manifests, say — `RecordCursor` compiles the\nschema into a decode plan once and then reads records into reused buffers,\nabout ten times faster and with no per-record allocation:\n\n```mojo\nfrom avro import RecordCursor\n\nvar c = RecordCursor.open(\"manifest.avro\", [\"manifest_path\"])\nvar path = c.plan.slot_of(\"manifest_path\")\nwhile c.next():\n    print(c.get_str(path))\n```\n\nEverything reachable from this module works on the `null` and `deflate` block\ncodecs, which need nothing but the sibling `deflate.mojo` tin — raw DEFLATE,\npure Mojo, no FFI. `snappy` and `zstandard` live in `avro.ext_snappy` /\n`avro.ext_zstd`, which pull in `snappy.mojo` and `zstd.mojo`.\n\n`inflate` and `deflate` themselves are no longer re-exported here. They moved\nto `deflate.mojo` in avro 0.4.0, because `parquet.mojo` and `iceberg.mojo`\nwanted raw DEFLATE without wanting Avro. Import them from `deflate`.",
+ "modules": [
+  {
+   "path": "avro",
+   "summary": "Apache Avro in pure Mojo — the `avro` package of avro.mojo.",
+   "description": "Part of magmalake: data lake building blocks in Mojo.\n\n```mojo\nfrom avro import DataFileReader\n\nvar r = DataFileReader.open(\"manifest.avro\")\nwhile r.has_next():\n    var rec = r.next()\n    print(rec.field(\"manifest_path\").as_string())\n```\n\n`Value` is the general reader. When the schema is known and the file is\nlarge — a scan planner walking manifests, say — `RecordCursor` compiles the\nschema into a decode plan once and then reads records into reused buffers,\nabout ten times faster and with no per-record allocation:\n\n```mojo\nfrom avro import RecordCursor\n\nvar c = RecordCursor.open(\"manifest.avro\", [\"manifest_path\"])\nvar path = c.plan.slot_of(\"manifest_path\")\nwhile c.next():\n    print(c.get_str(path))\n```\n\nEverything reachable from this module works on the `null` and `deflate` block\ncodecs, which need nothing but the sibling `deflate.mojo` tin — raw DEFLATE,\npure Mojo, no FFI. `snappy` and `zstandard` live in `avro.ext_snappy` /\n`avro.ext_zstd`, which pull in `snappy.mojo` and `zstd.mojo`.\n\n`inflate` and `deflate` themselves are no longer re-exported here. They moved\nto `deflate.mojo` in avro 0.4.0, because `parquet.mojo` and `iceberg.mojo`\nwanted raw DEFLATE without wanting Avro. Import them from `deflate`."
+  },
+  {
+   "path": "avro.codec",
+   "summary": "Object Container File block codecs.",
+   "description": "`DataFileReader` and `DataFileWriter` are parametrised on a `CodecSet`, a\ncompile-time table of block compressors. The default set — `DefaultCodecs` —\ncovers `null` and `deflate`. Avro's `deflate` is raw DEFLATE, which comes\nfrom the sibling `deflate.mojo` tin: pure Mojo, no FFI, so the core library\nstill links nothing.\n\n`snappy` and `zstandard` live in `avro.ext_snappy` / `avro.ext_zstd`, which\nimport the sibling magmalake tins. Nothing in `avro/__init__.mojo` imports\nthem, so a consumer only pays for a codec it actually asks for:\n\n```mojo\nfrom avro import DataFileReader\nfrom avro.ext_zstd import AllCodecs          # needs -I ../snappy.mojo/src -I ../zstd.mojo/src\n\nvar r = DataFileReader[AllCodecs].open(\"f.avro\")\n```",
+   "structs": [
+    {
+     "name": "DefaultCodecs",
+     "signature": "struct DefaultCodecs",
+     "summary": "`null` and `deflate` — nothing beyond the pure-Mojo `deflate.mojo`.",
+     "traits": [
+      "CodecSet",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "supports",
+       "overloads": [
+        {
+         "signature": "def supports(name: StringSpan) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "compress",
+       "overloads": [
+        {
+         "signature": "def compress(name: StringSpan, data: Span[UInt8]) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "decompress",
+       "overloads": [
+        {
+         "signature": "def decompress(name: StringSpan, data: Span[UInt8]) -> List[UInt8]"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "traits": [
+    {
+     "name": "CodecSet",
+     "summary": "A compile-time table of Avro block codecs.",
+     "functions": [
+      {
+       "name": "supports",
+       "overloads": [
+        {
+         "signature": "def supports(name: StringSpan) -> Bool",
+         "summary": "Whether this set can handle the `avro.codec` value `name`."
+        }
+       ]
+      },
+      {
+       "name": "compress",
+       "overloads": [
+        {
+         "signature": "def compress(name: StringSpan, data: Span[UInt8]) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "decompress",
+       "overloads": [
+        {
+         "signature": "def decompress(name: StringSpan, data: Span[UInt8]) -> List[UInt8]"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "unknown_codec",
+     "overloads": [
+      {
+       "signature": "def unknown_codec(name: StringSpan) -> Error"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "avro.crc32",
+   "summary": "CRC-32 (IEEE 802.3, the zlib/gzip polynomial).",
+   "description": "Avro's `snappy` codec appends the big-endian CRC-32 of the *uncompressed*\nblock to every compressed block. That is the only place `avro.mojo` needs a\nchecksum, so it is a small table-driven implementation rather than a\ndependency on `hashes.mojo`.",
+   "functions": [
+    {
+     "name": "crc32",
+     "overloads": [
+      {
+       "signature": "def crc32(data: Span[UInt8], seed: UInt32 = UInt32(0)) -> UInt32"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "avro.cursor",
+   "summary": "`RecordCursor` — a schema-compiled, allocation-free Avro reader.",
+   "description": "`DataFileReader.next()` hands back a `Value`: a fresh node arena behind an\n`ArcPointer`, every node carrying a `String`, two `List`s and a `List[UInt8]`.\nThat is the right shape for a dynamically typed datum, and the wrong shape\nfor a scan planner reading a million manifest entries — a five-field record\ncosts about sixty heap allocations and every `field(\"name\")` walks a list of\n`String`s comparing bytes.\n\nA `RecordCursor` compiles the schema **once** into a flat program of ops and\nthen runs it per record into pre-sized, reused buffers:\n\n```mojo\nfrom avro.cursor import RecordCursor\n\nvar c = RecordCursor.open(\"manifest.avro\", [\"status\", \"data_file.file_path\"])\nvar path = c.plan.slot_of(\"data_file.file_path\")\nvar status = c.plan.slot_of(\"status\")\nwhile c.next():\n    print(c.get_long(status), c.get_str(path))\n```\n\nThree things make it fast:\n\n* **Slots, not names.** Every value the plan decodes lands in a numbered\n  slot. `slot_of` is a one-off name lookup at plan-build time; the hot loop\n  only ever indexes.\n* **Nothing is allocated per record.** Slot storage is `List[List[SlotVal]]`\n  with a parallel `counts` array; a new record resets the counts to zero and\n  overwrites what is already there, so after the first few records every\n  `List` is already big enough and the steady state does no allocation at\n  all. `tests/test_cursor.mojo` asserts this by counting allocations.\n* **Strings and bytes are views.** `get_str` and `get_bytes` return a slice\n  of the decompressed block the cursor is holding — no copy. They borrow\n  from `self.reader.block`, so the compiler ties them to the cursor: a view\n  cannot outlive it, and it is only valid until the next `next()`.\n\nSelection prunes work but not correctness: an unselected field still has an\nop, because the decoder has to step over its bytes, but it gets no slot and\nnothing is stored.\n\nNesting is flattened. A field inside a record is `parent.child`; array\nelements live under `path.element`, map entries under `path.key` and\n`path.value`. A slot inside an array holds one value per element, read with\nthe second argument of the accessors, and the array's own slot holds the\nelement count:\n\n```mojo\nvar n = c.array_len(bounds)\nfor k in range(n):\n    print(c.get_long(bound_key, k), c.get_bytes(bound_val, k))\n```",
+   "aliases": [
+    {
+     "name": "OP_NULL",
+     "value": "Int(0)",
+     "summary": "Nothing on the wire; the slot records a present-but-null value."
+    },
+    {
+     "name": "OP_BOOL",
+     "value": "Int(1)"
+    },
+    {
+     "name": "OP_VARINT",
+     "value": "Int(2)",
+     "summary": "A zigzag varint — `int` and `long`."
+    },
+    {
+     "name": "OP_FLOAT",
+     "value": "Int(3)"
+    },
+    {
+     "name": "OP_DOUBLE",
+     "value": "Int(4)"
+    },
+    {
+     "name": "OP_BYTES",
+     "value": "Int(5)",
+     "summary": "Length-prefixed bytes — `bytes` and `string`, which share a wire form."
+    },
+    {
+     "name": "OP_FIXED",
+     "value": "Int(6)",
+     "summary": "`aux` bytes with no prefix."
+    },
+    {
+     "name": "OP_ENUM",
+     "value": "Int(7)",
+     "summary": "A varint symbol index; `aux` indexes `DecodePlan.enum_maps`, or -1."
+    },
+    {
+     "name": "OP_RECORD",
+     "value": "Int(8)"
+    },
+    {
+     "name": "OP_ARRAY",
+     "value": "Int(9)"
+    },
+    {
+     "name": "OP_MAP",
+     "value": "Int(10)",
+     "summary": "`aux` is the key slot."
+    },
+    {
+     "name": "OP_UNION",
+     "value": "Int(11)",
+     "summary": "`aux` is the branch-index slot, or -1."
+    },
+    {
+     "name": "OP_CONST",
+     "value": "Int(12)",
+     "summary": "No wire bytes: store `DecodePlan.consts[aux]`. A resolution default."
+    },
+    {
+     "name": "OP_ERROR",
+     "value": "Int(13)",
+     "summary": "A writer union branch the reader cannot accept; `aux` indexes `messages`."
+    },
+    {
+     "name": "OP_VARINT_D",
+     "value": "Int(14)",
+     "summary": "A varint an `int -> float` / `long -> double` promotion turns into a float. Its own op so the hot `OP_VARINT` never has to consult the slot table."
+    }
+   ],
+   "structs": [
+    {
+     "name": "PlanOp",
+     "signature": "struct PlanOp",
+     "summary": "One instruction. Plain integers, so a plan is cheap to copy.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "op",
+       "type": "Int"
+      },
+      {
+       "name": "slot",
+       "type": "Int",
+       "summary": "Where the value lands, or -1 to decode and discard."
+      },
+      {
+       "name": "aux",
+       "type": "Int"
+      },
+      {
+       "name": "kid0",
+       "type": "Int",
+       "summary": "First child: an index into `DecodePlan.kids`."
+      },
+      {
+       "name": "nkid",
+       "type": "Int"
+      },
+      {
+       "name": "fill",
+       "type": "Int",
+       "summary": "`OP_UNION` only: where this union's per-branch fill lists start in `DecodePlan.fill_spans`, or -1 when every branch writes the same slots."
+      }
+     ]
+    },
+    {
+     "name": "SlotInfo",
+     "signature": "struct SlotInfo",
+     "summary": "What a slot means. Built once; never touched on the hot path.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "path",
+       "type": "String",
+       "summary": "Dotted path, e.g. `data_file.lower_bounds.element.key`."
+      },
+      {
+       "name": "kind",
+       "type": "Int",
+       "summary": "The reader-visible Avro kind."
+      },
+      {
+       "name": "depth",
+       "type": "Int",
+       "summary": "Repetition depth: 0 is one value per record, 1 is one per element."
+      },
+      {
+       "name": "symbols",
+       "type": "Int",
+       "summary": "Index into `DecodePlan.symbols` for an enum slot, else -1."
+      }
+     ]
+    },
+    {
+     "name": "SlotVal",
+     "signature": "struct SlotVal",
+     "summary": "One decoded value — 24 bytes, so a slot buffer stays cache-friendly.",
+     "description": "`i` carries integers directly and floats bit-for-bit (`bitcast`, never\n`SIMD.cast`, which converts by value); `off`/`ln` locate a string or a\n`bytes` in the block buffer. `off < 0` marks the rare value that lives on\nthe plan instead — a `string` filled in from a schema default.",
+     "traits": [
+      "Copyable",
+      "ImplicitlyCopyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "i",
+       "type": "Int64"
+      },
+      {
+       "name": "off",
+       "type": "Int32"
+      },
+      {
+       "name": "ln",
+       "type": "Int32"
+      },
+      {
+       "name": "nul",
+       "type": "Bool"
+      }
+     ],
+     "functions": [
+      {
+       "name": "none",
+       "overloads": [
+        {
+         "signature": "def none() -> Self"
+        }
+       ]
+      },
+      {
+       "name": "of_long",
+       "overloads": [
+        {
+         "signature": "def of_long(v: Int64) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "of_double",
+       "overloads": [
+        {
+         "signature": "def of_double(v: Float64) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "of_span",
+       "overloads": [
+        {
+         "signature": "def of_span(off: Int, ln: Int) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "as_double",
+       "overloads": [
+        {
+         "signature": "def as_double(self) -> Float64"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "PlanData",
+     "signature": "struct PlanData",
+     "summary": "The compiled program itself. Reached through `DecodePlan`.",
+     "description": "This is the expensive thing — a few hundred `String`s and two arenas —\nand it is immutable once built, which is what lets `DecodePlan` share it\nrather than copy it.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "ops",
+       "type": "List[PlanOp]"
+      },
+      {
+       "name": "kids",
+       "type": "List[Int]",
+       "summary": "Child op indices, referenced by `PlanOp.kid0` / `PlanOp.nkid`."
+      },
+      {
+       "name": "slots",
+       "type": "List[SlotInfo]"
+      },
+      {
+       "name": "symbols",
+       "type": "List[List[String]]"
+      },
+      {
+       "name": "enum_maps",
+       "type": "List[List[Int]]",
+       "summary": "Writer symbol index -> reader symbol index, for a resolved enum."
+      },
+      {
+       "name": "consts",
+       "type": "List[SlotVal]"
+      },
+      {
+       "name": "const_strings",
+       "type": "List[String]",
+       "summary": "Text of a `string`/`bytes` resolution default, by slot."
+      },
+      {
+       "name": "messages",
+       "type": "List[String]"
+      },
+      {
+       "name": "fills",
+       "type": "List[Int]",
+       "summary": "Slot numbers a union branch has to null out — see `_fill_for`."
+      },
+      {
+       "name": "fill_spans",
+       "type": "List[Int]",
+       "summary": "(start, count) into `fills`, two entries per union branch."
+      },
+      {
+       "name": "root",
+       "type": "Int"
+      },
+      {
+       "name": "by_path",
+       "type": "Dict[String, Int]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "DecodePlan",
+     "signature": "struct DecodePlan",
+     "summary": "A schema compiled into a decode program plus its slot table.",
+     "description": "A plan is a **shared, immutable handle**: copying one bumps a refcount\ninstead of duplicating the slot paths and the path index. That is what\nmakes `avro.cache.PlanCache` worth having — a scan planner reading five\nhundred manifests written by one writer compiles the schema once and\nevery cursor after that costs an atomic increment. It also settles the\nlifetime question: a cursor holds its own reference, so a cached plan\noutlives every cursor built from it no matter what order they are\ndestroyed in.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "data",
+       "type": "ArcPointer[PlanData]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        },
+        {
+         "signature": "def __init__(out self, var data: PlanData)"
+        }
+       ]
+      },
+      {
+       "name": "num_slots",
+       "overloads": [
+        {
+         "signature": "def num_slots(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "num_ops",
+       "overloads": [
+        {
+         "signature": "def num_ops(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "root",
+       "overloads": [
+        {
+         "signature": "def root(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "try_slot",
+       "overloads": [
+        {
+         "signature": "def try_slot(self, path: StringSpan) -> Int",
+         "summary": "The slot for `path`, or -1 when the schema has no such field."
+        }
+       ]
+      },
+      {
+       "name": "has_slot",
+       "overloads": [
+        {
+         "signature": "def has_slot(self, path: StringSpan) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "slot_of",
+       "overloads": [
+        {
+         "signature": "def slot_of(self, path: StringSpan) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "slot_path",
+       "overloads": [
+        {
+         "signature": "def slot_path(self, slot: Int) -> String"
+        }
+       ]
+      },
+      {
+       "name": "slot_kind",
+       "overloads": [
+        {
+         "signature": "def slot_kind(self, slot: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "slot_depth",
+       "overloads": [
+        {
+         "signature": "def slot_depth(self, slot: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "paths",
+       "overloads": [
+        {
+         "signature": "def paths(self) -> List[String]",
+         "summary": "Every slot path, in slot order — handy in tests and REPL work."
+        }
+       ]
+      },
+      {
+       "name": "build",
+       "overloads": [
+        {
+         "signature": "def build(schema: Schema, select: List[String] = List(__list_literal__=NoneType(None))) -> Self",
+         "summary": "Compile `schema`, keeping only the selected paths (all if empty)."
+        }
+       ]
+      },
+      {
+       "name": "build_resolved",
+       "overloads": [
+        {
+         "signature": "def build_resolved(resolved: ResolvedReader, select: List[String] = List(__list_literal__=NoneType(None))) -> Self",
+         "summary": "Compile a `resolve(writer, reader)` plan: the data is decoded as the writer wrote it and lands in the reader's shape."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "PlanCache",
+     "signature": "struct PlanCache",
+     "summary": "Compiled plans, keyed by the raw `avro.schema` bytes of the file.",
+     "description": "A scan planner opens hundreds of files written by one writer, and every\none of them carries a byte-identical copy of the same schema. Parsing\nthat JSON and compiling it is most of what it costs to open a small Avro\nfile; doing it once and handing out a shared `DecodePlan` is what this is\nfor.\n\n**The key is the bytes, before parsing.** Byte equality is sufficient for\ntwo schemas to compile to the same plan, it is what the repetition\nactually looks like in the wild, and establishing it needs no parsing.\nThe hash is only a filter: a hit is confirmed by comparing the bytes, so\na collision is slow and never wrong. The selected paths are part of the\nkey too, because they change the plan.\n\nThe cache is **caller-owned**: there is no global here. Hand one to\n`RecordCursor.open_cached` for as long as the files belong together —\none scan, one directory listing — and let it go afterwards. Plans it\nhanded out stay alive on their own; a cursor holds its own reference.\n\nLookup is a linear scan of the hashes, which is right for the shape this\nis for: a run of files carrying a handful of distinct schemas between\nthem. A workload with hundreds of *different* schemas in one cache would\nwant an index instead, and does not have one.\n\n```mojo\nvar cache = PlanCache()\nfor k in range(len(paths)):\n    var c = RecordCursor.open_cached(paths[k], cache)\n    while c.next():\n        ...\nprint(cache.hits, \"of\", cache.hits + cache.misses)\n```",
+     "traits": [
+      "Movable",
+      "Sized"
+     ],
+     "fields": [
+      {
+       "name": "hits",
+       "type": "Int"
+      },
+      {
+       "name": "misses",
+       "type": "Int"
+      },
+      {
+       "name": "enabled",
+       "type": "Bool",
+       "summary": "False makes every lookup a miss and stores nothing — the escape hatch that lets a test run the same code path with and without the cache."
+      },
+      {
+       "name": "collide_hashes",
+       "type": "Bool",
+       "summary": "A test seam: force every key to hash to zero, so the byte compare is the only thing telling two schemas apart. Never set in normal use."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "disabled",
+       "overloads": [
+        {
+         "signature": "def disabled() -> Self",
+         "summary": "A cache that never hits and never stores."
+        }
+       ]
+      },
+      {
+       "name": "__len__",
+       "overloads": [
+        {
+         "signature": "def __len__(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "hash_of",
+       "overloads": [
+        {
+         "signature": "def hash_of(self, key: Span[UInt8]) -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "find",
+       "overloads": [
+        {
+         "signature": "def find(self, key: Span[UInt8], select: List[String]) -> Int",
+         "summary": "The entry for these schema bytes and this selection, or -1."
+        }
+       ]
+      },
+      {
+       "name": "insert",
+       "overloads": [
+        {
+         "signature": "def insert(mut self, key: Span[UInt8], select: List[String], var plan: DecodePlan) -> Int",
+         "summary": "Store `plan` under these schema bytes; returns its entry number, or -1 when the cache is disabled and nothing was stored."
+        }
+       ]
+      },
+      {
+       "name": "plan_at",
+       "overloads": [
+        {
+         "signature": "def plan_at(self, i: Int) -> DecodePlan",
+         "summary": "The plan at `i` — a refcount bump, not a copy of the program."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "RecordCursor",
+     "signature": "struct RecordCursor[C: CodecSet = DefaultCodecs]",
+     "summary": "A schema-compiled reader over an Object Container File.",
+     "description": "The cursor owns the `DataFileReader`, and therefore the decompressed\nblock that `get_str` and `get_bytes` return views of. That is the whole\nlifetime story: a view borrows from `self.reader.block`, so it cannot\noutlive the cursor, and it is only meaningful until the next `next()`\noverwrites the position — or until a block boundary replaces the buffer.\nCopy with `get_string` / `get_bytes_copy` if it has to live longer.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "reader",
+       "type": "DataFileReader[C]"
+      },
+      {
+       "name": "plan",
+       "type": "DecodePlan"
+      },
+      {
+       "name": "vals",
+       "type": "List[List[SlotVal]]"
+      },
+      {
+       "name": "counts",
+       "type": "List[Int]"
+      },
+      {
+       "name": "index",
+       "type": "Int",
+       "summary": "How many records `next()` has returned."
+      },
+      {
+       "name": "plan_id",
+       "type": "Int",
+       "summary": "Which `PlanCache` entry the plan came from, or -1 when it was compiled here. Two cursors with the same non-negative id hold the same compiled program, which a caller can use as a cheap stand-in for comparing the schema bytes all over again."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var reader: DataFileReader[C], var plan: DecodePlan)"
+        }
+       ]
+      },
+      {
+       "name": "of",
+       "overloads": [
+        {
+         "signature": "def of(var reader: DataFileReader[C], select: List[String] = List(__list_literal__=NoneType(None))) -> Self",
+         "summary": "Take over `reader` and compile its own schema."
+        }
+       ]
+      },
+      {
+       "name": "open",
+       "overloads": [
+        {
+         "signature": "def open(path: StringSpan, select: List[String] = List(__list_literal__=NoneType(None))) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "from_bytes",
+       "overloads": [
+        {
+         "signature": "def from_bytes(data: Span[UInt8], select: List[String] = List(__list_literal__=NoneType(None))) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "of_bytes",
+       "overloads": [
+        {
+         "signature": "def of_bytes(var data: List[UInt8], select: List[String] = List(__list_literal__=NoneType(None))) -> Self",
+         "summary": "Take ownership of `data` — no copy, unlike `from_bytes`."
+        }
+       ]
+      },
+      {
+       "name": "of_cached",
+       "overloads": [
+        {
+         "signature": "def of_cached(var reader: DataFileReader[C], mut cache: PlanCache, select: List[String] = List(__list_literal__=NoneType(None))) -> Self",
+         "summary": "Take over `reader`, compiling its schema only if `cache` cannot already answer for the exact bytes it carries."
+        }
+       ]
+      },
+      {
+       "name": "open_cached",
+       "overloads": [
+        {
+         "signature": "def open_cached(path: StringSpan, mut cache: PlanCache, select: List[String] = List(__list_literal__=NoneType(None))) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "of_bytes_cached",
+       "overloads": [
+        {
+         "signature": "def of_bytes_cached(var data: List[UInt8], mut cache: PlanCache, select: List[String] = List(__list_literal__=NoneType(None))) -> Self",
+         "summary": "Take ownership of `data` — no copy — and use `cache`."
+        }
+       ]
+      },
+      {
+       "name": "resolved",
+       "overloads": [
+        {
+         "signature": "def resolved(var reader: DataFileReader[C], var resolution: ResolvedReader, select: List[String] = List(__list_literal__=NoneType(None))) -> Self",
+         "summary": "Read `reader` — whose schema must be `resolution`'s writer — into the reader schema `resolution` was built with."
+        }
+       ]
+      },
+      {
+       "name": "next",
+       "overloads": [
+        {
+         "signature": "def next(mut self) -> Bool",
+         "summary": "Decode the next record into the slots; False at end of file."
+        }
+       ]
+      },
+      {
+       "name": "skip",
+       "overloads": [
+        {
+         "signature": "def skip(mut self) -> Bool",
+         "summary": "Step over a record without filling any slot."
+        }
+       ]
+      },
+      {
+       "name": "slot_watermark",
+       "overloads": [
+        {
+         "signature": "def slot_watermark(self) -> Int",
+         "summary": "Total values the slot buffers have ever held.",
+         "description": "The only place the hot path can allocate is a slot buffer growing, so\na run where this does not change is a run that did not allocate.\n`tests/test_cursor.mojo` leans on that."
+        }
+       ]
+      },
+      {
+       "name": "count",
+       "overloads": [
+        {
+         "signature": "def count(self, slot: Int) -> Int",
+         "summary": "How many values this record put in `slot` — the repetition count."
+        }
+       ]
+      },
+      {
+       "name": "is_null",
+       "overloads": [
+        {
+         "signature": "def is_null(self, slot: Int, k: Int = Int(0)) -> Bool",
+         "summary": "True when the field was absent, or a union took its `null` branch."
+        }
+       ]
+      },
+      {
+       "name": "array_len",
+       "overloads": [
+        {
+         "signature": "def array_len(self, slot: Int, k: Int = Int(0)) -> Int",
+         "summary": "Elements in the array (or entries in the map) at `slot`."
+        }
+       ]
+      },
+      {
+       "name": "get_bool",
+       "overloads": [
+        {
+         "signature": "def get_bool(self, slot: Int, k: Int = Int(0)) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "get_long",
+       "overloads": [
+        {
+         "signature": "def get_long(self, slot: Int, k: Int = Int(0)) -> Int64"
+        }
+       ]
+      },
+      {
+       "name": "get_int",
+       "overloads": [
+        {
+         "signature": "def get_int(self, slot: Int, k: Int = Int(0)) -> Int32"
+        }
+       ]
+      },
+      {
+       "name": "get_double",
+       "overloads": [
+        {
+         "signature": "def get_double(self, slot: Int, k: Int = Int(0)) -> Float64"
+        }
+       ]
+      },
+      {
+       "name": "get_float",
+       "overloads": [
+        {
+         "signature": "def get_float(self, slot: Int, k: Int = Int(0)) -> Float32"
+        }
+       ]
+      },
+      {
+       "name": "get_bytes",
+       "overloads": [
+        {
+         "signature": "def get_bytes(self, slot: Int, k: Int = Int(0)) -> Span[UInt8, origin_of(self.reader.block)]",
+         "summary": "A view of the block buffer — valid until the next `next()`."
+        }
+       ]
+      },
+      {
+       "name": "get_str",
+       "overloads": [
+        {
+         "signature": "def get_str(self, slot: Int, k: Int = Int(0)) -> StringSpan[origin_of(self.reader.block)]",
+         "summary": "The field as text, without copying. Same lifetime as `get_bytes`."
+        }
+       ]
+      },
+      {
+       "name": "get_string",
+       "overloads": [
+        {
+         "signature": "def get_string(self, slot: Int, k: Int = Int(0)) -> String",
+         "summary": "An owned copy of the field's text."
+        }
+       ]
+      },
+      {
+       "name": "get_bytes_copy",
+       "overloads": [
+        {
+         "signature": "def get_bytes_copy(self, slot: Int, k: Int = Int(0)) -> List[UInt8]",
+         "summary": "An owned copy of the field's bytes."
+        }
+       ]
+      },
+      {
+       "name": "enum_index",
+       "overloads": [
+        {
+         "signature": "def enum_index(self, slot: Int, k: Int = Int(0)) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "get_symbol",
+       "overloads": [
+        {
+         "signature": "def get_symbol(self, slot: Int, k: Int = Int(0)) -> String",
+         "summary": "The enum symbol's name."
+        }
+       ]
+      },
+      {
+       "name": "union_branch",
+       "overloads": [
+        {
+         "signature": "def union_branch(self, slot: Int, k: Int = Int(0)) -> Int",
+         "summary": "The wire branch of the union whose `$branch` slot this is."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "schema_hash",
+     "overloads": [
+      {
+       "signature": "def schema_hash(data: Span[UInt8]) -> UInt64",
+       "summary": "A 64-bit digest of raw schema bytes, eight bytes at a time.",
+       "description": "Only ever a *filter*: `PlanCache` compares the bytes themselves before it\ntrusts a hit, so a collision costs a memcmp and never a wrong answer."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "avro.datafile",
+   "summary": "Avro Object Container Files — the reader and the writer.",
+   "description": "An OCF is `Obj\\x01`, a `map<bytes>` of file metadata (carrying at least\n`avro.schema`, and usually `avro.codec`), a 16-byte sync marker, and then a\nrun of blocks, each `count · size · data · sync`.\n\nApache Iceberg stores its own keys in that same metadata map — `schema`,\n`partition-spec`, `format-version`, `content` — so the metadata is exposed\nboth as raw bytes (`metadata_keys` / `metadata_vals`) and as text\n(`metadata_string`), alongside the parsed `avro.schema`.\n\nThe metadata is kept as two parallel lists rather than a `Dict`, in the order\nthe file wrote them. A file has a handful of entries, so a linear scan over\n`StringSlice`s beats hashing — and, unlike a `Dict`, looking one up does not\nhave to build a `String` first. `metadata_map()` still hands back a `Dict` for\ncallers that want one.",
+   "aliases": [
+    {
+     "name": "MAGIC0",
+     "value": "UInt8(79)"
+    },
+    {
+     "name": "MAGIC1",
+     "value": "UInt8(98)"
+    },
+    {
+     "name": "MAGIC2",
+     "value": "UInt8(106)"
+    },
+    {
+     "name": "MAGIC3",
+     "value": "UInt8(1)"
+    },
+    {
+     "name": "SYNC_SIZE",
+     "value": "Int(16)"
+    },
+    {
+     "name": "DEFAULT_SYNC_INTERVAL",
+     "value": "Int(64000)"
+    }
+   ],
+   "structs": [
+    {
+     "name": "DataFileReader",
+     "signature": "struct DataFileReader[C: CodecSet = DefaultCodecs]",
+     "summary": "Reads an Avro Object Container File held in memory.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "data",
+       "type": "List[UInt8]"
+      },
+      {
+       "name": "schema",
+       "type": "Schema",
+       "summary": "The parsed `avro.schema`. Empty until `ensure_schema()` when the reader was opened with `defer_schema=True`."
+      },
+      {
+       "name": "schema_ready",
+       "type": "Bool",
+       "summary": "False only between a `defer_schema=True` open and `ensure_schema()`."
+      },
+      {
+       "name": "metadata_keys",
+       "type": "List[String]",
+       "summary": "Metadata keys in the order the file wrote them."
+      },
+      {
+       "name": "metadata_vals",
+       "type": "List[List[UInt8]]",
+       "summary": "Metadata values, parallel to `metadata_keys`."
+      },
+      {
+       "name": "codec",
+       "type": "String"
+      },
+      {
+       "name": "sync_marker",
+       "type": "List[UInt8]"
+      },
+      {
+       "name": "pos",
+       "type": "Int",
+       "summary": "Offset of the next block header in `data`."
+      },
+      {
+       "name": "block",
+       "type": "List[UInt8]"
+      },
+      {
+       "name": "block_pos",
+       "type": "Int"
+      },
+      {
+       "name": "block_left",
+       "type": "Int"
+      },
+      {
+       "name": "block_index",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var data: List[UInt8], *, defer_schema: Bool = False)",
+         "summary": "Read the header. `defer_schema` skips parsing the `avro.schema` JSON, which is the expensive half of opening a small file.",
+         "description": "It is for a caller that already holds a compiled `DecodePlan` for\nthis exact schema — see `avro.cursor.PlanCache`. Nothing else changes:\nthe schema is parsed on demand the moment anything needs it, so\n`next()` and `read_all()` behave the same either way."
+        }
+       ]
+      },
+      {
+       "name": "open",
+       "overloads": [
+        {
+         "signature": "def open(path: StringSpan) -> Self",
+         "summary": "Read the whole file, then parse its header."
+        }
+       ]
+      },
+      {
+       "name": "from_bytes",
+       "overloads": [
+        {
+         "signature": "def from_bytes(data: Span[UInt8]) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "ensure_schema",
+       "overloads": [
+        {
+         "signature": "def ensure_schema(mut self)",
+         "summary": "Parse `avro.schema` if a `defer_schema=True` open left it unparsed."
+        }
+       ]
+      },
+      {
+       "name": "metadata_index",
+       "overloads": [
+        {
+         "signature": "def metadata_index(self, key: StringSpan) -> Int",
+         "summary": "Where `key` sits in `metadata_keys`/`metadata_vals`, or -1.",
+         "description": "`Span(reader.metadata_vals[i])` then reads the entry's raw bytes\nwithout copying them.\n\nA linear scan, and deliberately so: a file has a handful of metadata\nentries, and this compares `StringSlice`s rather than allocating a\n`String` to hash the way a `Dict` lookup would."
+        }
+       ]
+      },
+      {
+       "name": "metadata_string",
+       "overloads": [
+        {
+         "signature": "def metadata_string(self, key: StringSpan) -> String",
+         "summary": "A metadata entry decoded as UTF-8; \"\" when the key is absent."
+        }
+       ]
+      },
+      {
+       "name": "has_metadata",
+       "overloads": [
+        {
+         "signature": "def has_metadata(self, key: StringSpan) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "metadata_map",
+       "overloads": [
+        {
+         "signature": "def metadata_map(self) -> Dict[String, List[UInt8]]",
+         "summary": "The metadata as a `Dict`, for callers that want that shape."
+        }
+       ]
+      },
+      {
+       "name": "schema_json",
+       "overloads": [
+        {
+         "signature": "def schema_json(self) -> String",
+         "summary": "The schema exactly as the file spelled it."
+        }
+       ]
+      },
+      {
+       "name": "has_next",
+       "overloads": [
+        {
+         "signature": "def has_next(mut self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "next",
+       "overloads": [
+        {
+         "signature": "def next(mut self) -> Value",
+         "summary": "Decode the next record; raises when the file is exhausted."
+        }
+       ]
+      },
+      {
+       "name": "read_all",
+       "overloads": [
+        {
+         "signature": "def read_all(mut self) -> List[Value]"
+        }
+       ]
+      },
+      {
+       "name": "count_blocks",
+       "overloads": [
+        {
+         "signature": "def count_blocks(self) -> Int",
+         "summary": "Walk every block header, without decompressing anything.",
+         "description": "Independent of how far iteration has got: it re-reads the header and\nthen strides over the blocks."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "DataFileWriter",
+     "signature": "struct DataFileWriter[C: CodecSet = DefaultCodecs]",
+     "summary": "Builds an Avro Object Container File in memory.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "schema",
+       "type": "Schema"
+      },
+      {
+       "name": "codec",
+       "type": "String"
+      },
+      {
+       "name": "sync_marker",
+       "type": "List[UInt8]"
+      },
+      {
+       "name": "sync_interval",
+       "type": "Int",
+       "summary": "Approximate uncompressed bytes per block before an automatic flush."
+      },
+      {
+       "name": "meta_keys",
+       "type": "List[String]"
+      },
+      {
+       "name": "meta_vals",
+       "type": "List[List[UInt8]]"
+      },
+      {
+       "name": "out",
+       "type": "List[UInt8]"
+      },
+      {
+       "name": "buf",
+       "type": "Encoder"
+      },
+      {
+       "name": "block_count",
+       "type": "Int"
+      },
+      {
+       "name": "started",
+       "type": "Bool"
+      },
+      {
+       "name": "closed",
+       "type": "Bool"
+      },
+      {
+       "name": "schema_json",
+       "type": "String",
+       "summary": "What to write as `avro.schema`; the printed schema unless overridden."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var schema: Schema, codec: StringSpan = \"null\", sync_interval: Int = Int(64000))"
+        }
+       ]
+      },
+      {
+       "name": "set_sync_marker",
+       "overloads": [
+        {
+         "signature": "def set_sync_marker(mut self, marker: Span[UInt8])",
+         "summary": "Pin the sync marker — the tests need reproducible files."
+        }
+       ]
+      },
+      {
+       "name": "set_metadata",
+       "overloads": [
+        {
+         "signature": "def set_metadata(mut self, key: StringSpan, value: Span[UInt8])",
+         "summary": "Add a file-level metadata entry. `avro.*` keys are reserved."
+        }
+       ]
+      },
+      {
+       "name": "set_metadata_string",
+       "overloads": [
+        {
+         "signature": "def set_metadata_string(mut self, key: StringSpan, value: StringSpan)"
+        }
+       ]
+      },
+      {
+       "name": "set_schema_json",
+       "overloads": [
+        {
+         "signature": "def set_schema_json(mut self, text: StringSpan)",
+         "summary": "Write `text` verbatim as `avro.schema`.",
+         "description": "`to_json()` prints an equivalent schema, not a byte-identical one.\nApache Iceberg writers that want their manifests to match another\nimplementation's bytes can hand over the exact JSON here; it is the\ncaller's job to keep it equivalent to the schema being written."
+        }
+       ]
+      },
+      {
+       "name": "append",
+       "overloads": [
+        {
+         "signature": "def append(mut self, value: Value)"
+        }
+       ]
+      },
+      {
+       "name": "flush",
+       "overloads": [
+        {
+         "signature": "def flush(mut self)",
+         "summary": "Close off the current block, if it has anything in it."
+        }
+       ]
+      },
+      {
+       "name": "close",
+       "overloads": [
+        {
+         "signature": "def close(mut self)"
+        }
+       ]
+      },
+      {
+       "name": "bytes",
+       "overloads": [
+        {
+         "signature": "def bytes(mut self) -> List[UInt8]",
+         "summary": "Finish the file and hand back its bytes."
+        }
+       ]
+      },
+      {
+       "name": "save",
+       "overloads": [
+        {
+         "signature": "def save(mut self, path: StringSpan)"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "read_file_bytes",
+     "overloads": [
+      {
+       "signature": "def read_file_bytes(path: StringSpan) -> List[UInt8]"
+      }
+     ]
+    },
+    {
+     "name": "write_file_bytes",
+     "overloads": [
+      {
+       "signature": "def write_file_bytes(path: StringSpan, data: Span[UInt8])"
+      }
+     ]
+    },
+    {
+     "name": "random_sync_marker",
+     "overloads": [
+      {
+       "signature": "def random_sync_marker() -> List[UInt8]"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "avro.decoder",
+   "summary": "The Avro binary decoder.",
+   "description": "A `Decoder` is a cursor over a `Span[UInt8]`: the primitive readers follow\nthe spec's binary encoding (zigzag varints, little-endian IEEE floats,\nlength-prefixed bytes, block-encoded arrays and maps), and `read_value`\ndrives them from a parsed `Schema`.",
+   "structs": [
+    {
+     "name": "Decoder",
+     "signature": "struct Decoder[origin: ImmOrigin]",
+     "summary": "A cursor over Avro binary data.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "data",
+       "type": "Span[UInt8, origin]"
+      },
+      {
+       "name": "pos",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, data: Span[UInt8, origin])"
+        },
+        {
+         "signature": "def __init__(out self, data: Span[UInt8, origin], pos: Int)"
+        }
+       ]
+      },
+      {
+       "name": "remaining",
+       "overloads": [
+        {
+         "signature": "def remaining(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "at_end",
+       "overloads": [
+        {
+         "signature": "def at_end(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "read_byte",
+       "overloads": [
+        {
+         "signature": "def read_byte(mut self) -> UInt8"
+        }
+       ]
+      },
+      {
+       "name": "read_boolean",
+       "overloads": [
+        {
+         "signature": "def read_boolean(mut self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "read_long",
+       "overloads": [
+        {
+         "signature": "def read_long(mut self) -> Int64",
+         "summary": "A zigzag-encoded variable-length integer."
+        }
+       ]
+      },
+      {
+       "name": "read_int",
+       "overloads": [
+        {
+         "signature": "def read_int(mut self) -> Int32"
+        }
+       ]
+      },
+      {
+       "name": "read_float",
+       "overloads": [
+        {
+         "signature": "def read_float(mut self) -> Float32"
+        }
+       ]
+      },
+      {
+       "name": "read_double",
+       "overloads": [
+        {
+         "signature": "def read_double(mut self) -> Float64"
+        }
+       ]
+      },
+      {
+       "name": "read_fixed",
+       "overloads": [
+        {
+         "signature": "def read_fixed(mut self, n: Int) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "read_bytes",
+       "overloads": [
+        {
+         "signature": "def read_bytes(mut self) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "read_string",
+       "overloads": [
+        {
+         "signature": "def read_string(mut self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "skip",
+       "overloads": [
+        {
+         "signature": "def skip(mut self, n: Int)"
+        }
+       ]
+      },
+      {
+       "name": "read_block_count",
+       "overloads": [
+        {
+         "signature": "def read_block_count(mut self) -> Int64",
+         "summary": "Read one array/map block header.",
+         "description": "A negative count means the writer also wrote the block's byte size,\nwhich is consumed here and discarded (it is only a skip hint)."
+        }
+       ]
+      },
+      {
+       "name": "read_value",
+       "overloads": [
+        {
+         "signature": "def read_value(mut self, schema: Schema) -> Value",
+         "summary": "Decode one datum described by `schema`'s root."
+        }
+       ]
+      },
+      {
+       "name": "read_value_at",
+       "overloads": [
+        {
+         "signature": "def read_value_at(mut self, schema: Schema, i: Int) -> Value"
+        }
+       ]
+      },
+      {
+       "name": "decode_into",
+       "overloads": [
+        {
+         "signature": "def decode_into(mut self, schema: Schema, i: Int, mut arena: List[ValueNode]) -> Int",
+         "summary": "Decode node `i` straight into `arena`, returning its index.",
+         "description": "The building block `avro.resolve` shares for the parts of a resolved\nread that need no conversion."
+        }
+       ]
+      },
+      {
+       "name": "skip_value",
+       "overloads": [
+        {
+         "signature": "def skip_value(mut self, schema: Schema, i: Int)",
+         "summary": "Advance past one datum without materialising it."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "avro.encoder",
+   "summary": "The Avro binary encoder — the inverse of `avro.decoder`.",
+   "structs": [
+    {
+     "name": "Encoder",
+     "signature": "struct Encoder",
+     "summary": "Appends Avro binary data to an owned `List[UInt8]`.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable",
+      "Sized"
+     ],
+     "fields": [
+      {
+       "name": "out",
+       "type": "List[UInt8]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        },
+        {
+         "signature": "def __init__(out self, capacity: Int)"
+        }
+       ]
+      },
+      {
+       "name": "__len__",
+       "overloads": [
+        {
+         "signature": "def __len__(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "take",
+       "overloads": [
+        {
+         "signature": "def take(deinit self) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "bytes",
+       "overloads": [
+        {
+         "signature": "def bytes(self) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "reset",
+       "overloads": [
+        {
+         "signature": "def reset(mut self)"
+        }
+       ]
+      },
+      {
+       "name": "write_boolean",
+       "overloads": [
+        {
+         "signature": "def write_boolean(mut self, v: Bool)"
+        }
+       ]
+      },
+      {
+       "name": "write_long",
+       "overloads": [
+        {
+         "signature": "def write_long(mut self, v: Int64)",
+         "summary": "Zigzag varint."
+        }
+       ]
+      },
+      {
+       "name": "write_int",
+       "overloads": [
+        {
+         "signature": "def write_int(mut self, v: Int32)"
+        }
+       ]
+      },
+      {
+       "name": "write_float",
+       "overloads": [
+        {
+         "signature": "def write_float(mut self, v: Float32)"
+        }
+       ]
+      },
+      {
+       "name": "write_double",
+       "overloads": [
+        {
+         "signature": "def write_double(mut self, v: Float64)"
+        }
+       ]
+      },
+      {
+       "name": "write_fixed",
+       "overloads": [
+        {
+         "signature": "def write_fixed(mut self, v: Span[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "write_bytes",
+       "overloads": [
+        {
+         "signature": "def write_bytes(mut self, v: Span[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "write_string",
+       "overloads": [
+        {
+         "signature": "def write_string(mut self, v: StringSpan)"
+        }
+       ]
+      },
+      {
+       "name": "write_value",
+       "overloads": [
+        {
+         "signature": "def write_value(mut self, schema: Schema, value: Value)"
+        }
+       ]
+      },
+      {
+       "name": "write_value_at",
+       "overloads": [
+        {
+         "signature": "def write_value_at(mut self, schema: Schema, i: Int, value: Value)"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "encode_value",
+     "overloads": [
+      {
+       "signature": "def encode_value(schema: Schema, value: Value) -> List[UInt8]",
+       "summary": "One-shot: encode `value` against `schema` into a fresh buffer."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "avro.json",
+   "summary": "A small, self-contained JSON reader/writer.",
+   "description": "Avro schemas are JSON, and Object Container File metadata carries raw JSON\nstrings (Iceberg puts its table schema and partition spec there), so\n`avro.mojo` needs a JSON parser. It is deliberately in-repo: the library then\nhas no imports outside the Mojo standard library, and a consumer only needs\n`-I ../avro.mojo/src`.\n\nThe document is an arena (`List[JsonNode]`) with integer child indices —\nMojo structs cannot contain themselves, and an arena also makes the recursive\nschema references Avro allows fall out naturally.",
+   "aliases": [
+    {
+     "name": "JSON_NULL",
+     "value": "Int(0)"
+    },
+    {
+     "name": "JSON_BOOL",
+     "value": "Int(1)"
+    },
+    {
+     "name": "JSON_INT",
+     "value": "Int(2)"
+    },
+    {
+     "name": "JSON_FLOAT",
+     "value": "Int(3)"
+    },
+    {
+     "name": "JSON_STRING",
+     "value": "Int(4)"
+    },
+    {
+     "name": "JSON_ARRAY",
+     "value": "Int(5)"
+    },
+    {
+     "name": "JSON_OBJECT",
+     "value": "Int(6)"
+    }
+   ],
+   "structs": [
+    {
+     "name": "JsonNode",
+     "signature": "struct JsonNode",
+     "summary": "One JSON value inside a `JsonDoc` arena.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "kind",
+       "type": "Int"
+      },
+      {
+       "name": "b",
+       "type": "Bool"
+      },
+      {
+       "name": "i",
+       "type": "Int64"
+      },
+      {
+       "name": "f",
+       "type": "Float64"
+      },
+      {
+       "name": "s",
+       "type": "String",
+       "summary": "String payload for JSON_STRING; unused otherwise."
+      },
+      {
+       "name": "keys",
+       "type": "List[String]",
+       "summary": "Object member names, in document order. Empty for non-objects."
+      },
+      {
+       "name": "kids",
+       "type": "List[Int]",
+       "summary": "Child node indices: array elements, or object member values."
+      }
+     ],
+     "functions": [
+      {
+       "name": "scalar",
+       "overloads": [
+        {
+         "signature": "def scalar(kind: Int) -> Self"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "JsonDoc",
+     "signature": "struct JsonDoc",
+     "summary": "A parsed JSON document: a flat arena plus the index of the root value.",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "nodes",
+       "type": "List[JsonNode]"
+      },
+      {
+       "name": "root",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "kind",
+       "overloads": [
+        {
+         "signature": "def kind(self, i: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "is_null",
+       "overloads": [
+        {
+         "signature": "def is_null(self, i: Int) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "as_bool",
+       "overloads": [
+        {
+         "signature": "def as_bool(self, i: Int) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "as_int",
+       "overloads": [
+        {
+         "signature": "def as_int(self, i: Int) -> Int64"
+        }
+       ]
+      },
+      {
+       "name": "as_float",
+       "overloads": [
+        {
+         "signature": "def as_float(self, i: Int) -> Float64"
+        }
+       ]
+      },
+      {
+       "name": "as_string",
+       "overloads": [
+        {
+         "signature": "def as_string(self, i: Int) -> String"
+        }
+       ]
+      },
+      {
+       "name": "len_of",
+       "overloads": [
+        {
+         "signature": "def len_of(self, i: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "child",
+       "overloads": [
+        {
+         "signature": "def child(self, i: Int, k: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "key_at",
+       "overloads": [
+        {
+         "signature": "def key_at(self, i: Int, k: Int) -> String"
+        }
+       ]
+      },
+      {
+       "name": "get",
+       "overloads": [
+        {
+         "signature": "def get(self, i: Int, name: StringSpan) -> Int",
+         "summary": "Object member lookup by name; -1 when absent."
+        }
+       ]
+      },
+      {
+       "name": "has",
+       "overloads": [
+        {
+         "signature": "def has(self, i: Int, name: StringSpan) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "write_node",
+       "overloads": [
+        {
+         "signature": "def write_node(self, i: Int, mut out: String)"
+        }
+       ]
+      },
+      {
+       "name": "to_json",
+       "overloads": [
+        {
+         "signature": "def to_json(self, i: Int) -> String"
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "write_json_string",
+     "overloads": [
+      {
+       "signature": "def write_json_string(s: StringSpan, mut out: String)",
+       "summary": "Append `s` to `out` as a quoted, escaped JSON string."
+      }
+     ]
+    },
+    {
+     "name": "parse_json",
+     "overloads": [
+      {
+       "signature": "def parse_json(text: StringSpan) -> JsonDoc",
+       "summary": "Parse `text` into a `JsonDoc`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "avro.resolve",
+   "summary": "Schema resolution — reading data written with one schema as another.",
+   "description": "`resolve(writer, reader)` walks the two schemas once and builds a *plan*: a\nflat list of `ResolveNode`s that says, for every position in the writer's\ndata, what to decode and where it lands in the reader's shape. Decoding then\nfollows the plan, so the per-record cost has no name lookups in it.\n\nSupported (the common cases from the Avro spec's \"Schema Resolution\"):\n\n- field reordering, and writer fields the reader dropped (skipped in place);\n- reader fields the writer never wrote, filled from the field's `default`;\n- numeric promotions `int → long → float → double`;\n- `string ↔ bytes`;\n- union member selection in both directions, plus a non-union writer read\n  into a reader union;\n- enum symbols missing from the reader, falling back to the reader enum's\n  own `default`;\n- records/enums/fixed matched by unqualified name, and by the reader's\n  `aliases`.",
+   "aliases": [
+    {
+     "name": "RA_DIRECT",
+     "value": "Int(0)",
+     "summary": "Kinds match exactly — decode with the writer schema."
+    },
+    {
+     "name": "RA_PROMOTE",
+     "value": "Int(1)"
+    },
+    {
+     "name": "RA_RECORD",
+     "value": "Int(2)"
+    },
+    {
+     "name": "RA_ENUM",
+     "value": "Int(3)"
+    },
+    {
+     "name": "RA_ARRAY",
+     "value": "Int(4)"
+    },
+    {
+     "name": "RA_MAP",
+     "value": "Int(5)"
+    },
+    {
+     "name": "RA_UNION_WRITER",
+     "value": "Int(6)"
+    },
+    {
+     "name": "RA_UNION_READER",
+     "value": "Int(7)"
+    },
+    {
+     "name": "RA_SKIP",
+     "value": "Int(8)"
+    },
+    {
+     "name": "RA_ERROR",
+     "value": "Int(9)",
+     "summary": "A writer union branch the reader cannot accept — only fatal if it is actually the branch on the wire."
+    }
+   ],
+   "structs": [
+    {
+     "name": "ResolveNode",
+     "signature": "struct ResolveNode",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "action",
+       "type": "Int"
+      },
+      {
+       "name": "w",
+       "type": "Int",
+       "summary": "Writer schema node index."
+      },
+      {
+       "name": "r",
+       "type": "Int",
+       "summary": "Reader schema node index (-1 for a skip)."
+      },
+      {
+       "name": "kids",
+       "type": "List[Int]",
+       "summary": "Child plan indices: array items, map values, union branches."
+      },
+      {
+       "name": "field_plan",
+       "type": "List[Int]",
+       "summary": "Per writer field: the child plan index, or -1 to skip the field."
+      },
+      {
+       "name": "field_slot",
+       "type": "List[Int]",
+       "summary": "Per writer field: the reader field position, or -1 to skip."
+      },
+      {
+       "name": "default_slots",
+       "type": "List[Int]",
+       "summary": "Reader field positions filled from the field's `default`."
+      },
+      {
+       "name": "default_values",
+       "type": "List[Value]"
+      },
+      {
+       "name": "enum_map",
+       "type": "List[Int]",
+       "summary": "Per writer symbol: the reader symbol index, or -1 for the fallback."
+      },
+      {
+       "name": "enum_fallback",
+       "type": "Int"
+      },
+      {
+       "name": "branch",
+       "type": "Int",
+       "summary": "Chosen reader union branch for RA_UNION_READER."
+      },
+      {
+       "name": "message",
+       "type": "String",
+       "summary": "Why RA_ERROR was planted."
+      }
+     ],
+     "functions": [
+      {
+       "name": "of",
+       "overloads": [
+        {
+         "signature": "def of(action: Int, w: Int, r: Int) -> Self"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ResolvedReader",
+     "signature": "struct ResolvedReader",
+     "summary": "A decoding plan produced by `resolve`.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "writer",
+       "type": "Schema"
+      },
+      {
+       "name": "reader",
+       "type": "Schema"
+      },
+      {
+       "name": "plan",
+       "type": "List[ResolveNode]"
+      },
+      {
+       "name": "root",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var writer: Schema, var reader: Schema)"
+        }
+       ]
+      },
+      {
+       "name": "read_value",
+       "overloads": [
+        {
+         "signature": "def read_value(self, mut d: Decoder) -> Value",
+         "summary": "Decode one datum written with `writer`, shaped as `reader`."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "resolve",
+     "overloads": [
+      {
+       "signature": "def resolve(writer: Schema, reader: Schema) -> ResolvedReader",
+       "summary": "Build a decoding plan that reads `writer` data as `reader`."
+      }
+     ]
+    },
+    {
+     "name": "default_value",
+     "overloads": [
+      {
+       "signature": "def default_value(schema: Schema, i: Int, default_json: StringSpan) -> Value",
+       "summary": "Decode a field's JSON `default` into a `Value` shaped by `schema`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "avro.schema",
+   "summary": "Avro schema parsing and printing.",
+   "description": "The parsed schema is an arena of `SchemaNode`s with integer child indices.\nThat is not just a Mojo workaround for self-referential structs: it is also\nexactly what Avro's *named type references* want — a record that refers to\nitself (`{\"type\": \"record\", \"name\": \"Node\", \"fields\": [{\"name\": \"next\",\n\"type\": [\"null\", \"Node\"]}]}`) is one node index appearing twice.\n\nEverything the JSON carried that Avro does not define is preserved as a raw\nproperty (`field-id`, `element-id`, `key-id`, `value-id` — Apache Iceberg\nwrites all four), so `to_json()` round-trips and consumers can read them back.",
+   "aliases": [
+    {
+     "name": "NULL",
+     "value": "Int(0)"
+    },
+    {
+     "name": "BOOLEAN",
+     "value": "Int(1)"
+    },
+    {
+     "name": "INT",
+     "value": "Int(2)"
+    },
+    {
+     "name": "LONG",
+     "value": "Int(3)"
+    },
+    {
+     "name": "FLOAT",
+     "value": "Int(4)"
+    },
+    {
+     "name": "DOUBLE",
+     "value": "Int(5)"
+    },
+    {
+     "name": "BYTES",
+     "value": "Int(6)"
+    },
+    {
+     "name": "STRING",
+     "value": "Int(7)"
+    },
+    {
+     "name": "RECORD",
+     "value": "Int(8)"
+    },
+    {
+     "name": "ENUM",
+     "value": "Int(9)"
+    },
+    {
+     "name": "ARRAY",
+     "value": "Int(10)"
+    },
+    {
+     "name": "MAP",
+     "value": "Int(11)"
+    },
+    {
+     "name": "UNION",
+     "value": "Int(12)"
+    },
+    {
+     "name": "FIXED",
+     "value": "Int(13)"
+    }
+   ],
+   "structs": [
+    {
+     "name": "Props",
+     "signature": "struct Props",
+     "summary": "Ordered extra JSON attributes; values are kept as raw JSON text.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable",
+      "Sized"
+     ],
+     "fields": [
+      {
+       "name": "keys",
+       "type": "List[String]"
+      },
+      {
+       "name": "vals",
+       "type": "List[String]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "__len__",
+       "overloads": [
+        {
+         "signature": "def __len__(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "set",
+       "overloads": [
+        {
+         "signature": "def set(mut self, var key: String, var raw_json: String)"
+        }
+       ]
+      },
+      {
+       "name": "get",
+       "overloads": [
+        {
+         "signature": "def get(self, key: StringSpan) -> String",
+         "summary": "Raw JSON text for `key`, or \"\" when absent."
+        }
+       ]
+      },
+      {
+       "name": "has",
+       "overloads": [
+        {
+         "signature": "def has(self, key: StringSpan) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "get_int",
+       "overloads": [
+        {
+         "signature": "def get_int(self, key: StringSpan, default: Int = Int(-1)) -> Int",
+         "summary": "Integer property value, or `default` when absent or not a number."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Field",
+     "signature": "struct Field",
+     "summary": "One record field.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "doc",
+       "type": "String"
+      },
+      {
+       "name": "type_index",
+       "type": "Int",
+       "summary": "Index of the field's type node in the owning `Schema`'s arena."
+      },
+      {
+       "name": "has_default",
+       "type": "Bool"
+      },
+      {
+       "name": "default_json",
+       "type": "String",
+       "summary": "Raw JSON text of the field's default, when it has one."
+      },
+      {
+       "name": "order",
+       "type": "String"
+      },
+      {
+       "name": "aliases",
+       "type": "List[String]"
+      },
+      {
+       "name": "props",
+       "type": "Props"
+      }
+     ],
+     "functions": [
+      {
+       "name": "make",
+       "overloads": [
+        {
+         "signature": "def make(var name: String, type_index: Int) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "field_id",
+       "overloads": [
+        {
+         "signature": "def field_id(self) -> Int",
+         "summary": "Iceberg's `field-id` attribute, or -1 when the field has none."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "SchemaNode",
+     "signature": "struct SchemaNode",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "kind",
+       "type": "Int"
+      },
+      {
+       "name": "name",
+       "type": "String",
+       "summary": "Fullname (namespace-qualified) for record/enum/fixed; \"\" otherwise."
+      },
+      {
+       "name": "namespace",
+       "type": "String"
+      },
+      {
+       "name": "doc",
+       "type": "String"
+      },
+      {
+       "name": "aliases",
+       "type": "List[String]"
+      },
+      {
+       "name": "logical_type",
+       "type": "String"
+      },
+      {
+       "name": "precision",
+       "type": "Int"
+      },
+      {
+       "name": "scale",
+       "type": "Int"
+      },
+      {
+       "name": "size",
+       "type": "Int",
+       "summary": "Byte width for `fixed`."
+      },
+      {
+       "name": "symbols",
+       "type": "List[String]"
+      },
+      {
+       "name": "default_symbol",
+       "type": "String"
+      },
+      {
+       "name": "fields",
+       "type": "List[Field]"
+      },
+      {
+       "name": "children",
+       "type": "List[Int]",
+       "summary": "Array items / map values (one entry), or union branches."
+      },
+      {
+       "name": "props",
+       "type": "Props"
+      }
+     ],
+     "functions": [
+      {
+       "name": "of",
+       "overloads": [
+        {
+         "signature": "def of(kind: Int) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "short_name",
+       "overloads": [
+        {
+         "signature": "def short_name(self) -> String"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Schema",
+     "signature": "struct Schema",
+     "summary": "A parsed Avro schema: an arena of nodes plus the root node's index.",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "nodes",
+       "type": "List[SchemaNode]"
+      },
+      {
+       "name": "root",
+       "type": "Int"
+      },
+      {
+       "name": "names",
+       "type": "Dict[String, Int]",
+       "summary": "Fullname -> node index, for every named type the schema defines."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "kind",
+       "overloads": [
+        {
+         "signature": "def kind(self, i: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "root_kind",
+       "overloads": [
+        {
+         "signature": "def root_kind(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name(self, i: Int) -> String"
+        }
+       ]
+      },
+      {
+       "name": "logical_type",
+       "overloads": [
+        {
+         "signature": "def logical_type(self, i: Int) -> String"
+        }
+       ]
+      },
+      {
+       "name": "size",
+       "overloads": [
+        {
+         "signature": "def size(self, i: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "symbols",
+       "overloads": [
+        {
+         "signature": "def symbols(self, i: Int) -> List[String]"
+        }
+       ]
+      },
+      {
+       "name": "num_fields",
+       "overloads": [
+        {
+         "signature": "def num_fields(self, i: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "field",
+       "overloads": [
+        {
+         "signature": "def field(self, i: Int, k: Int) -> Field"
+        }
+       ]
+      },
+      {
+       "name": "field_index",
+       "overloads": [
+        {
+         "signature": "def field_index(self, i: Int, name: StringSpan) -> Int",
+         "summary": "Position of the named field in record node `i`, or -1."
+        }
+       ]
+      },
+      {
+       "name": "field_type",
+       "overloads": [
+        {
+         "signature": "def field_type(self, i: Int, k: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "items",
+       "overloads": [
+        {
+         "signature": "def items(self, i: Int) -> Int",
+         "summary": "Element node index of an `array`."
+        }
+       ]
+      },
+      {
+       "name": "values",
+       "overloads": [
+        {
+         "signature": "def values(self, i: Int) -> Int",
+         "summary": "Value node index of a `map`."
+        }
+       ]
+      },
+      {
+       "name": "num_branches",
+       "overloads": [
+        {
+         "signature": "def num_branches(self, i: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "branch",
+       "overloads": [
+        {
+         "signature": "def branch(self, i: Int, k: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "props",
+       "overloads": [
+        {
+         "signature": "def props(self, i: Int) -> Props"
+        }
+       ]
+      },
+      {
+       "name": "is_optional",
+       "overloads": [
+        {
+         "signature": "def is_optional(self, i: Int) -> Bool",
+         "summary": "True for a two-branch union with a `null` branch — Iceberg's spelling of an optional field."
+        }
+       ]
+      },
+      {
+       "name": "optional_branch",
+       "overloads": [
+        {
+         "signature": "def optional_branch(self, i: Int) -> Int",
+         "summary": "For an optional union, the node index of the non-null branch; -1 otherwise."
+        }
+       ]
+      },
+      {
+       "name": "null_branch_index",
+       "overloads": [
+        {
+         "signature": "def null_branch_index(self, i: Int) -> Int",
+         "summary": "Branch *position* of the `null` member of a union, or -1."
+        }
+       ]
+      },
+      {
+       "name": "is_logical_map",
+       "overloads": [
+        {
+         "signature": "def is_logical_map(self, i: Int) -> Bool",
+         "summary": "An `array` of two-field records tagged `\"logicalType\": \"map\"` — how Avro (and Iceberg) spells a map with non-string keys."
+        }
+       ]
+      },
+      {
+       "name": "element_id",
+       "overloads": [
+        {
+         "signature": "def element_id(self, i: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "key_id",
+       "overloads": [
+        {
+         "signature": "def key_id(self, i: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "value_id",
+       "overloads": [
+        {
+         "signature": "def value_id(self, i: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "to_json",
+       "overloads": [
+        {
+         "signature": "def to_json(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "to_json_at",
+       "overloads": [
+        {
+         "signature": "def to_json_at(self, i: Int) -> String"
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      },
+      {
+       "name": "parsing_canonical_form",
+       "overloads": [
+        {
+         "signature": "def parsing_canonical_form(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "fingerprint",
+       "overloads": [
+        {
+         "signature": "def fingerprint(self) -> UInt64",
+         "summary": "The 64-bit Rabin fingerprint (`CRC-64-AVRO`) of the parsing canonical form — Avro's own single-object-encoding schema id."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "kind_name",
+     "overloads": [
+      {
+       "signature": "def kind_name(kind: Int) -> String"
+      }
+     ]
+    },
+    {
+     "name": "primitive_kind",
+     "overloads": [
+      {
+       "signature": "def primitive_kind(name: StringSpan) -> Int",
+       "summary": "Kind for a primitive type name, or -1 if `name` is not primitive."
+      }
+     ]
+    },
+    {
+     "name": "is_primitive",
+     "overloads": [
+      {
+       "signature": "def is_primitive(kind: Int) -> Bool"
+      }
+     ]
+    },
+    {
+     "name": "is_named",
+     "overloads": [
+      {
+       "signature": "def is_named(kind: Int) -> Bool"
+      }
+     ]
+    },
+    {
+     "name": "crc64_avro",
+     "overloads": [
+      {
+       "signature": "def crc64_avro(data: Span[UInt8]) -> UInt64",
+       "summary": "Avro's `CRC-64-AVRO` Rabin fingerprint."
+      }
+     ]
+    },
+    {
+     "name": "parse_schema",
+     "overloads": [
+      {
+       "signature": "def parse_schema(text: StringSpan) -> Schema",
+       "summary": "Parse an Avro schema from its JSON text."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "avro.value",
+   "summary": "`Value` — a dynamically typed Avro datum.",
+   "description": "Like `Schema`, a `Value` is an arena of nodes plus a root index, but the\narena sits behind an `ArcPointer` so navigating (`v.field(\"x\").at(0)`) is a\nrefcount bump rather than a deep copy. Building a value copies its children\ninto a fresh arena; reading one never copies.",
+   "structs": [
+    {
+     "name": "ValueNode",
+     "signature": "struct ValueNode",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "kind",
+       "type": "Int"
+      },
+      {
+       "name": "b",
+       "type": "Bool"
+      },
+      {
+       "name": "i",
+       "type": "Int64",
+       "summary": "Int / long payload, and the enum symbol or union branch index."
+      },
+      {
+       "name": "d",
+       "type": "Float64",
+       "summary": "Float / double payload."
+      },
+      {
+       "name": "data",
+       "type": "List[UInt8]",
+       "summary": "Bytes / fixed payload."
+      },
+      {
+       "name": "s",
+       "type": "String",
+       "summary": "String payload, and the enum symbol name."
+      },
+      {
+       "name": "keys",
+       "type": "List[String]",
+       "summary": "Record field names or map keys, in order."
+      },
+      {
+       "name": "kids",
+       "type": "List[Int]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "of",
+       "overloads": [
+        {
+         "signature": "def of(kind: Int) -> Self"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Value",
+     "signature": "struct Value",
+     "summary": "One Avro datum. Cheap to copy: the node arena is shared.",
+     "traits": [
+      "Copyable",
+      "Equatable",
+      "Movable",
+      "Sized",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "arena",
+       "type": "ArcPointer[List[ValueNode]]"
+      },
+      {
+       "name": "idx",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var arena: ArcPointer[List[ValueNode]], idx: Int)"
+        },
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "__eq__",
+       "overloads": [
+        {
+         "signature": "def __eq__(self, other: Self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "__ne__",
+       "overloads": [
+        {
+         "signature": "def __ne__(self, other: Self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "null",
+       "overloads": [
+        {
+         "signature": "def null() -> Self"
+        }
+       ]
+      },
+      {
+       "name": "boolean",
+       "overloads": [
+        {
+         "signature": "def boolean(v: Bool) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "int",
+       "overloads": [
+        {
+         "signature": "def int(v: Int64) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "long",
+       "overloads": [
+        {
+         "signature": "def long(v: Int64) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "float",
+       "overloads": [
+        {
+         "signature": "def float(v: Float32) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "double",
+       "overloads": [
+        {
+         "signature": "def double(v: Float64) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "bytes",
+       "overloads": [
+        {
+         "signature": "def bytes(v: Span[UInt8]) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "fixed",
+       "overloads": [
+        {
+         "signature": "def fixed(v: Span[UInt8]) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "string",
+       "overloads": [
+        {
+         "signature": "def string(v: StringSpan) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "enum",
+       "overloads": [
+        {
+         "signature": "def enum(index: Int, symbol: StringSpan) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "array",
+       "overloads": [
+        {
+         "signature": "def array(items: List[Self]) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "map",
+       "overloads": [
+        {
+         "signature": "def map(var keys: List[String], values: List[Self]) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "record",
+       "overloads": [
+        {
+         "signature": "def record(var names: List[String], values: List[Self]) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "union",
+       "overloads": [
+        {
+         "signature": "def union(index: Int, branch: Self) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "kind",
+       "overloads": [
+        {
+         "signature": "def kind(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "type_name",
+       "overloads": [
+        {
+         "signature": "def type_name(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "is_null",
+       "overloads": [
+        {
+         "signature": "def is_null(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "as_bool",
+       "overloads": [
+        {
+         "signature": "def as_bool(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "as_long",
+       "overloads": [
+        {
+         "signature": "def as_long(self) -> Int64"
+        }
+       ]
+      },
+      {
+       "name": "as_int",
+       "overloads": [
+        {
+         "signature": "def as_int(self) -> Int32"
+        }
+       ]
+      },
+      {
+       "name": "as_double",
+       "overloads": [
+        {
+         "signature": "def as_double(self) -> Float64"
+        }
+       ]
+      },
+      {
+       "name": "as_float",
+       "overloads": [
+        {
+         "signature": "def as_float(self) -> Float32"
+        }
+       ]
+      },
+      {
+       "name": "as_string",
+       "overloads": [
+        {
+         "signature": "def as_string(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "as_bytes",
+       "overloads": [
+        {
+         "signature": "def as_bytes(self) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "enum_index",
+       "overloads": [
+        {
+         "signature": "def enum_index(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "symbol",
+       "overloads": [
+        {
+         "signature": "def symbol(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "union_index",
+       "overloads": [
+        {
+         "signature": "def union_index(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "unwrap",
+       "overloads": [
+        {
+         "signature": "def unwrap(self) -> Self",
+         "summary": "The branch value of a union; `self` for anything else."
+        }
+       ]
+      },
+      {
+       "name": "__len__",
+       "overloads": [
+        {
+         "signature": "def __len__(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "at",
+       "overloads": [
+        {
+         "signature": "def at(self, k: Int) -> Self",
+         "summary": "Child `k` — an array element, map value or record field value."
+        }
+       ]
+      },
+      {
+       "name": "key",
+       "overloads": [
+        {
+         "signature": "def key(self, k: Int) -> String",
+         "summary": "Name of child `k` — a record field name or a map key."
+        }
+       ]
+      },
+      {
+       "name": "index_of",
+       "overloads": [
+        {
+         "signature": "def index_of(self, name: StringSpan) -> Int",
+         "summary": "Position of a record field or map key, or -1 when absent."
+        }
+       ]
+      },
+      {
+       "name": "has",
+       "overloads": [
+        {
+         "signature": "def has(self, name: StringSpan) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "field",
+       "overloads": [
+        {
+         "signature": "def field(self, name: StringSpan) -> Self",
+         "summary": "A record field (or map entry) by name, unwrapping unions."
+        }
+       ]
+      },
+      {
+       "name": "field_raw",
+       "overloads": [
+        {
+         "signature": "def field_raw(self, name: StringSpan) -> Self",
+         "summary": "A record field by name, keeping any union wrapper."
+        }
+       ]
+      },
+      {
+       "name": "to_json",
+       "overloads": [
+        {
+         "signature": "def to_json(self) -> String",
+         "summary": "A JSON rendering used by the tests and the fastavro cross-check.",
+         "description": "Unions collapse to their branch value and `bytes`/`fixed` render as\n`\"0x…\"` hex, so the output lines up with a Python dict dumped the\nsame way."
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "RecordBuilder",
+     "signature": "struct RecordBuilder",
+     "summary": "Accumulate named fields, then `build()` a record `Value`.",
+     "description": "```mojo\nvar b = RecordBuilder()\nb.add(\"id\", Value.long(7))\nb.add(\"name\", Value.string(\"row\"))\nvar v = b^.build()\n```",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "names",
+       "type": "List[String]"
+      },
+      {
+       "name": "values",
+       "type": "List[Value]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "add",
+       "overloads": [
+        {
+         "signature": "def add(mut self, name: StringSpan, value: Value)"
+        }
+       ]
+      },
+      {
+       "name": "build",
+       "overloads": [
+        {
+         "signature": "def build(deinit self) -> Value"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ArrayBuilder",
+     "signature": "struct ArrayBuilder",
+     "summary": "Accumulate elements, then `build()` an array `Value`.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "values",
+       "type": "List[Value]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "add",
+       "overloads": [
+        {
+         "signature": "def add(mut self, value: Value)"
+        }
+       ]
+      },
+      {
+       "name": "build",
+       "overloads": [
+        {
+         "signature": "def build(deinit self) -> Value"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "MapBuilder",
+     "signature": "struct MapBuilder",
+     "summary": "Accumulate key/value pairs, then `build()` a map `Value`.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "keys",
+       "type": "List[String]"
+      },
+      {
+       "name": "values",
+       "type": "List[Value]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "add",
+       "overloads": [
+        {
+         "signature": "def add(mut self, key: StringSpan, value: Value)"
+        }
+       ]
+      },
+      {
+       "name": "build",
+       "overloads": [
+        {
+         "signature": "def build(deinit self) -> Value"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

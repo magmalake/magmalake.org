@@ -1,0 +1,1362 @@
+{
+ "tin": "mozz_mlake",
+ "version": "0.2.2",
+ "rev": "bd84a1f1e376912414a3ddcf0f4151ed65435a44",
+ "package": "mozz",
+ "path": "mozz",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "Pure-Mojo fuzzing and property-based testing library.",
+ "description": "Zero external dependencies. No libFuzzer, no C ABI, no compiler flags.\nWrite a harness, call ``fuzz()``.\n\n## What is fuzzing?\n\nFuzzing automatically generates large numbers of random or semi-random inputs\nand feeds them to a function, looking for crashes and assertion failures.\nA fuzz target is a function that accepts bytes and exercises the code under\ntest. If it panics or violates an assertion, the triggering input is saved to\ndisk and added to the regression suite.\n\n## What is property-based testing?\n\nProperty-based testing lets you describe an invariant that must hold across all\ninputs (for example, \"encoding then decoding any value returns the original\")\nand the library generates hundreds or thousands of random inputs to falsify\nit. When a counterexample is found, the input is automatically minimized to the\nsimplest case that still triggers the failure.\n\n## Three levels of API\n\n### Level 1: Raw byte fuzzing\n\n```mojo\nfrom mozz import fuzz, FuzzConfig\n\ndef target(data: List[UInt8]) raises:\n    _ = MyParser.parse(data)  # raises = valid rejection; panic = crash saved to disk\n\ndef main() raises:\n    fuzz(target, FuzzConfig(max_runs=100_000, seed=42, verbose=True))\n```\n\nOutput::\n\n    [mozz] crashes: 0 | runs: 100000 | corpus: 14 | rejects: 6183 | 100%\n\n    [mozz] ── final report ──────────────────────────────\n    [mozz]   seed:           42\n    [mozz]   runs:           100000\n    [mozz]   ok:             93817\n    [mozz]   rejections:     6183\n    [mozz]   corpus:         14 seeds\n    [mozz]   crashes (hits): 0\n    [mozz]   crashes (uniq): 0\n    [mozz] ─────────────────────────────────────────────\n\n### Level 2: Typed property tests\n\n``Gen[T]`` is the parametric generator; use it instead of naming a specific\n``FuzzableXXX`` struct.  Compile-time dispatch via ``comptime if``.\n\n```mojo\nfrom mozz import forall, Gen, Xoshiro256\n\ndef gen_u16(mut rng: Xoshiro256) -> UInt16:\n    return Gen[UInt16].generate(rng)\n\ndef minimize_u16(v: UInt16) -> List[UInt16]:\n    return Gen[UInt16].minimize(v)\n\ndef no_overflow(v: UInt16) raises -> Bool:\n    return Int(v) + 1 > Int(v)\n\ndef main() raises:\n    forall[UInt16](no_overflow, gen_u16, minimize_u16, trials=5_000, seed=42)\n```\n\n``Gen[T]`` supports: ``Bool``, ``UInt8``, ``UInt16``, ``UInt32``, ``UInt64``,\n``Int``, ``String``.  For ``List[UInt8]`` use ``FuzzableBytes`` directly.\nFor custom types write a ``FuzzableMyType`` companion struct.\n\n### Level 3: Raw byte property tests\n\n```mojo\nfrom mozz import forall_bytes\n\ndef safe_roundtrip(data: List[UInt8]) raises -> Bool:\n    try:\n        return MyCodec.encode(MyCodec.decode(data)) == data\n    except:\n        return True  # rejections are fine\n\ndef main() raises:\n    forall_bytes(safe_roundtrip, max_len=512, trials=50_000, seed=1)\n```\n\n## API reference\n\n### ``fuzz()``\n\n```mojo\ncomptime FuzzTarget = def(List[UInt8]) raises thin -> None\n\ndef fuzz(\n    target: FuzzTarget,\n    config: FuzzConfig = FuzzConfig(),\n    seeds:  List[List[UInt8]] = List[List[UInt8]](),\n) raises\n```\n\nRuns the mutation loop.  Raises if any crashes are detected (summary in the\nerror message).  Seeds are merged into the in-memory corpus before the run.\n\n### ``FuzzConfig``\n\n| Field | Type | Default | Description |\n|-------|------|---------|-------------|\n| ``max_runs`` | ``Int`` | ``100_000`` | Number of mutation iterations |\n| ``max_input_len`` | ``Int`` | ``65_540`` | Maximum mutated input size (bytes) |\n| ``seed`` | ``UInt64`` | ``0`` | PRNG seed (0 = entropy from heap address) |\n| ``corpus_dir`` | ``String`` | ``\"\"`` | Load/save persistent corpus; empty = in-memory only |\n| ``crash_dir`` | ``String`` | ``\".mozz_crashes\"`` | Directory for saved crash inputs |\n| ``verbose`` | ``Bool`` | ``True`` | Print progress lines and final report to stdout |\n| ``report_file`` | ``String`` | ``\"\"`` | Also write the final report to this file |\n| ``timeout_ms`` | ``Int`` | ``0`` | Per-iteration timeout (reserved; not enforced in v0.1.0) |\n\n### ``forall[T]()``\n\n```mojo\ndef forall[T: ImplicitlyCopyable & Deinitable](\n    prop:        def(T) raises -> Bool,\n    gen:         def(mut Xoshiro256) -> T,\n    minimize_fn: def(T) thin -> List[T],\n    trials:      Int    = 1_000,\n    seed:        UInt64 = 0,\n) raises\n```\n\nRuns ``trials`` property checks.  On failure, calls ``minimize_fn``\niteratively to find the simplest counterexample, then raises with the\nminimized value and step count in the error message.\n\n### ``forall_bytes()``\n\n```mojo\ndef forall_bytes(\n    prop:    def(List[UInt8]) raises -> Bool,\n    max_len: Int    = 1_024,\n    trials:  Int    = 1_000,\n    seed:    UInt64 = 0,\n) raises\n```\n\nLike ``forall[T]`` but generates uniform random byte sequences.  No\n``Fuzzable`` implementation required.  Built-in ddmin on failure.\n\n### ``minimize_bytes()``\n\n```mojo\ndef minimize_bytes(\n    input:    List[UInt8],\n    is_crash: def(List[UInt8]) raises thin -> Bool,\n) -> List[UInt8]\n```\n\nStandalone delta-debugger.  Reduces ``input`` to the smallest byte sequence\nthat still passes ``is_crash``.  ``is_crash`` returning ``True`` or raising\nboth count as \"crash still present\".\n\n### ``Fuzzable`` trait\n\n```mojo\ntrait Fuzzable(Copyable, Movable):\n    @staticmethod\n    def generate(mut rng: Xoshiro256) -> Self: ...\n\n    @staticmethod\n    def minimize(value: Self) -> List[Self]:\n        return List[Self]()  # default: no minimization\n```\n\nImplement on a companion struct to make a custom type work with ``forall()``.\nBuilt-in structs: ``FuzzableBool``, ``FuzzableUInt8``, ``FuzzableUInt16``,\n``FuzzableUInt32``, ``FuzzableUInt64``, ``FuzzableInt``, ``FuzzableString``,\n``FuzzableBytes``.\n\n### ``Gen[T]``: parametric dispatch\n\n```mojo\nstruct Gen[T: ImplicitlyCopyable]:\n    @staticmethod def generate(mut rng: Xoshiro256) -> T\n    @staticmethod def minimize(value: T)             -> List[T]\n```\n\nUses ``comptime if T == UInt8:`` compile-time dispatch.  Supported: ``Bool``,\n``UInt8``, ``UInt16``, ``UInt32``, ``UInt64``, ``Int``, ``String``.\nUnsupported types fail at compile time with a ``constrained`` error.\n\n### Custom type example\n\n```mojo\nfrom mozz import forall, Xoshiro256\n\nstruct Color(ImplicitlyCopyable):\n    var r: UInt8; var g: UInt8; var b: UInt8\n\nstruct FuzzableColor:\n    @staticmethod\n    def generate(mut rng: Xoshiro256) -> Color:\n        return Color(rng.next_byte(), rng.next_byte(), rng.next_byte())\n\n    @staticmethod\n    def minimize(c: Color) -> List[Color]:\n        var out = List[Color]()\n        if c.r > 0: out.append(Color(c.r // 2, c.g, c.b))\n        if c.g > 0: out.append(Color(c.r, c.g // 2, c.b))\n        if c.b > 0: out.append(Color(c.r, c.g, c.b // 2))\n        return out^\n\ndef gen_color(mut rng: Xoshiro256) -> Color:\n    return FuzzableColor.generate(rng)\n\ndef minimize_color(c: Color) -> List[Color]:\n    return FuzzableColor.minimize(c)\n\ndef prop(c: Color) raises -> Bool:\n    var inv = Color(255 - c.r, 255 - c.g, 255 - c.b)\n    return inv.r != c.r or inv.g != c.g or inv.b != c.b\n\ndef main() raises:\n    forall[Color](prop, gen_color, minimize_color, trials=5_000)\n```\n\n### Crash replay\n\n```mojo\nfrom mozz import Corpus, minimize_bytes\n\ndef is_crash(data: List[UInt8]) raises -> Bool:\n    try:\n        my_target(data)\n        return False\n    except e:\n        return String(e).find(\"panic\") >= 0\n\ndef main() raises:\n    var paths = Corpus.list_crashes(\".mozz_crashes\")\n    var input = Corpus.load_crash(paths[0])\n    var minimal = minimize_bytes(input, is_crash)\n    print(len(minimal), \"bytes (was\", len(input), \")\")\n```\n\n### Mutators\n\n| Mutator | Weight | Description |\n|---------|--------|-------------|\n| ``BitFlip`` | 30 | Flip 1–4 random bits |\n| ``ByteSubstitution`` | 25 | Replace 1–4 bytes (30% boundary bias) |\n| ``ByteInsertion`` | 15 | Insert 1–8 random bytes |\n| ``ByteDeletion`` | 10 | Remove 1–8 bytes |\n| ``BlockDuplication`` | 10 | Duplicate a 1–32 byte block |\n| ``Splice`` | 5 | Splice bytes from another corpus entry |\n| ``BoundaryInt`` | 5 | Inject boundary values (0x00, 0x7F, 0x80, 0xFF) |\n\nUse ``default_mutator()`` for the standard weighted ``MutatorChain``.\n\n### ``Xoshiro256`` PRNG\n\n```mojo\nvar rng = Xoshiro256(seed=42)   # seed=0 → entropy from heap address\nrng.next_u64()                  # UInt64\nrng.next_u32()                  # UInt32\nrng.next_byte()                 # UInt8 in [0, 255]\nrng.next_below(n)               # UInt64 in [0, n), rejection-sampled\nrng.next_bool()                 # Bool\nrng.fill(buf)                   # fill List[UInt8] with random bytes\n```",
+ "modules": [
+  {
+   "path": "mozz",
+   "summary": "Pure-Mojo fuzzing and property-based testing library.",
+   "description": "Zero external dependencies. No libFuzzer, no C ABI, no compiler flags.\nWrite a harness, call ``fuzz()``.\n\n## What is fuzzing?\n\nFuzzing automatically generates large numbers of random or semi-random inputs\nand feeds them to a function, looking for crashes and assertion failures.\nA fuzz target is a function that accepts bytes and exercises the code under\ntest. If it panics or violates an assertion, the triggering input is saved to\ndisk and added to the regression suite.\n\n## What is property-based testing?\n\nProperty-based testing lets you describe an invariant that must hold across all\ninputs (for example, \"encoding then decoding any value returns the original\")\nand the library generates hundreds or thousands of random inputs to falsify\nit. When a counterexample is found, the input is automatically minimized to the\nsimplest case that still triggers the failure.\n\n## Three levels of API\n\n### Level 1: Raw byte fuzzing\n\n```mojo\nfrom mozz import fuzz, FuzzConfig\n\ndef target(data: List[UInt8]) raises:\n    _ = MyParser.parse(data)  # raises = valid rejection; panic = crash saved to disk\n\ndef main() raises:\n    fuzz(target, FuzzConfig(max_runs=100_000, seed=42, verbose=True))\n```\n\nOutput::\n\n    [mozz] crashes: 0 | runs: 100000 | corpus: 14 | rejects: 6183 | 100%\n\n    [mozz] ── final report ──────────────────────────────\n    [mozz]   seed:           42\n    [mozz]   runs:           100000\n    [mozz]   ok:             93817\n    [mozz]   rejections:     6183\n    [mozz]   corpus:         14 seeds\n    [mozz]   crashes (hits): 0\n    [mozz]   crashes (uniq): 0\n    [mozz] ─────────────────────────────────────────────\n\n### Level 2: Typed property tests\n\n``Gen[T]`` is the parametric generator; use it instead of naming a specific\n``FuzzableXXX`` struct.  Compile-time dispatch via ``comptime if``.\n\n```mojo\nfrom mozz import forall, Gen, Xoshiro256\n\ndef gen_u16(mut rng: Xoshiro256) -> UInt16:\n    return Gen[UInt16].generate(rng)\n\ndef minimize_u16(v: UInt16) -> List[UInt16]:\n    return Gen[UInt16].minimize(v)\n\ndef no_overflow(v: UInt16) raises -> Bool:\n    return Int(v) + 1 > Int(v)\n\ndef main() raises:\n    forall[UInt16](no_overflow, gen_u16, minimize_u16, trials=5_000, seed=42)\n```\n\n``Gen[T]`` supports: ``Bool``, ``UInt8``, ``UInt16``, ``UInt32``, ``UInt64``,\n``Int``, ``String``.  For ``List[UInt8]`` use ``FuzzableBytes`` directly.\nFor custom types write a ``FuzzableMyType`` companion struct.\n\n### Level 3: Raw byte property tests\n\n```mojo\nfrom mozz import forall_bytes\n\ndef safe_roundtrip(data: List[UInt8]) raises -> Bool:\n    try:\n        return MyCodec.encode(MyCodec.decode(data)) == data\n    except:\n        return True  # rejections are fine\n\ndef main() raises:\n    forall_bytes(safe_roundtrip, max_len=512, trials=50_000, seed=1)\n```\n\n## API reference\n\n### ``fuzz()``\n\n```mojo\ncomptime FuzzTarget = def(List[UInt8]) raises thin -> None\n\ndef fuzz(\n    target: FuzzTarget,\n    config: FuzzConfig = FuzzConfig(),\n    seeds:  List[List[UInt8]] = List[List[UInt8]](),\n) raises\n```\n\nRuns the mutation loop.  Raises if any crashes are detected (summary in the\nerror message).  Seeds are merged into the in-memory corpus before the run.\n\n### ``FuzzConfig``\n\n| Field | Type | Default | Description |\n|-------|------|---------|-------------|\n| ``max_runs`` | ``Int`` | ``100_000`` | Number of mutation iterations |\n| ``max_input_len`` | ``Int`` | ``65_540`` | Maximum mutated input size (bytes) |\n| ``seed`` | ``UInt64`` | ``0`` | PRNG seed (0 = entropy from heap address) |\n| ``corpus_dir`` | ``String`` | ``\"\"`` | Load/save persistent corpus; empty = in-memory only |\n| ``crash_dir`` | ``String`` | ``\".mozz_crashes\"`` | Directory for saved crash inputs |\n| ``verbose`` | ``Bool`` | ``True`` | Print progress lines and final report to stdout |\n| ``report_file`` | ``String`` | ``\"\"`` | Also write the final report to this file |\n| ``timeout_ms`` | ``Int`` | ``0`` | Per-iteration timeout (reserved; not enforced in v0.1.0) |\n\n### ``forall[T]()``\n\n```mojo\ndef forall[T: ImplicitlyCopyable & Deinitable](\n    prop:        def(T) raises -> Bool,\n    gen:         def(mut Xoshiro256) -> T,\n    minimize_fn: def(T) thin -> List[T],\n    trials:      Int    = 1_000,\n    seed:        UInt64 = 0,\n) raises\n```\n\nRuns ``trials`` property checks.  On failure, calls ``minimize_fn``\niteratively to find the simplest counterexample, then raises with the\nminimized value and step count in the error message.\n\n### ``forall_bytes()``\n\n```mojo\ndef forall_bytes(\n    prop:    def(List[UInt8]) raises -> Bool,\n    max_len: Int    = 1_024,\n    trials:  Int    = 1_000,\n    seed:    UInt64 = 0,\n) raises\n```\n\nLike ``forall[T]`` but generates uniform random byte sequences.  No\n``Fuzzable`` implementation required.  Built-in ddmin on failure.\n\n### ``minimize_bytes()``\n\n```mojo\ndef minimize_bytes(\n    input:    List[UInt8],\n    is_crash: def(List[UInt8]) raises thin -> Bool,\n) -> List[UInt8]\n```\n\nStandalone delta-debugger.  Reduces ``input`` to the smallest byte sequence\nthat still passes ``is_crash``.  ``is_crash`` returning ``True`` or raising\nboth count as \"crash still present\".\n\n### ``Fuzzable`` trait\n\n```mojo\ntrait Fuzzable(Copyable, Movable):\n    @staticmethod\n    def generate(mut rng: Xoshiro256) -> Self: ...\n\n    @staticmethod\n    def minimize(value: Self) -> List[Self]:\n        return List[Self]()  # default: no minimization\n```\n\nImplement on a companion struct to make a custom type work with ``forall()``.\nBuilt-in structs: ``FuzzableBool``, ``FuzzableUInt8``, ``FuzzableUInt16``,\n``FuzzableUInt32``, ``FuzzableUInt64``, ``FuzzableInt``, ``FuzzableString``,\n``FuzzableBytes``.\n\n### ``Gen[T]``: parametric dispatch\n\n```mojo\nstruct Gen[T: ImplicitlyCopyable]:\n    @staticmethod def generate(mut rng: Xoshiro256) -> T\n    @staticmethod def minimize(value: T)             -> List[T]\n```\n\nUses ``comptime if T == UInt8:`` compile-time dispatch.  Supported: ``Bool``,\n``UInt8``, ``UInt16``, ``UInt32``, ``UInt64``, ``Int``, ``String``.\nUnsupported types fail at compile time with a ``constrained`` error.\n\n### Custom type example\n\n```mojo\nfrom mozz import forall, Xoshiro256\n\nstruct Color(ImplicitlyCopyable):\n    var r: UInt8; var g: UInt8; var b: UInt8\n\nstruct FuzzableColor:\n    @staticmethod\n    def generate(mut rng: Xoshiro256) -> Color:\n        return Color(rng.next_byte(), rng.next_byte(), rng.next_byte())\n\n    @staticmethod\n    def minimize(c: Color) -> List[Color]:\n        var out = List[Color]()\n        if c.r > 0: out.append(Color(c.r // 2, c.g, c.b))\n        if c.g > 0: out.append(Color(c.r, c.g // 2, c.b))\n        if c.b > 0: out.append(Color(c.r, c.g, c.b // 2))\n        return out^\n\ndef gen_color(mut rng: Xoshiro256) -> Color:\n    return FuzzableColor.generate(rng)\n\ndef minimize_color(c: Color) -> List[Color]:\n    return FuzzableColor.minimize(c)\n\ndef prop(c: Color) raises -> Bool:\n    var inv = Color(255 - c.r, 255 - c.g, 255 - c.b)\n    return inv.r != c.r or inv.g != c.g or inv.b != c.b\n\ndef main() raises:\n    forall[Color](prop, gen_color, minimize_color, trials=5_000)\n```\n\n### Crash replay\n\n```mojo\nfrom mozz import Corpus, minimize_bytes\n\ndef is_crash(data: List[UInt8]) raises -> Bool:\n    try:\n        my_target(data)\n        return False\n    except e:\n        return String(e).find(\"panic\") >= 0\n\ndef main() raises:\n    var paths = Corpus.list_crashes(\".mozz_crashes\")\n    var input = Corpus.load_crash(paths[0])\n    var minimal = minimize_bytes(input, is_crash)\n    print(len(minimal), \"bytes (was\", len(input), \")\")\n```\n\n### Mutators\n\n| Mutator | Weight | Description |\n|---------|--------|-------------|\n| ``BitFlip`` | 30 | Flip 1–4 random bits |\n| ``ByteSubstitution`` | 25 | Replace 1–4 bytes (30% boundary bias) |\n| ``ByteInsertion`` | 15 | Insert 1–8 random bytes |\n| ``ByteDeletion`` | 10 | Remove 1–8 bytes |\n| ``BlockDuplication`` | 10 | Duplicate a 1–32 byte block |\n| ``Splice`` | 5 | Splice bytes from another corpus entry |\n| ``BoundaryInt`` | 5 | Inject boundary values (0x00, 0x7F, 0x80, 0xFF) |\n\nUse ``default_mutator()`` for the standard weighted ``MutatorChain``.\n\n### ``Xoshiro256`` PRNG\n\n```mojo\nvar rng = Xoshiro256(seed=42)   # seed=0 → entropy from heap address\nrng.next_u64()                  # UInt64\nrng.next_u32()                  # UInt32\nrng.next_byte()                 # UInt8 in [0, 255]\nrng.next_below(n)               # UInt64 in [0, n), rejection-sampled\nrng.next_bool()                 # Bool\nrng.fill(buf)                   # fill List[UInt8] with random bytes\n```"
+  },
+  {
+   "path": "mozz.arbitrary",
+   "summary": "Typed random value generation for property-based testing.",
+   "description": "The ``Fuzzable`` trait enables ``forall[T: Fuzzable](...)`` to generate\nwell-typed test cases.  Implementations for all primitive Mojo types ship\nwith the library.\n\nExample:\n    ```mojo\n    var rng = Xoshiro256(seed=99)\n    var u = FuzzableUInt16.generate(rng)   # random UInt16 (boundary-biased)\n    var s = FuzzableString.generate(rng)   # random valid UTF-8 string\n    var xs = FuzzableBytes.generate(rng)   # random List[UInt8]\n    ```\n\nCustom types:\n    ```mojo\n    struct Point:\n        var x: Int\n        var y: Int\n\n        @staticmethod\n        def generate(mut rng: Xoshiro256) -> Point:\n            return Point(x=FuzzableInt.generate(rng), y=FuzzableInt.generate(rng))\n\n        @staticmethod\n        def minimize(value: Point) -> List[Point]:\n            var out = List[Point]()\n            if value.x != 0:\n                out.append(Point(x=0, y=value.y))\n            if value.y != 0:\n                out.append(Point(x=value.x, y=0))\n            return out^\n    ```",
+   "structs": [
+    {
+     "name": "FuzzableBool",
+     "signature": "struct FuzzableBool",
+     "summary": "``Fuzzable`` implementation for ``Bool``.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "generate",
+       "overloads": [
+        {
+         "signature": "def generate(mut rng: Xoshiro256) -> Bool",
+         "summary": "Generate a uniformly random boolean.",
+         "args": [
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "minimize",
+       "overloads": [
+        {
+         "signature": "def minimize(value: Bool) -> List[Bool]",
+         "summary": "Minimize: ``True`` → ``[False]``, ``False`` → ``[]``.",
+         "args": [
+          {
+           "name": "value",
+           "doc": "The value to minimize."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "FuzzableUInt8",
+     "signature": "struct FuzzableUInt8",
+     "summary": "``Fuzzable`` implementation for ``UInt8``.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "generate",
+       "overloads": [
+        {
+         "signature": "def generate(mut rng: Xoshiro256) -> UInt8",
+         "summary": "Generate a random ``UInt8`` with 20% boundary bias.",
+         "args": [
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "minimize",
+       "overloads": [
+        {
+         "signature": "def minimize(value: UInt8) -> List[UInt8]",
+         "summary": "Minimize toward 0: ``v`` → ``[0, v/2]`` (if distinct).",
+         "args": [
+          {
+           "name": "value",
+           "doc": "Value to minimize."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "FuzzableUInt16",
+     "signature": "struct FuzzableUInt16",
+     "summary": "``Fuzzable`` implementation for ``UInt16``.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "generate",
+       "overloads": [
+        {
+         "signature": "def generate(mut rng: Xoshiro256) -> UInt16",
+         "summary": "Generate a random ``UInt16`` with 20% boundary bias.",
+         "args": [
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "minimize",
+       "overloads": [
+        {
+         "signature": "def minimize(value: UInt16) -> List[UInt16]",
+         "summary": "Minimize toward 0.",
+         "args": [
+          {
+           "name": "value",
+           "doc": "Value to minimize."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "FuzzableUInt32",
+     "signature": "struct FuzzableUInt32",
+     "summary": "``Fuzzable`` implementation for ``UInt32``.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "generate",
+       "overloads": [
+        {
+         "signature": "def generate(mut rng: Xoshiro256) -> UInt32",
+         "summary": "Generate a random ``UInt32`` with 20% boundary bias.",
+         "args": [
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "minimize",
+       "overloads": [
+        {
+         "signature": "def minimize(value: UInt32) -> List[UInt32]",
+         "summary": "Minimize toward 0.",
+         "args": [
+          {
+           "name": "value",
+           "doc": "Value to minimize."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "FuzzableUInt64",
+     "signature": "struct FuzzableUInt64",
+     "summary": "``Fuzzable`` implementation for ``UInt64``.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "generate",
+       "overloads": [
+        {
+         "signature": "def generate(mut rng: Xoshiro256) -> UInt64",
+         "summary": "Generate a random ``UInt64`` with 20% boundary bias.",
+         "args": [
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "minimize",
+       "overloads": [
+        {
+         "signature": "def minimize(value: UInt64) -> List[UInt64]",
+         "summary": "Minimize toward 0.",
+         "args": [
+          {
+           "name": "value",
+           "doc": "Value to minimize."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "FuzzableInt",
+     "signature": "struct FuzzableInt",
+     "summary": "``Fuzzable`` implementation for ``Int``.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "generate",
+       "overloads": [
+        {
+         "signature": "def generate(mut rng: Xoshiro256) -> Int",
+         "summary": "Generate a random ``Int`` with 20% boundary bias.",
+         "description": "Generates values across the full signed range, including negative\nintegers.  Boundary values (0, ±1, ±2^7, ±2^31, etc.) are produced\nwith 20% probability to increase edge-case coverage.",
+         "args": [
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "minimize",
+       "overloads": [
+        {
+         "signature": "def minimize(value: Int) -> List[Int]",
+         "summary": "Minimize toward 0.",
+         "args": [
+          {
+           "name": "value",
+           "doc": "Value to minimize."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "FuzzableString",
+     "signature": "struct FuzzableString",
+     "summary": "``Fuzzable`` implementation for ``String``.",
+     "description": "Generates valid UTF-8 strings with up to 256 code points.  The character\nset is weighted: 70% ASCII printable, 15% ASCII control, 15% two-byte\nUTF-8.  Because two-byte codepoints occupy 2 bytes each, the maximum byte\nlength is 512.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "generate",
+       "overloads": [
+        {
+         "signature": "def generate(mut rng: Xoshiro256) -> String",
+         "summary": "Generate a random valid UTF-8 string.",
+         "args": [
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "minimize",
+       "overloads": [
+        {
+         "signature": "def minimize(value: String) -> List[String]",
+         "summary": "Minimize by dropping the second half or removing a character.",
+         "args": [
+          {
+           "name": "value",
+           "doc": "String to minimize."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "FuzzableBytes",
+     "signature": "struct FuzzableBytes",
+     "summary": "``Fuzzable`` implementation for raw bytes ``List[UInt8]``.",
+     "description": "Generates length 0–256 byte sequences with no UTF-8 constraint.\nUseful for raw byte fuzzing targets.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "generate",
+       "overloads": [
+        {
+         "signature": "def generate(mut rng: Xoshiro256) -> List[UInt8]",
+         "summary": "Generate a random byte sequence of length 0–256.",
+         "args": [
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "minimize",
+       "overloads": [
+        {
+         "signature": "def minimize(value: List[UInt8]) -> List[List[UInt8]]",
+         "summary": "Minimize by halving or truncating.",
+         "args": [
+          {
+           "name": "value",
+           "doc": "Bytes to minimize."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Gen",
+     "signature": "struct Gen[T: ImplicitlyCopyable]",
+     "summary": "Compile-time-dispatched generator and minimizer for built-in types.",
+     "description": "Provides a unified parametric API so callers write ``Gen[UInt8].generate(rng)``\ninstead of ``FuzzableUInt8.generate(rng)``.  Supported type parameters:\n``Bool``, ``UInt8``, ``UInt16``, ``UInt32``, ``UInt64``, ``Int``,\n``String``.  For ``List[UInt8]`` use ``FuzzableBytes`` directly (generic\nlist instantiations are not yet dispatchable via ``comptime if``).\n\nFor user-defined types, write a companion ``FuzzableMyType`` struct\nfollowing the same ``generate`` / ``minimize`` static-method pattern and\npass it explicitly to ``forall()``.\n\nExample:\n```mojo\nvar rng = Xoshiro256(seed=1)\nvar v = Gen[UInt16].generate(rng)      # boundary-biased UInt16\nvar smaller = Gen[UInt16].minimize(v)   # simpler candidates\n```",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "generate",
+       "overloads": [
+        {
+         "signature": "def generate(mut rng: Xoshiro256) -> T",
+         "summary": "Generate a random instance of ``T`` using boundary-biased sampling.",
+         "args": [
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "minimize",
+       "overloads": [
+        {
+         "signature": "def minimize(value: T) -> List[T]",
+         "summary": "Return simpler variants of ``value`` for counterexample minimization.",
+         "args": [
+          {
+           "name": "value",
+           "doc": "The counterexample to simplify."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "traits": [
+    {
+     "name": "Fuzzable",
+     "summary": "Trait for types that can generate random instances of themselves.",
+     "description": "Implement ``generate(rng)`` to produce a random value and optionally\n``minimize(value)`` to return simpler variants for counterexample\nminimization.\n\nTypes implementing ``Fuzzable`` work automatically with ``forall[T]()``\nand ``forall_bytes()``.\n\nNote:\n    Requires ``Copyable`` and ``Movable`` because ``minimize()`` returns\n    ``List[Self]``, which requires ``Self: Copyable``.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "generate",
+       "overloads": [
+        {
+         "signature": "def generate(mut rng: Xoshiro256) -> Self",
+         "summary": "Generate a random instance of ``Self``.",
+         "args": [
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "minimize",
+       "overloads": [
+        {
+         "signature": "def minimize(value) -> List[_Self]",
+         "summary": "Return simpler variants of ``value`` for counterexample minimization.",
+         "description": "The default implementation returns an empty list (no minimization).\nOverride to provide problem-specific simplifications.",
+         "args": [
+          {
+           "name": "value",
+           "doc": "The counterexample to simplify."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "mozz.corpus",
+   "summary": "Corpus management for fuzzing.",
+   "description": "Manages the set of seed inputs fed to the mutators.  Deduplication is\nperformed via FNV-1a 64-bit hashing so duplicate inputs are never stored\ntwice.  When the corpus exceeds ``MAX_CORPUS_SIZE`` seeds the oldest\nentry is evicted (FIFO order).\n\nExample:\n    ```mojo\n    var corpus = Corpus.default()\n    var seed_bytes: List[UInt8] = [0x01, 0x02, 0x03]\n    corpus.add(seed_bytes)\n    var seed = corpus.pick(rng)   # Span[UInt8, _] borrow\n    print(corpus.size())\n    ```",
+   "aliases": [
+    {
+     "name": "MAX_CORPUS_SIZE",
+     "value": "Int(10000)"
+    }
+   ],
+   "structs": [
+    {
+     "name": "Corpus",
+     "signature": "struct Corpus",
+     "summary": "A deduplicated, bounded set of fuzzing seed inputs.",
+     "description": "Seeds are stored as ``List[UInt8]``.  At most ``MAX_CORPUS_SIZE`` seeds\nare kept; inserting beyond the limit evicts the oldest entry (index 0).\n\nFields:\n    _seeds:  Ordered list of seed byte buffers.\n    _hashes: FNV-1a 64-bit hash of each seed for O(n) dedup.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, seeds: List[List[UInt8]])",
+         "summary": "Create a corpus pre-populated with ``seeds``.",
+         "description": "Duplicate seeds (by content hash) are silently dropped.",
+         "args": [
+          {
+           "name": "seeds",
+           "doc": "Initial seed list."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "default",
+       "overloads": [
+        {
+         "signature": "def default() -> Self",
+         "summary": "Return a corpus with the four minimal default seeds.",
+         "description": "Default seeds: ``[]``, ``[0x00]``, ``[0xFF]``, ``[0x00, 0x00]``."
+        }
+       ]
+      },
+      {
+       "name": "add",
+       "overloads": [
+        {
+         "signature": "def add(mut self, input: List[UInt8])",
+         "summary": "Add ``input`` to the corpus (deduplication applied).",
+         "args": [
+          {
+           "name": "input",
+           "doc": "The bytes to add."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "pick",
+       "overloads": [
+        {
+         "signature": "def pick(self, mut rng: Xoshiro256) -> List[UInt8]",
+         "summary": "Return a randomly selected seed (uniform over the corpus).",
+         "description": "Biases slightly toward recently added seeds (last 20%) with 40%\nprobability when the corpus has more than 10 entries.",
+         "args": [
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "size",
+       "overloads": [
+        {
+         "signature": "def size(self) -> Int",
+         "summary": "Return the current number of seeds in the corpus."
+        }
+       ]
+      },
+      {
+       "name": "get",
+       "overloads": [
+        {
+         "signature": "def get(self, i: Int) -> List[UInt8]",
+         "summary": "Return a copy of the seed at index ``i``.",
+         "args": [
+          {
+           "name": "i",
+           "doc": "Zero-based seed index; must be in ``[0, size())``."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "load",
+       "overloads": [
+        {
+         "signature": "def load(dir: String) -> Self",
+         "summary": "Load all ``*.bin`` files from ``dir`` as seeds.",
+         "description": "Files are read in arbitrary order.  Invalid or empty files are\nskipped silently.",
+         "args": [
+          {
+           "name": "dir",
+           "doc": "Path to the directory containing ``.bin`` seed files."
+          }
+         ],
+         "raises": "Error: If ``dir`` cannot be opened or listed."
+        }
+       ]
+      },
+      {
+       "name": "list_crashes",
+       "overloads": [
+        {
+         "signature": "def list_crashes(crash_dir: String) -> List[String]",
+         "summary": "Return sorted paths of all crash inputs in ``crash_dir``.",
+         "args": [
+          {
+           "name": "crash_dir",
+           "doc": "Directory written by ``fuzz()``'s ``crash_dir`` option."
+          }
+         ],
+         "raises": "Error: If the directory cannot be listed."
+        }
+       ]
+      },
+      {
+       "name": "load_crash",
+       "overloads": [
+        {
+         "signature": "def load_crash(path: String) -> List[UInt8]",
+         "summary": "Read a single crash input from ``path``.",
+         "description": "Convenience wrapper around file I/O for use in replay harnesses.",
+         "args": [
+          {
+           "name": "path",
+           "doc": "Path to a ``crash_NNNN.bin`` file produced by ``fuzz()``."
+          }
+         ],
+         "raises": "Error: If the file cannot be opened or read."
+        }
+       ]
+      },
+      {
+       "name": "save",
+       "overloads": [
+        {
+         "signature": "def save(self, dir: String)",
+         "summary": "Save all corpus seeds to ``dir`` as ``seed_NNNN.bin`` files.",
+         "description": "Existing files are not overwritten (new files get the next\navailable index).",
+         "args": [
+          {
+           "name": "dir",
+           "doc": "Destination directory (created if absent)."
+          }
+         ],
+         "raises": "Error: If the directory cannot be created or a file cannot be\nwritten."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "mozz.minimize",
+   "summary": "Delta-debugging input minimizer (Andreas Zeller's ddmin algorithm).",
+   "description": "Reduces a crashing input to its minimal reproduction case by binary\npartitioning and removing subsets that still trigger the crash.\n\nExample:\n    ```mojo\n    def is_crash(data: List[UInt8]) raises -> Bool:\n        try:\n            broken_parser(Span[UInt8, _](data))\n            return False\n        except e:\n            return _is_crash_message(String(e))\n\n    var minimal = minimize_bytes(crashing_input, is_crash)\n    print(len(minimal), \"bytes (was\", len(crashing_input), \")\")\n    ```",
+   "functions": [
+    {
+     "name": "minimize_bytes",
+     "overloads": [
+      {
+       "signature": "def minimize_bytes(input: List[UInt8], is_crash: def(List[UInt8]) raises thin -> Bool) -> List[UInt8]",
+       "summary": "Minimize ``input`` to the smallest prefix/subset that still crashes.",
+       "description": "Implements ddmin with granularity doubling: starts by trying to remove\nhalf of the input, recursively narrows until no single-element removal\npreserves the crash.",
+       "args": [
+        {
+         "name": "input",
+         "doc": "The crashing input to minimize."
+        },
+        {
+         "name": "is_crash",
+         "doc": "A predicate that returns ``True`` if the given bytes trigger\n          the crash.  May raise; raises from ``is_crash`` itself are\n          treated as ``True`` (crash)."
+        }
+       ],
+       "raises": "Error: If the initial input does not pass ``is_crash``."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "mozz.mutator",
+   "summary": "Byte-level mutation operators for fuzzing.",
+   "description": "Seven shipped mutators plus a weighted ``MutatorChain`` that picks one at\nrandom.  All mutators take a ``Span[UInt8, _]`` input and return a new\n``List[UInt8]`` — they never mutate in place.\n\nUse ``default_mutator()`` to get the standard weighted chain used by\n``fuzz()``.\n\nExample:\n    ```mojo\n    var rng = Xoshiro256(seed=1)\n    var chain = default_mutator()\n    var input = List[UInt8](0x48, 0x65, 0x6C, 0x6C, 0x6F)  # \"Hello\"\n    var mutated = chain.mutate(Span[UInt8, _](input), rng)\n    ```",
+   "structs": [
+    {
+     "name": "MutatorId",
+     "signature": "struct MutatorId",
+     "summary": "Integer IDs for each built-in mutator (used by ``MutatorChain``).",
+     "traits": [
+      "Movable"
+     ],
+     "aliases": [
+      {
+       "name": "BIT_FLIP",
+       "value": "Int(0)"
+      },
+      {
+       "name": "BYTE_SUBSTITUTION",
+       "value": "Int(1)"
+      },
+      {
+       "name": "BYTE_INSERTION",
+       "value": "Int(2)"
+      },
+      {
+       "name": "BYTE_DELETION",
+       "value": "Int(3)"
+      },
+      {
+       "name": "BLOCK_DUPLICATION",
+       "value": "Int(4)"
+      },
+      {
+       "name": "SPLICE",
+       "value": "Int(5)"
+      },
+      {
+       "name": "BOUNDARY_INT",
+       "value": "Int(6)"
+      }
+     ]
+    },
+    {
+     "name": "BitFlip",
+     "signature": "struct BitFlip",
+     "summary": "Flip 1–4 random bits at random positions.",
+     "description": "Effective for discovering off-by-one errors and flag-dependent branches.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)",
+         "summary": "Create a BitFlip mutator."
+        }
+       ]
+      },
+      {
+       "name": "mutate",
+       "overloads": [
+        {
+         "signature": "def mutate(self, input: Span[UInt8], mut rng: Xoshiro256) -> List[UInt8]",
+         "summary": "Flip 1–4 random bits in a copy of ``input``.",
+         "args": [
+          {
+           "name": "input",
+           "doc": "The input bytes to mutate."
+          },
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ByteSubstitution",
+     "signature": "struct ByteSubstitution",
+     "summary": "Replace 1–4 bytes with random or boundary values.",
+     "description": "Boundary values (0x00, 0x7F, 0x80, 0xFF, etc.) are chosen with 30%\nprobability to hit common parser edge cases.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)",
+         "summary": "Create a ByteSubstitution mutator."
+        }
+       ]
+      },
+      {
+       "name": "mutate",
+       "overloads": [
+        {
+         "signature": "def mutate(self, input: Span[UInt8], mut rng: Xoshiro256) -> List[UInt8]",
+         "summary": "Replace 1–4 bytes with random or boundary values.",
+         "args": [
+          {
+           "name": "input",
+           "doc": "The input bytes to mutate."
+          },
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ByteInsertion",
+     "signature": "struct ByteInsertion",
+     "summary": "Insert 1–8 random bytes at a random position.",
+     "description": "Exercises length-parsing code paths that may assume fixed-size fields.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)",
+         "summary": "Create a ByteInsertion mutator."
+        }
+       ]
+      },
+      {
+       "name": "mutate",
+       "overloads": [
+        {
+         "signature": "def mutate(self, input: Span[UInt8], mut rng: Xoshiro256) -> List[UInt8]",
+         "summary": "Insert 1–8 random bytes at a random position.",
+         "args": [
+          {
+           "name": "input",
+           "doc": "The input bytes to mutate."
+          },
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ByteDeletion",
+     "signature": "struct ByteDeletion",
+     "summary": "Delete 1–8 bytes at a random position.",
+     "description": "Exercises length checks and under-read recovery paths.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)",
+         "summary": "Create a ByteDeletion mutator."
+        }
+       ]
+      },
+      {
+       "name": "mutate",
+       "overloads": [
+        {
+         "signature": "def mutate(self, input: Span[UInt8], mut rng: Xoshiro256) -> List[UInt8]",
+         "summary": "Delete 1–8 bytes starting at a random position.",
+         "args": [
+          {
+           "name": "input",
+           "doc": "The input bytes to mutate."
+          },
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "BlockDuplication",
+     "signature": "struct BlockDuplication",
+     "summary": "Duplicate a random 1–32 byte slice and insert it elsewhere.",
+     "description": "Useful for exercising repeated-field parsers and length-prefix bugs.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)",
+         "summary": "Create a BlockDuplication mutator."
+        }
+       ]
+      },
+      {
+       "name": "mutate",
+       "overloads": [
+        {
+         "signature": "def mutate(self, input: Span[UInt8], mut rng: Xoshiro256) -> List[UInt8]",
+         "summary": "Copy a random block and insert it at a random position.",
+         "args": [
+          {
+           "name": "input",
+           "doc": "The input bytes to mutate."
+          },
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Splice",
+     "signature": "struct Splice",
+     "summary": "Splice the tail of a second corpus entry onto the current input.",
+     "description": "Cross-pollination across corpus seeds can expose stateful interaction\nbugs that single-input mutation misses.\n\nWhen no second seed is available the input is returned unchanged.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, corpus: List[List[UInt8]])",
+         "summary": "Create a Splice mutator with a snapshot of the corpus.",
+         "args": [
+          {
+           "name": "corpus",
+           "doc": "Current corpus seeds (copied for safety)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "mutate",
+       "overloads": [
+        {
+         "signature": "def mutate(self, input: Span[UInt8], mut rng: Xoshiro256) -> List[UInt8]",
+         "summary": "Splice a random corpus entry onto the first half of ``input``.",
+         "args": [
+          {
+           "name": "input",
+           "doc": "The primary input bytes."
+          },
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "BoundaryInt",
+     "signature": "struct BoundaryInt",
+     "summary": "Replace a 1–2 byte run with an interesting integer boundary value.",
+     "description": "Targets off-by-one errors on integer boundaries commonly exploitable in\nbinary protocol parsers (e.g. payload-length fields).",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)",
+         "summary": "Create a BoundaryInt mutator."
+        }
+       ]
+      },
+      {
+       "name": "mutate",
+       "overloads": [
+        {
+         "signature": "def mutate(self, input: Span[UInt8], mut rng: Xoshiro256) -> List[UInt8]",
+         "summary": "Replace 1 or 2 bytes at a random position with a boundary value.",
+         "args": [
+          {
+           "name": "input",
+           "doc": "The input bytes to mutate."
+          },
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "MutatorChain",
+     "signature": "struct MutatorChain",
+     "summary": "Randomly selects one mutator from a weighted list and applies it.",
+     "description": "Weights are cumulative; selection is O(n) weighted-random using the\ntotal weight sum.\n\nExample:\n```mojo\nvar chain = default_mutator()\nvar out = chain.mutate(Span[UInt8, _](input), rng)\n```",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, ids: List[Int], weights: List[UInt32], corpus: List[List[UInt8]] = List())",
+         "summary": "Construct a chain with the given mutator IDs and weights.",
+         "args": [
+          {
+           "name": "ids",
+           "doc": "List of ``MutatorId.*`` constants."
+          },
+          {
+           "name": "weights",
+           "doc": "Parallel list of positive integer weights."
+          },
+          {
+           "name": "corpus",
+           "doc": "Optional corpus snapshot for ``Splice`` (may be empty)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "update_corpus",
+       "overloads": [
+        {
+         "signature": "def update_corpus(mut self, corpus: List[List[UInt8]])",
+         "summary": "Refresh the corpus snapshot used by the ``Splice`` mutator.",
+         "args": [
+          {
+           "name": "corpus",
+           "doc": "Updated corpus seeds."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "mutate",
+       "overloads": [
+        {
+         "signature": "def mutate(self, input: Span[UInt8], mut rng: Xoshiro256) -> List[UInt8]",
+         "summary": "Pick a mutator by weighted random draw and apply it.",
+         "args": [
+          {
+           "name": "input",
+           "doc": "Input bytes to mutate."
+          },
+          {
+           "name": "rng",
+           "doc": "PRNG state (advanced in-place)."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "default_mutator",
+     "overloads": [
+      {
+       "signature": "def default_mutator() -> MutatorChain",
+       "summary": "Return the standard weighted mutator chain used by ``fuzz()``.",
+       "description": "Default weights:\n- ``BitFlip``: 30\n- ``ByteSubstitution``: 25\n- ``ByteInsertion``: 15\n- ``ByteDeletion``: 10\n- ``BlockDuplication``: 10\n- ``Splice``: 5\n- ``BoundaryInt``: 5"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "mozz.property",
+   "summary": "Property-based testing frontend.",
+   "description": "``forall[T]()`` generates typed values and checks a boolean property over\nthem.  On failure the run stops and raises an error.\n\n``forall_bytes()`` is a simpler variant for raw-byte properties that works\nwithout the ``Fuzzable`` trait.\n\nExample:\n    ```mojo\n    from mozz import forall, forall_bytes, FuzzableUInt16\n\n    # Property: addition must not overflow past u16 max\n    def no_wrap(v: UInt16) raises -> Bool:\n        return Int(v) + Int(v) >= Int(v)\n\n    def gen_u16(mut rng: Xoshiro256) -> UInt16:\n        return FuzzableUInt16.generate(rng)\n\n    def minimize_u16(v: UInt16) -> List[UInt16]:\n        return FuzzableUInt16.minimize(v)\n\n    forall[UInt16](no_wrap, gen_u16, minimize_u16, trials=2000)\n\n    # Raw bytes: decode_one never over-reads\n    def safe_decode(data: List[UInt8]) raises -> Bool:\n        try:\n            var r = WsFrame.decode_one(Span[UInt8, _](data))\n            return r.consumed <= len(data)\n        except:\n            return True\n\n    forall_bytes(safe_decode, max_len=256, trials=10_000)\n    ```",
+   "functions": [
+    {
+     "name": "forall",
+     "overloads": [
+      {
+       "signature": "def forall[T: ImplicitlyCopyable & Deinitable](prop: def(T) raises thin -> Bool, gen: def(mut Xoshiro256) thin -> T, minimize_fn: def(T) thin -> List[T], trials: Int = Int(1000), seed: UInt64 = UInt64(0))",
+       "summary": "Test a boolean property over ``trials`` random values of type ``T``.",
+       "description": "When a counterexample is found, ``minimize_fn`` is called iteratively to\nminimize it before the error is raised.",
+       "parameters": [
+        {
+         "name": "T",
+         "doc": "Type of the generated value (must be ``ImplicitlyCopyable``\n   and ``Deinitable``; ``ImplicitlyCopyable`` already implies\n   ``Movable``)."
+        }
+       ],
+       "args": [
+        {
+         "name": "prop",
+         "doc": "The property predicate.  Return ``False`` or raise to\n             signal a counterexample."
+        },
+        {
+         "name": "gen",
+         "doc": "Generator function -- ``def(mut Xoshiro256) -> T``."
+        },
+        {
+         "name": "minimize_fn",
+         "doc": "Minimizer -- ``def(T) -> List[T]``.  Called to minimize\n             the counterexample before raising."
+        },
+        {
+         "name": "trials",
+         "doc": "Number of random trials (default 1 000)."
+        },
+        {
+         "name": "seed",
+         "doc": "PRNG seed (0 = derive from stack address)."
+        }
+       ],
+       "raises": "Error: If a counterexample is found (after minimization)."
+      }
+     ]
+    },
+    {
+     "name": "forall_bytes",
+     "overloads": [
+      {
+       "signature": "def forall_bytes(prop: def(List[UInt8]) raises thin -> Bool, max_len: Int = Int(1024), trials: Int = Int(1000), seed: UInt64 = UInt64(0))",
+       "summary": "Test a boolean property over ``trials`` random byte sequences.",
+       "description": "Does not require ``Fuzzable`` — uses uniform random bytes with length\nin ``[0, max_len]``.  On failure the failing bytes are hex-encoded in\nthe error message.",
+       "args": [
+        {
+         "name": "prop",
+         "doc": "The property predicate on raw bytes (takes ``List[UInt8]``)."
+        },
+        {
+         "name": "max_len",
+         "doc": "Maximum byte sequence length (default 1 024)."
+        },
+        {
+         "name": "trials",
+         "doc": "Number of random trials (default 1 000)."
+        },
+        {
+         "name": "seed",
+         "doc": "PRNG seed (0 = derive from stack address)."
+        }
+       ],
+       "raises": "Error: If a counterexample is found, with the failing bytes\nhex-encoded."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "mozz.rng",
+   "summary": "Xoshiro256++ — fast, seedable, non-cryptographic PRNG.",
+   "description": "Implementation of the xoshiro256++ algorithm by Vigna & Blackman (2018).\nPeriod: 2^256 − 1.  Speed: ~1 ns/sample on ARM64.\n\nState is four ``UInt64`` words initialized by running ``splitmix64`` on\nthe user-supplied seed.  This avoids the degenerate all-zero state.\n\nExample:\n    ```mojo\n    var rng = Xoshiro256(seed=42)\n    var byte = rng.next_byte()          # uniform random UInt8\n    var n = rng.next_below(100)         # uniform in [0, 100)\n    var buf = List[UInt8](capacity=32)\n    for _ in range(32):\n        buf.append(0)\n    rng.fill(buf)                       # fill with random bytes\n    ```",
+   "structs": [
+    {
+     "name": "Xoshiro256",
+     "signature": "struct Xoshiro256",
+     "summary": "Xoshiro256++ PRNG.",
+     "description": "Deterministic when constructed with an explicit nonzero ``seed``.\nPassing ``seed=0`` generates entropy from a stack address.\n\nAll internal state is ``UInt64``; no heap allocation.\n\nFields:\n    s0, s1, s2, s3: The four 64-bit state words.",
+     "traits": [
+      "Copyable",
+      "ImplicitlyCopyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "s0",
+       "type": "UInt64"
+      },
+      {
+       "name": "s1",
+       "type": "UInt64"
+      },
+      {
+       "name": "s2",
+       "type": "UInt64"
+      },
+      {
+       "name": "s3",
+       "type": "UInt64"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, seed: UInt64 = UInt64(0))",
+         "summary": "Initialize the PRNG from a 64-bit seed.",
+         "description": "If ``seed`` is 0 a non-deterministic seed is derived from a stack\naddress (sufficient entropy for fuzzing, not cryptographic).",
+         "args": [
+          {
+           "name": "seed",
+           "doc": "Seed value.  Pass the same value to replay a run."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "next_u64",
+       "overloads": [
+        {
+         "signature": "def next_u64(mut self) -> UInt64",
+         "summary": "Return the next uniformly random ``UInt64``.",
+         "description": "Advances the internal state by one step."
+        }
+       ]
+      },
+      {
+       "name": "next_u32",
+       "overloads": [
+        {
+         "signature": "def next_u32(mut self) -> UInt32",
+         "summary": "Return the next uniformly random ``UInt32``."
+        }
+       ]
+      },
+      {
+       "name": "next_byte",
+       "overloads": [
+        {
+         "signature": "def next_byte(mut self) -> UInt8",
+         "summary": "Return a uniformly random byte in ``[0, 255]``."
+        }
+       ]
+      },
+      {
+       "name": "next_below",
+       "overloads": [
+        {
+         "signature": "def next_below(mut self, n: UInt64) -> UInt64",
+         "summary": "Return a uniformly random value in ``[0, n)``.",
+         "description": "Uses rejection sampling to avoid modulo bias.",
+         "args": [
+          {
+           "name": "n",
+           "doc": "Upper bound (exclusive).  Must be > 0."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "next_bool",
+       "overloads": [
+        {
+         "signature": "def next_bool(mut self) -> Bool",
+         "summary": "Return a uniformly random boolean (50 % each side)."
+        }
+       ]
+      },
+      {
+       "name": "fill",
+       "overloads": [
+        {
+         "signature": "def fill(mut self, mut buf: List[UInt8])",
+         "summary": "Fill ``buf`` with uniformly random bytes.",
+         "description": "Uses a single 8-byte store (``bitcast[UInt64]``) per PRNG call instead\nof eight individual byte extractions — avoids 7 shifts, 8 masks, and\n8 casts per 8-byte block.",
+         "args": [
+          {
+           "name": "buf",
+           "doc": "Destination byte list (modified in-place via unsafe pointer)."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "mozz.runner",
+   "summary": "Main fuzzing loop, configuration, and crash handling.",
+   "description": "``fuzz()`` is the primary entry point.  It drives the mutation loop,\nclassifies exceptions as valid rejections or crashes, grows the corpus\nwhen interesting inputs are found, and saves crashes to disk.\n\nExample:\n    ```mojo\n    from mozz import fuzz, FuzzConfig\n\n    def target(data: List[UInt8]) raises:\n        _ = some_parser(data)   # must raise on bad input, not panic\n\n    def main() raises:\n        fuzz(target, FuzzConfig(max_runs=100_000, seed=42))\n    ```",
+   "aliases": [
+    {
+     "name": "FuzzTarget",
+     "value": "def(List[UInt8]) raises thin -> None"
+    }
+   ],
+   "structs": [
+    {
+     "name": "FuzzConfig",
+     "signature": "struct FuzzConfig",
+     "summary": "Configuration for a fuzzing run.",
+     "description": "Fields:\n    max_runs:      Total number of mutation iterations (default 100 000).\n    max_input_len: Maximum length of a mutated input in bytes\n                   (default 65 540 — covers a max-sized WS frame).\n    seed:          PRNG seed; 0 picks a non-deterministic seed from a\n                   stack address.\n    corpus_dir:    If non-empty, load seeds from this directory before\n                   the run and save new interesting seeds to it.\n    crash_dir:     Directory where crashing inputs are saved\n                   (default ``\".mozz_crashes\"``).\n    verbose:       Print progress and final summary to stdout\n                   (default ``True``).\n    report_file:   If non-empty, write the final summary to this file\n                   in addition to stdout (default ``\"\"``).  The file is\n                   created or overwritten; intermediate directories must\n                   already exist.\n    timeout_ms:    Per-iteration timeout in milliseconds; 0 = no timeout\n                   (timeout enforcement is not implemented in v0.1.0 —\n                   the field is reserved for future use).",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "max_runs",
+       "type": "Int"
+      },
+      {
+       "name": "max_input_len",
+       "type": "Int"
+      },
+      {
+       "name": "seed",
+       "type": "UInt64"
+      },
+      {
+       "name": "corpus_dir",
+       "type": "String"
+      },
+      {
+       "name": "crash_dir",
+       "type": "String"
+      },
+      {
+       "name": "verbose",
+       "type": "Bool"
+      },
+      {
+       "name": "report_file",
+       "type": "String"
+      },
+      {
+       "name": "timeout_ms",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, max_runs: Int = Int(100000), max_input_len: Int = Int(65540), seed: UInt64 = UInt64(0), corpus_dir: String = \"\", crash_dir: String = \".mozz_crashes\", verbose: Bool = True, report_file: String = \"\", timeout_ms: Int = Int(0))",
+         "summary": "Create a ``FuzzConfig``.",
+         "args": [
+          {
+           "name": "max_runs",
+           "doc": "Number of fuzz iterations."
+          },
+          {
+           "name": "max_input_len",
+           "doc": "Maximum mutated input size (bytes)."
+          },
+          {
+           "name": "seed",
+           "doc": "PRNG seed (0 = non-deterministic)."
+          },
+          {
+           "name": "corpus_dir",
+           "doc": "Directory for persistent corpus (empty = in-memory\n               only)."
+          },
+          {
+           "name": "crash_dir",
+           "doc": "Directory to save crash inputs."
+          },
+          {
+           "name": "verbose",
+           "doc": "Print progress and final summary to stdout."
+          },
+          {
+           "name": "report_file",
+           "doc": "Path to write the final report to (empty = no\n               file output)."
+          },
+          {
+           "name": "timeout_ms",
+           "doc": "Per-call timeout (reserved; not enforced in\n               v0.1.0)."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "fuzz",
+     "overloads": [
+      {
+       "signature": "def fuzz(target: def(List[UInt8]) raises thin -> None, config: FuzzConfig = FuzzConfig(Int(100000), Int(65540), UInt64(0), String(\"\"), String(\".mozz_crashes\"), True, String(\"\"), Int(0)), seeds: List[List[UInt8]] = List())",
+       "summary": "Run the fuzzing loop against ``target``.",
+       "description": "The loop:\n1. Picks a seed from the corpus.\n2. Applies a random mutator from the default chain.\n3. Truncates the result to ``config.max_input_len``.\n4. Calls ``target(mutated)``.\n5. Classifies the outcome (ok / valid rejection / crash).\n6. Adds inputs that reach new heuristic states to the corpus.\n7. Saves crashes to ``config.crash_dir``.",
+       "args": [
+        {
+         "name": "target",
+         "doc": "The fuzz target function."
+        },
+        {
+         "name": "config",
+         "doc": "Run configuration (optional; defaults are sensible)."
+        },
+        {
+         "name": "seeds",
+         "doc": "Additional initial seeds merged into the corpus."
+        }
+       ],
+       "raises": "Error: If any crashes are detected (summary included in the message)."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,40 @@
+---
+/** One overload of a function or method in an API reference: its signature,
+ * its docstring, and what it says of each argument, the result and errors. */
+import { docHtml, inlineHtml, type Overload, type Doc } from "../data/apiref";
+
+interface Props {
+  overload: Overload;
+}
+const { overload: o } = Astro.props;
+const lists: [string, Doc[]][] = [
+  ["Parameters", o.parameters ?? []],
+  ["Args", o.args ?? []],
+];
+const notes: [string, string | undefined][] = [
+  ["Returns", o.returns],
+  ["Raises", o.raises],
+  ["Constraints", o.constraints],
+  ["Deprecated", o.deprecated],
+];
+---
+
+<div class="api__overload">
+  <pre class="api__sig"><code>{o.signature}</code></pre>
+  {o.summary && <div class="api__doc" set:html={docHtml(o.summary)} />}
+  {o.description && <div class="api__doc" set:html={docHtml(o.description)} />}
+  {
+    lists.map(
+      ([title, ds]) =>
+        ds.length > 0 && (
+          <dl class="api__dl">
+            <dt class="api__dl-head">{title}</dt>
+            {ds.map((d) => (
+              <dd><code>{d.name}</code>: <span set:html={inlineHtml(d.doc)} /></dd>
+            ))}
+          </dl>
+        ),
+    )
+  }
+  {notes.map(([title, text]) => text && <p class="api__note"><span>{title}</span> <span set:html={inlineHtml(text)} /></p>)}
+</div>

@@ -1,0 +1,222 @@
+---
+/**
+ * Search, over Pagefind's static index in /pagefind (src/data/search.ts).
+ * ?q= is the query; ?tin=<slug> scopes it to one tin's pages, which is where
+ * each tin's own search button leads. Without JavaScript the form still
+ * shows, with a note that search needs it.
+ */
+import Base from "../layouts/Base.astro";
+import { tins, slugOf } from "../data/tins";
+import { SECTIONS } from "../data/search";
+
+const names = Object.fromEntries(tins.map((t) => [slugOf(t), t.name]));
+const description = "Search every page of magmalake: the getting-started guides, Orca, Dista, every tin's docs and API, and the blog.";
+---
+
+<Base title="Search" description={description}>
+  <section class="section section--flush">
+    <div class="wrap wrap--wide search">
+      <h1 class="section-title">Search</h1>
+      <form class="search__form" action="/search" method="get" role="search" data-search-form>
+        <label class="search__label" for="search-q">Search the site</label>
+        <input
+          class="search__input"
+          id="search-q"
+          name="q"
+          type="search"
+          placeholder="Search docs, tins and posts"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <input type="hidden" name="tin" value="" data-search-tin />
+      </form>
+      <div class="search__scopes" role="radiogroup" aria-label="Where to search" data-search-scopes>
+        <button type="button" role="radio" aria-checked="true" data-scope="">Everything</button>
+        {SECTIONS.map((s) => <button type="button" role="radio" aria-checked="false" data-scope={`section:${s}`}>{s}</button>)}
+      </div>
+      <p class="search__status" aria-live="polite" data-search-status>
+        <noscript>Search runs in your browser and needs JavaScript.</noscript>
+      </p>
+      <ol class="search__results" data-search-results></ol>
+    </div>
+  </section>
+</Base>
+
+<script is:inline define:vars={{ names }}>
+  (function () {
+    var form = document.querySelector("[data-search-form]");
+    var input = document.getElementById("search-q");
+    var tinField = document.querySelector("[data-search-tin]");
+    var scopes = document.querySelector("[data-search-scopes]");
+    var status = document.querySelector("[data-search-status]");
+    var list = document.querySelector("[data-search-results]");
+    var params = new URLSearchParams(location.search);
+    var scope = "";
+    var pagefind = null;
+    var seq = 0;
+
+    // A tin's own search: ?tin=iceberg adds, and selects, an "iceberg" scope.
+    var tin = params.get("tin");
+    if (tin && names[tin]) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.setAttribute("role", "radio");
+      b.dataset.scope = "tin:" + tin;
+      b.textContent = names[tin] + " only";
+      scopes.insertBefore(b, scopes.children[1]);
+      scope = "tin:" + tin;
+      tinField.value = tin;
+      input.placeholder = "Search " + names[tin];
+    } else {
+      tinField.remove();
+    }
+    function mark() {
+      for (var el of scopes.querySelectorAll("button")) el.setAttribute("aria-checked", String(el.dataset.scope === scope));
+    }
+    mark();
+    input.value = params.get("q") || "";
+
+    async function load() {
+      if (!pagefind) {
+        pagefind = await import("/pagefind/pagefind.js");
+        await pagefind.init();
+      }
+      return pagefind;
+    }
+
+    function esc(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+
+    async function run() {
+      var q = input.value.trim();
+      var mine = ++seq;
+      var url = new URL(location.href);
+      q ? url.searchParams.set("q", q) : url.searchParams.delete("q");
+      scope.startsWith("tin:") ? url.searchParams.set("tin", scope.slice(4)) : url.searchParams.delete("tin");
+      history.replaceState(null, "", url);
+      if (!q) {
+        list.innerHTML = "";
+        status.textContent = "";
+        return;
+      }
+      var pf;
+      try {
+        pf = await load();
+      } catch (e) {
+        status.textContent = "The search index isn't here. It is built by npm run build.";
+        return;
+      }
+      var filters = {};
+      if (scope) {
+        var i = scope.indexOf(":");
+        filters[scope.slice(0, i)] = scope.slice(i + 1);
+      }
+      var found = await pf.search(q, { filters: filters });
+      if (mine !== seq) return;
+      var top = await Promise.all(found.results.slice(0, 20).map(function (r) { return r.data(); }));
+      if (mine !== seq) return;
+      status.textContent = found.results.length === 0
+        ? "Nothing found."
+        : found.results.length + (found.results.length === 1 ? " page" : " pages") +
+          (found.results.length > top.length ? ", the first " + top.length + " below." : ".");
+      list.innerHTML = top
+        .map(function (d) {
+          var url = d.url.replace(/\/index\.html$/, "/").replace(/\.html$/, "");
+          return (
+            '<li class="search__hit"><a class="search__title" href="' + esc(url) + '">' + esc(d.meta.title || url) + "</a>" +
+            '<span class="search__url">' + esc(url) + "</span>" +
+            '<p class="search__excerpt">' + d.excerpt + "</p></li>"
+          );
+        })
+        .join("");
+    }
+
+    var timer;
+    input.addEventListener("input", function () {
+      clearTimeout(timer);
+      timer = setTimeout(run, 150);
+    });
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      run();
+    });
+    scopes.addEventListener("click", function (e) {
+      var b = e.target.closest("button");
+      if (!b) return;
+      scope = b.dataset.scope;
+      mark();
+      run();
+    });
+    input.focus();
+    if (input.value) run();
+  })();
+</script>
+
+<style>
+  .search { max-width: 52rem; }
+  .search__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .search__input {
+    width: 100%;
+    font: inherit;
+    font-size: 1.0625rem;
+    padding: 0.75rem 0.95rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .search__input:focus { outline: 2px solid var(--ember); outline-offset: 1px; }
+  .search__scopes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0.9rem 0 0;
+  }
+  .search__scopes button {
+    font: inherit;
+    font-size: 0.8125rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .search__scopes button:hover { color: var(--text); border-color: var(--border-strong); }
+  .search__scopes button[aria-checked="true"] {
+    color: var(--ember);
+    border-color: var(--ember);
+  }
+  .search__status { color: var(--text-muted); font-size: 0.875rem; margin: 1.25rem 0 0.5rem; }
+  .search__results { list-style: none; margin: 0; padding: 0; }
+  .search__results :global(.search__hit) { padding: 0.9rem 0; border-top: 1px solid var(--rule); }
+  .search__results :global(.search__title) { font-weight: 600; text-decoration: none; }
+  .search__results :global(.search__title:hover) { text-decoration: underline; }
+  .search__results :global(.search__url) {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    margin-top: 0.15rem;
+    overflow-wrap: anywhere;
+  }
+  .search__results :global(.search__excerpt) {
+    margin: 0.35rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.9375rem;
+    line-height: 1.55;
+  }
+  .search__results :global(mark) {
+    background: var(--ember-wash, color-mix(in srgb, var(--ember) 18%, transparent));
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 0.1em;
+  }
+</style>

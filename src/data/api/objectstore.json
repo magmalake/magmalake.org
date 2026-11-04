@@ -1,0 +1,2971 @@
+{
+ "tin": "objectstore",
+ "version": "0.4.1",
+ "rev": "41fac2800882e5a64da09729262dfa22bbd4ad13",
+ "package": "objectstore",
+ "path": "src/objectstore",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "`objectstore` — storage and HTTP for magmalake.",
+ "description": "from objectstore import FileIOResolver, HttpClient, S3Client\n\nModules: `http` (a libcurl-backed client, because no Mojo HTTP package\nresolves from conda), `crypto` (SHA-256/HMAC, because nothing provides them\nand SigV4 is made of them), `sigv4`, `path` (URI handling), `fileio` (the\n`InputFile`/`OutputFile`/`FileIO` traits and the scheme resolver), `local`,\n`ranges` (coalescing many byte ranges into few requests), `httpio`, `s3`, and\n— over SAS/bearer URLs only — `gcs` and `azure`.",
+ "modules": [
+  {
+   "path": "objectstore",
+   "summary": "`objectstore` — storage and HTTP for magmalake.",
+   "description": "from objectstore import FileIOResolver, HttpClient, S3Client\n\nModules: `http` (a libcurl-backed client, because no Mojo HTTP package\nresolves from conda), `crypto` (SHA-256/HMAC, because nothing provides them\nand SigV4 is made of them), `sigv4`, `path` (URI handling), `fileio` (the\n`InputFile`/`OutputFile`/`FileIO` traits and the scheme resolver), `local`,\n`ranges` (coalescing many byte ranges into few requests), `httpio`, `s3`, and\n— over SAS/bearer URLs only — `gcs` and `azure`."
+  },
+  {
+   "path": "objectstore.azure",
+   "summary": "`objectstore.azure` — Azure Blob Storage through SAS-token URLs.",
+   "description": "Azure's own signing schemes are `SharedKey` (an HMAC-SHA256 over a canonical\nform that is close to but not the same as SigV4) and Entra ID bearer tokens.\nNeither is implemented. What is implemented is the **SAS token**: a query\nstring that already carries a signature someone else produced, which is what\nIceberg's `adls.sas-token.<account>` property holds and what a catalog vends.\nWith a SAS token, a blob is an HTTPS URL, and the whole backend is URL\nconstruction plus two required headers.\n\nIceberg addresses ADLS Gen2 as `abfss://container@account.dfs.core.windows.net/path`.\nThe Blob endpoint (`account.blob.core.windows.net`) serves the same data with\nthe simpler API, so that is what this targets; `wasbs://` names the Blob\nendpoint directly and is accepted as well.",
+   "aliases": [
+    {
+     "name": "BLOB_API_VERSION",
+     "value": "String(\"2021-12-02\")",
+     "summary": "Sent as `x-ms-version`. Azure requires it on every request, and older services reject versions they do not know — this one is old enough to be universally supported and new enough for everything used here."
+    }
+   ],
+   "structs": [
+    {
+     "name": "AzureLocation",
+     "signature": "struct AzureLocation",
+     "summary": "A parsed `abfs(s)://` or `wasb(s)://` location.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "account",
+       "type": "String"
+      },
+      {
+       "name": "container",
+       "type": "String"
+      },
+      {
+       "name": "path",
+       "type": "String"
+      }
+     ]
+    },
+    {
+     "name": "AzureConfig",
+     "signature": "struct AzureConfig",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "account",
+       "type": "String"
+      },
+      {
+       "name": "sas_token",
+       "type": "String",
+       "summary": "The query string of a SAS URL, with or without its leading `?`."
+      },
+      {
+       "name": "endpoint",
+       "type": "String",
+       "summary": "Overrides the derived `https://<account>.blob.core.windows.net`, for Azurite or a sovereign cloud."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        },
+        {
+         "signature": "def __init__(out self, var account: String, var sas_token: String, var endpoint: String)"
+        }
+       ]
+      },
+      {
+       "name": "from_properties",
+       "overloads": [
+        {
+         "signature": "def from_properties(props: Dict[String, String], account: String = \"\") -> Self",
+         "summary": "Reads Iceberg's `adls.sas-token.<account>` (and a plain `adls.sas-token` / `azure.sas-token` fallback)."
+        }
+       ]
+      },
+      {
+       "name": "base_url",
+       "overloads": [
+        {
+         "signature": "def base_url(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "url_for",
+       "overloads": [
+        {
+         "signature": "def url_for(self, container: String, blob: String) -> String"
+        }
+       ]
+      },
+      {
+       "name": "list_url",
+       "overloads": [
+        {
+         "signature": "def list_url(self, container: String, prefix: String, marker: String) -> String"
+        }
+       ]
+      },
+      {
+       "name": "headers",
+       "overloads": [
+        {
+         "signature": "def headers(self) -> List[Header]"
+        }
+       ]
+      },
+      {
+       "name": "write_headers",
+       "overloads": [
+        {
+         "signature": "def write_headers(self) -> List[Header]"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "BlobInfo",
+     "signature": "struct BlobInfo",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "size",
+       "type": "Int"
+      }
+     ]
+    },
+    {
+     "name": "AzureClient",
+     "signature": "struct AzureClient",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "config",
+       "type": "AzureConfig"
+      },
+      {
+       "name": "http",
+       "type": "HttpClient"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var config: AzureConfig)"
+        },
+        {
+         "signature": "def __init__(out self, var config: AzureConfig, var http: HttpClient)"
+        }
+       ]
+      },
+      {
+       "name": "input",
+       "overloads": [
+        {
+         "signature": "def input(self, container: String, blob: String) -> HttpInputFile"
+        }
+       ]
+      },
+      {
+       "name": "output",
+       "overloads": [
+        {
+         "signature": "def output(self, container: String, blob: String) -> HttpOutputFile"
+        }
+       ]
+      },
+      {
+       "name": "delete_blob",
+       "overloads": [
+        {
+         "signature": "def delete_blob(self, container: String, blob: String)"
+        }
+       ]
+      },
+      {
+       "name": "list_blobs",
+       "overloads": [
+        {
+         "signature": "def list_blobs(self, container: String, prefix: String = \"\") -> List[BlobInfo]",
+         "summary": "Every blob under `prefix`, following `NextMarker` pages.",
+         "description": "The response is `<EnumerationResults><Blobs><Blob><Name>…`, which the\nsame shallow XML reader handles as S3's `ListBucketResult`."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "parse_azure_uri",
+     "overloads": [
+      {
+       "signature": "def parse_azure_uri(location: String) -> AzureLocation",
+       "summary": "`abfss://container@account.dfs.core.windows.net/a/b` -> account `account`, container `container`, path `a/b`.",
+       "description": "`wasbs://container@account.blob.core.windows.net/a/b` parses the same way.\nA bare `az://container/path` is accepted with the account left empty, for\ncallers that configure the endpoint explicitly."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "objectstore.crypto",
+   "summary": "`objectstore.crypto` — SHA-256, HMAC-SHA256 and hex, in pure Mojo.",
+   "description": "AWS SigV4 is built entirely out of these two primitives, and nothing in the\nMojo ecosystem provides either: hashes.mojo covers the *non-cryptographic*\nhashes Iceberg needs for partition transforms (murmur3, xxhash, CRC32), and no\nconda-resolvable package offers SHA-2. Rather than pull OpenSSL in through a\nsecond FFI shim — libcurl already links it, but its EVP surface is a moving\ntarget across conda builds — this module implements FIPS 180-4 and RFC 2104\ndirectly.\n\nSigV4 hashes the *whole* payload of every signed PUT, so this is not a\nnegligible cost: a purely scalar compression function caps a multipart upload\nat the speed of the hash. The block loop therefore has three backends, chosen\nat compile time by `_BACKEND`:\n\n* `armv8-crypto` — the ARMv8 SHA-2 extension (`sha256h`/`sha256h2`/`sha256su0`\n  /`sha256su1`), which every Apple Silicon and every server aarch64 part has.\n* `x86-sha-ni`   — Intel SHA extensions (`sha256rnds2`/`sha256msg1`\n  /`sha256msg2`), present on AMD Zen and on Intel from Goldmont/Ice Lake\n  client onwards, but *not* on Ice Lake / Sapphire Rapids Xeons.\n* `scalar`       — portable FIPS 180-4, fully unrolled with a 16-word rolling\n  schedule so the whole working set stays in registers.\n\nThe choice is a `comptime` query of the *target's* CPU features, and `mojo`\ncompiles for the host CPU unless told otherwise, so on a normal build (pixi\nsource dependency, `pixi run`, CI) the compile-time answer is the run-time\ntruth. A binary deliberately cross-built with `--target-cpu` for a CPU it will\nnot run on is the one case that would fault, and that is the same contract as\nevery other `-march=native` build.\n\nIf a general-purpose home ever appears, this belongs in hashes.mojo.",
+   "aliases": [
+    {
+     "name": "SHA256_DIGEST_SIZE",
+     "value": "32"
+    },
+    {
+     "name": "SHA256_BLOCK_SIZE",
+     "value": "64"
+    },
+    {
+     "name": "AT_HWCAP",
+     "value": "16"
+    },
+    {
+     "name": "HWCAP_SHA2",
+     "value": "64"
+    }
+   ],
+   "structs": [
+    {
+     "name": "Sha256",
+     "signature": "struct Sha256",
+     "summary": "Streaming FIPS 180-4 SHA-256.",
+     "description": "Streaming rather than one-shot because a SigV4 `PUT` has to hash the whole\npayload, which for a data file is larger than anything worth copying into\none contiguous buffer just to hash it.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "update",
+       "overloads": [
+        {
+         "signature": "def update(mut self, data: Span[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "digest",
+       "overloads": [
+        {
+         "signature": "def digest(self) -> List[UInt8]",
+         "summary": "The digest of everything fed so far. Does not consume `self`, so a caller can keep hashing afterwards."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "sha256_backend",
+     "overloads": [
+      {
+       "signature": "def sha256_backend() -> String",
+       "summary": "Which compression backend this build is using: `armv8-crypto`, `armv8-crypto (asm)`, `x86-sha-ni` or `scalar`. Benchmarks and tests print it so a CI log says which path it actually exercised."
+      }
+     ]
+    },
+    {
+     "name": "sha256_target_features",
+     "overloads": [
+      {
+       "signature": "def sha256_target_features() -> String",
+       "summary": "The CPU features this build was compiled against, as the backend choice saw them. A `scalar` backend on hardware that plainly has the extension means `mojo` did not resolve the host CPU — this is the line that says so."
+      }
+     ]
+    },
+    {
+     "name": "sha256_scalar",
+     "overloads": [
+      {
+       "signature": "def sha256_scalar(data: Span[UInt8]) -> List[UInt8]",
+       "summary": "SHA-256 forced through the portable backend, whatever `_BACKEND` is.",
+       "description": "Exists so the test suite can cross-check the hardware path against the\nreference implementation on the very machine that runs it — the two are\nentirely separate code, and the FIPS vectors alone would not catch a\nschedule bug that only shows up past the first block."
+      }
+     ]
+    },
+    {
+     "name": "sha256",
+     "overloads": [
+      {
+       "signature": "def sha256(data: Span[UInt8]) -> List[UInt8]"
+      }
+     ]
+    },
+    {
+     "name": "sha256_hex",
+     "overloads": [
+      {
+       "signature": "def sha256_hex(data: Span[UInt8]) -> String"
+      },
+      {
+       "signature": "def sha256_hex(s: String) -> String"
+      }
+     ]
+    },
+    {
+     "name": "hmac_sha256",
+     "overloads": [
+      {
+       "signature": "def hmac_sha256(key: Span[UInt8], msg: Span[UInt8]) -> List[UInt8]",
+       "summary": "RFC 2104 HMAC with SHA-256. Keys longer than the 64-byte block are hashed first; shorter keys are zero-padded."
+      },
+      {
+       "signature": "def hmac_sha256(key: Span[UInt8], msg: String) -> List[UInt8]"
+      }
+     ]
+    },
+    {
+     "name": "hmac_sha256_hex",
+     "overloads": [
+      {
+       "signature": "def hmac_sha256_hex(key: Span[UInt8], msg: String) -> String"
+      }
+     ]
+    },
+    {
+     "name": "to_hex",
+     "overloads": [
+      {
+       "signature": "def to_hex(data: Span[UInt8]) -> String",
+       "summary": "Lowercase hex — the case SigV4's canonical request requires."
+      }
+     ]
+    },
+    {
+     "name": "from_hex",
+     "overloads": [
+      {
+       "signature": "def from_hex(s: String) -> List[UInt8]"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "objectstore.fileio",
+   "summary": "`objectstore.fileio` — the `InputFile` / `OutputFile` / `FileIO` traits and the scheme resolver.",
+   "description": "This is the seam iceberg.mojo already anticipates. Its `src/iceberg/io.mojo`\ndeclares an `InputFile` trait with `location()`, `exists()` and `read_all()`,\nand a local-only `FileIO`; the traits here are a **superset** of that, so an\n`objectstore` input file satisfies the Iceberg trait unchanged, while adding\nthe two things a lazy Parquet reader needs: `length()` and\n`read_range(offset, length)`.\n\n`FileIOResolver` is the dynamic half. Mojo dispatches traits statically, so a\n\"pick a backend by URI scheme\" API cannot return an arbitrary trait\nimplementation; `AnyInputFile` and `AnyOutputFile` are small tagged unions over\nthe three backends, and they conform to the traits themselves. Generic code can\nkeep using the traits; code that resolves locations at runtime uses the\nresolver.\n\nPer-scheme configuration follows Iceberg's property names (`s3.endpoint`,\n`s3.access-key-id`, …) so a `LoadTableResult`'s `config` map can be handed\nstraight over, and `storage-credentials` — the REST spec's list of\n`{prefix, config}` entries — is matched **longest prefix first**, exactly as\nthe spec requires when a catalog vends different credentials for different\npaths within one table.",
+   "aliases": [
+    {
+     "name": "BACKEND_LOCAL",
+     "value": "0"
+    },
+    {
+     "name": "BACKEND_HTTP",
+     "value": "1"
+    },
+    {
+     "name": "BACKEND_S3",
+     "value": "2"
+    },
+    {
+     "name": "BACKEND_GCS",
+     "value": "3"
+    },
+    {
+     "name": "BACKEND_AZURE",
+     "value": "4",
+     "summary": "GCS and Azure reduce to `BACKEND_HTTP` once a location has been turned into a URL plus headers — a bearer token for GCS, a SAS query string and `x-ms-version` for Azure — so only the resolver distinguishes them. The open files themselves are `HttpInputFile`/`HttpOutputFile`."
+    }
+   ],
+   "structs": [
+    {
+     "name": "AnyInputFile",
+     "signature": "struct AnyInputFile",
+     "summary": "An `InputFile` whose backend is chosen at runtime by URI scheme.",
+     "traits": [
+      "Copyable",
+      "InputFile",
+      "Movable",
+      "RangeReader"
+     ],
+     "fields": [
+      {
+       "name": "backend",
+       "type": "Int"
+      },
+      {
+       "name": "uri",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, backend: Int, var uri: String, var local: LocalInputFile, var http: HttpInputFile, var s3: S3Client, var bucket: String, var key: String)"
+        }
+       ]
+      },
+      {
+       "name": "location",
+       "overloads": [
+        {
+         "signature": "def location(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "exists",
+       "overloads": [
+        {
+         "signature": "def exists(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "length",
+       "overloads": [
+        {
+         "signature": "def length(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "read_all",
+       "overloads": [
+        {
+         "signature": "def read_all(self) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "read_range",
+       "overloads": [
+        {
+         "signature": "def read_range(self, offset: Int, length: Int) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "read_ranges",
+       "overloads": [
+        {
+         "signature": "def read_ranges(self, ranges: List[ByteRange]) -> List[List[UInt8]]",
+         "summary": "One seek per range for local files. For HTTP and S3, nearby ranges are coalesced and the groups fetched at once."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "AnyOutputFile",
+     "signature": "struct AnyOutputFile",
+     "summary": "An `OutputFile` whose backend is chosen at runtime by URI scheme.",
+     "description": "The HTTP backend covers three cases that all reduce to a single `PUT`: a\npresigned S3 upload URL, GCS's XML endpoint with a bearer token, and an\nAzure blob with a SAS token. `create` there is \"check, then write\", which\nis racy — HTTP has no atomic create.",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "OutputFile"
+     ],
+     "fields": [
+      {
+       "name": "backend",
+       "type": "Int"
+      },
+      {
+       "name": "uri",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, backend: Int, var uri: String, var local: LocalOutputFile, var http: HttpOutputFile, var s3: S3Client, var bucket: String, var key: String)"
+        }
+       ]
+      },
+      {
+       "name": "location",
+       "overloads": [
+        {
+         "signature": "def location(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "exists",
+       "overloads": [
+        {
+         "signature": "def exists(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "create",
+       "overloads": [
+        {
+         "signature": "def create(self, data: Span[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "overwrite",
+       "overloads": [
+        {
+         "signature": "def overwrite(self, data: Span[UInt8])"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "StorageCredential",
+     "signature": "struct StorageCredential",
+     "summary": "One entry of a REST `LoadTableResult`'s `storage-credentials`.",
+     "description": "Same shape as `iceberg.catalog.rest.StorageCredential`, so a parsed\nresponse can be forwarded without translation.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "prefix",
+       "type": "String"
+      },
+      {
+       "name": "config",
+       "type": "Dict[String, String]"
+      }
+     ]
+    },
+    {
+     "name": "FileIOResolver",
+     "signature": "struct FileIOResolver",
+     "summary": "Picks a backend by URI scheme and configures it from properties.",
+     "description": "Property resolution for a given location, most specific first:\n\n1. the longest matching `storage-credentials` prefix,\n2. the resolver's own properties (an Iceberg table's `config`),\n3. `AWS_*` environment variables.\n\nLocation rewrites (`rebase`) are applied before any of that, because\nIceberg metadata records absolute locations and a warehouse that has been\ncopied elsewhere — or a test fixture checked into a repo — needs them\nredirected without rewriting the metadata.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "properties",
+       "type": "Dict[String, String]"
+      },
+      {
+       "name": "storage_credentials",
+       "type": "List[StorageCredential]"
+      },
+      {
+       "name": "from_prefixes",
+       "type": "List[String]"
+      },
+      {
+       "name": "to_prefixes",
+       "type": "List[String]"
+      },
+      {
+       "name": "http",
+       "type": "HttpClient"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        },
+        {
+         "signature": "def __init__(out self, var properties: Dict[String, String])"
+        }
+       ]
+      },
+      {
+       "name": "set",
+       "overloads": [
+        {
+         "signature": "def set(mut self, var key: String, var value: String)"
+        }
+       ]
+      },
+      {
+       "name": "add_storage_credential",
+       "overloads": [
+        {
+         "signature": "def add_storage_credential(mut self, var prefix: String, var config: Dict[String, String])"
+        }
+       ]
+      },
+      {
+       "name": "rebase",
+       "overloads": [
+        {
+         "signature": "def rebase(mut self, var old_prefix: String, var new_prefix: String)",
+         "summary": "Redirect every location under `old_prefix` to `new_prefix`.",
+         "description": "Byte-compatible with `iceberg.io.FileIO.rebase`."
+        }
+       ]
+      },
+      {
+       "name": "resolve",
+       "overloads": [
+        {
+         "signature": "def resolve(self, location: String) -> String",
+         "summary": "The location this one should actually be read from."
+        }
+       ]
+      },
+      {
+       "name": "properties_for",
+       "overloads": [
+        {
+         "signature": "def properties_for(self, location: String) -> Dict[String, String]",
+         "summary": "Merged properties for one location, most specific last.",
+         "description": "`storage-credentials` entries are matched by prefix and the **longest**\nmatch wins: a catalog may vend one credential for a table's data\nprefix and a narrower one for a single partition, and the narrower\nentry is the one that was meant."
+        }
+       ]
+      },
+      {
+       "name": "s3_config_for",
+       "overloads": [
+        {
+         "signature": "def s3_config_for(self, location: String) -> S3Config"
+        }
+       ]
+      },
+      {
+       "name": "gcs_config_for",
+       "overloads": [
+        {
+         "signature": "def gcs_config_for(self, location: String) -> GcsConfig"
+        }
+       ]
+      },
+      {
+       "name": "azure_config_for",
+       "overloads": [
+        {
+         "signature": "def azure_config_for(self, location: String, account: String) -> AzureConfig"
+        }
+       ]
+      },
+      {
+       "name": "backend_for",
+       "overloads": [
+        {
+         "signature": "def backend_for(self, location: String) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "new_input",
+       "overloads": [
+        {
+         "signature": "def new_input(self, location: String) -> AnyInputFile"
+        }
+       ]
+      },
+      {
+       "name": "new_output",
+       "overloads": [
+        {
+         "signature": "def new_output(self, location: String) -> AnyOutputFile"
+        }
+       ]
+      },
+      {
+       "name": "delete",
+       "overloads": [
+        {
+         "signature": "def delete(self, location: String)"
+        }
+       ]
+      },
+      {
+       "name": "list",
+       "overloads": [
+        {
+         "signature": "def list(self, prefix: String) -> List[String]",
+         "summary": "Locations under `prefix`, as full URIs.",
+         "description": "Local listing is recursive; S3 listing is flat by nature — an object\nstore has no directories, only key prefixes."
+        }
+       ]
+      },
+      {
+       "name": "read_all",
+       "overloads": [
+        {
+         "signature": "def read_all(self, location: String) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "read_range",
+       "overloads": [
+        {
+         "signature": "def read_range(self, location: String, offset: Int, length: Int) -> List[UInt8]",
+         "summary": "The bytes `[offset, offset+length)`.",
+         "description": "This is the entry point a lazy Parquet reader wants: fetch the last\n64 KiB for the footer, then exactly the row groups the scan needs."
+        }
+       ]
+      },
+      {
+       "name": "read_ranges",
+       "overloads": [
+        {
+         "signature": "def read_ranges(self, location: String, ranges: List[ByteRange]) -> List[List[UInt8]]",
+         "summary": "Several ranges of one object, coalesced where that saves requests.",
+         "description": "One `new_input` for the lot, so an S3 location is signed and addressed\nonce rather than once per range."
+        }
+       ]
+      },
+      {
+       "name": "read_all_many",
+       "overloads": [
+        {
+         "signature": "def read_all_many(self, locations: List[String]) -> List[List[UInt8]]",
+         "summary": "Several whole objects, in order. Those on S3 are fetched at once; the rest one by one. For many small files read together, such as an Iceberg table's manifests."
+        }
+       ]
+      },
+      {
+       "name": "read_ranges_many",
+       "overloads": [
+        {
+         "signature": "def read_ranges_many(self, locations: List[String], ranges: List[List[ByteRange]]) -> List[List[List[UInt8]]]",
+         "summary": "`ranges[i]` of `locations[i]`, for every `i`, in order.",
+         "description": "Each file's ranges are coalesced as `read_ranges` does, and then every\ngroup of every file on S3 is fetched in one batch: reading several\nfiles' footers, or several files' column chunks, costs one round of\nrequests rather than one per file. Other backends read file by file."
+        }
+       ]
+      },
+      {
+       "name": "read_text",
+       "overloads": [
+        {
+         "signature": "def read_text(self, location: String) -> String"
+        }
+       ]
+      },
+      {
+       "name": "exists",
+       "overloads": [
+        {
+         "signature": "def exists(self, location: String) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "write",
+       "overloads": [
+        {
+         "signature": "def write(self, location: String, data: Span[UInt8])"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "traits": [
+    {
+     "name": "InputFile",
+     "summary": "A readable byte source addressed by a location.",
+     "description": "`location`, `exists` and `read_all` are byte-compatible with\n`iceberg.io.InputFile`; `length` and `read_range` are the additions that\nlet a reader fetch a Parquet footer without pulling the whole file.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "location",
+       "overloads": [
+        {
+         "signature": "def location(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "exists",
+       "overloads": [
+        {
+         "signature": "def exists(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "length",
+       "overloads": [
+        {
+         "signature": "def length(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "read_all",
+       "overloads": [
+        {
+         "signature": "def read_all(self) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "read_range",
+       "overloads": [
+        {
+         "signature": "def read_range(self, offset: Int, length: Int) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "read_ranges",
+       "overloads": [
+        {
+         "signature": "def read_ranges(self, ranges: List[ByteRange]) -> List[List[UInt8]]",
+         "summary": "Several ranges at once, in the order asked for.",
+         "description": "The default is one `read_range` per range, which is exactly right for\na file the process can seek. Backends where a range costs a round trip\noverride it to coalesce (see `objectstore.ranges`), which is what\nturns a Parquet scan's per-column-chunk reads into a handful of\nrequests."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "OutputFile",
+     "summary": "A writable destination.",
+     "description": "`create` fails if the location already exists; `overwrite` does not. That\nis Iceberg's own distinction — metadata files are written with `create` so\nthat two writers racing on the same version number cannot both believe\nthey won.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "location",
+       "overloads": [
+        {
+         "signature": "def location(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "exists",
+       "overloads": [
+        {
+         "signature": "def exists(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "create",
+       "overloads": [
+        {
+         "signature": "def create(self, data: Span[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "overwrite",
+       "overloads": [
+        {
+         "signature": "def overwrite(self, data: Span[UInt8])"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "FileIO",
+     "summary": "A namespace of locations: open, delete, list.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "aliases": [
+      {
+       "name": "InputType"
+      },
+      {
+       "name": "OutputType"
+      }
+     ],
+     "functions": [
+      {
+       "name": "new_input",
+       "overloads": [
+        {
+         "signature": "def new_input(self, location: String) -> Self.InputType"
+        }
+       ]
+      },
+      {
+       "name": "new_output",
+       "overloads": [
+        {
+         "signature": "def new_output(self, location: String) -> Self.OutputType"
+        }
+       ]
+      },
+      {
+       "name": "delete",
+       "overloads": [
+        {
+         "signature": "def delete(self, location: String)"
+        }
+       ]
+      },
+      {
+       "name": "list",
+       "overloads": [
+        {
+         "signature": "def list(self, prefix: String) -> List[String]"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "objectstore.gcs",
+   "summary": "`objectstore.gcs` — Google Cloud Storage over the S3-compatible XML endpoint.",
+   "description": "GCS exposes two APIs. The JSON API (`storage.googleapis.com/storage/v1/…`)\nreturns JSON, which would mean carrying a JSON parser here purely to read an\nobject listing. The **XML API** (`storage.googleapis.com/<bucket>/<key>`) is\nbyte-for-byte the S3 protocol for everything this tin does — `GET` with\n`Range`, `PUT`, `DELETE`, and a `ListBucketResult` document the S3 parser in\n`s3.mojo` already reads. So this module uses the XML endpoint, and is\ncorrespondingly small.\n\n**Authentication is an OAuth2 bearer token supplied by the caller.** Minting\none from a service-account key requires RS256 JWT signing, and RSA is out of\nscope — it is a great deal more code than SHA-256 was, for something\n`gcloud auth print-access-token`, a metadata server, or the surrounding\napplication already has. Pass the token in as `gcs.oauth2.token`, which is\nIceberg's own property name for exactly this.\n\nGCS also accepts SigV4 with HMAC \"interoperability\" keys; a caller who has\nthose can point `S3Client` at `https://storage.googleapis.com` instead.",
+   "aliases": [
+    {
+     "name": "DEFAULT_GCS_ENDPOINT",
+     "value": "String(\"https://storage.googleapis.com\")"
+    }
+   ],
+   "structs": [
+    {
+     "name": "GcsConfig",
+     "signature": "struct GcsConfig",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "endpoint",
+       "type": "String"
+      },
+      {
+       "name": "oauth_token",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        },
+        {
+         "signature": "def __init__(out self, var endpoint: String, var oauth_token: String)"
+        }
+       ]
+      },
+      {
+       "name": "from_properties",
+       "overloads": [
+        {
+         "signature": "def from_properties(props: Dict[String, String]) -> Self",
+         "summary": "Iceberg's GCS property names: `gcs.oauth2.token` and `gcs.service.host`."
+        }
+       ]
+      },
+      {
+       "name": "headers",
+       "overloads": [
+        {
+         "signature": "def headers(self) -> List[Header]"
+        }
+       ]
+      },
+      {
+       "name": "url_for",
+       "overloads": [
+        {
+         "signature": "def url_for(self, bucket: String, key: String) -> String"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "GcsClient",
+     "signature": "struct GcsClient",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "config",
+       "type": "GcsConfig"
+      },
+      {
+       "name": "http",
+       "type": "HttpClient"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var config: GcsConfig)"
+        },
+        {
+         "signature": "def __init__(out self, var config: GcsConfig, var http: HttpClient)"
+        }
+       ]
+      },
+      {
+       "name": "input",
+       "overloads": [
+        {
+         "signature": "def input(self, bucket: String, key: String) -> HttpInputFile"
+        }
+       ]
+      },
+      {
+       "name": "output",
+       "overloads": [
+        {
+         "signature": "def output(self, bucket: String, key: String) -> HttpOutputFile"
+        }
+       ]
+      },
+      {
+       "name": "delete_object",
+       "overloads": [
+        {
+         "signature": "def delete_object(self, bucket: String, key: String)"
+        }
+       ]
+      },
+      {
+       "name": "list_objects",
+       "overloads": [
+        {
+         "signature": "def list_objects(self, bucket: String, prefix: String = \"\", delimiter: String = \"\", continuation_token: String = \"\") -> ListResult",
+         "summary": "One page of the XML API's `ListBucketResult`.",
+         "description": "GCS implements S3's `list-type=2` continuation tokens, so the response\nparses with `s3.parse_list_objects` unchanged."
+        }
+       ]
+      },
+      {
+       "name": "list_all",
+       "overloads": [
+        {
+         "signature": "def list_all(self, bucket: String, prefix: String = \"\") -> ListResult"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "split_gcs_uri",
+     "overloads": [
+      {
+       "signature": "def split_gcs_uri(location: String) -> Tuple[String, String]",
+       "summary": "`gs://bucket/a/b` -> `(\"bucket\", \"a/b\")`. `gcs://` is accepted too."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "objectstore.http",
+   "summary": "`objectstore.http` — an HTTP/HTTPS client over libcurl.",
+   "description": "**Why libcurl.** Nothing in the Mojo package ecosystem gives this repo a TLS\ncapable HTTP client: `floki`, `flare`, `lightbug-http` and `fire-http` all fail\nto resolve from conda (\"No candidates were found\") on both the stable and the\nnightly toolchain, and an object store without HTTPS is not an object store.\nconda-forge's `libcurl` ships TLS and a CA bundle for every platform we target,\nso this tin follows the magmalake FFI recipe (zstd.mojo, lz4.mojo): a tiny C\nshim built as a `pixi-build-cmake` package into `$CONDA_PREFIX/lib`, found by\n`_dlopen.open_library` (with or without `CONDA_PREFIX`) and dlopened once per\nprocess through an `OwnedDLHandle`.\n\nThe shim exists because `curl_easy_setopt` is a C variadic, which a dlopened\nsymbol cannot express; `shim/curl_wrapper.c` collapses a whole request into one\nfixed-arity call and hands back an opaque result object read through accessors.\n\nEvery FFI-calling worker takes the handle as a borrowed `imm` parameter: Mojo\ndestroys a value at its last syntactic use, so a function that both owned the\nhandle and called `get_function` on it would `dlclose` the library before the\nreturned function pointer is invoked.\n\n**Connection reuse.** The curl easy handle lives in the shim and persists\nacross requests, so a second request to the same host reuses its TCP and TLS\nsession instead of shaking hands again — the difference between ~2.9 ms and\n~0.2 ms per range read on loopback. Requests go to a process-wide pool by\ndefault; `new_connection_pool` hands out a private one for a caller that wants\nits connections kept apart.\n\n**Threads.** Requests can be made from several threads at once (shim ABI\n5): `SHARED_POOL` and a batch's multi handle are per thread in the shim, with\ntheir own connections, and what threads share — DNS and TLS sessions — sits\nbehind locks.\nA private pool from `new_connection_pool` belongs to one thread at a time.\n\n**Batches.** `request_many` sends several requests at once and returns when\nall have answered: one thread, curl's multi interface underneath, its own\npersistent connections. A ranged read of a Parquet file is mostly waiting for\nfirst bytes, so overlapping the waits is most of the speed there is to have.\n\n**Retries.** Transport failures, 429 and most 5xx are retried with exponential\nbackoff and jitter, but only for requests that can safely be repeated — see\n`RetryPolicy`. A response that is *returned* is never retried behind the\ncaller's back on a method the server might have already acted on.",
+   "aliases": [
+    {
+     "name": "DEFAULT_MAX_PARALLEL",
+     "value": "16",
+     "summary": "Requests a batch keeps in flight at once, on as many connections. The Rust Iceberg reader keeps 10 range reads in flight per file; S3 serves each connection at roughly 100 MB/s, so 16 covers a node's share of bandwidth without opening sockets by the hundred."
+    },
+    {
+     "name": "DEFAULT_TIMEOUT_MS",
+     "value": "30000",
+     "summary": "Total request deadline. Range reads of a Parquet footer are small; a 20 MB object over a slow link is not, so this is generous rather than tight."
+    },
+    {
+     "name": "SHARED_POOL",
+     "value": "0",
+     "summary": "The process-wide connection pool, which is what every `HttpClient` uses unless it is given one of its own."
+    },
+    {
+     "name": "S3_RETRYABLE_CODES",
+     "value": "2"
+    }
+   ],
+   "structs": [
+    {
+     "name": "Header",
+     "signature": "struct Header",
+     "summary": "One `Name: Value` pair. Names are compared case-insensitively.",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "value",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "RetryPolicy",
+     "signature": "struct RetryPolicy",
+     "summary": "When to try again, and how long to wait first.",
+     "description": "Defaults: three retries (four attempts), 100 ms doubling to a 20 s ceiling,\nand **idempotent requests only**. `POST` is retried only when the caller\nhas said the server can deduplicate it by supplying an `Idempotency-Key`\nheader — which is exactly what an Iceberg REST commit does, and why the\nheader is the trigger rather than a flag on the client.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "max_retries",
+       "type": "Int",
+       "summary": "Attempts *after* the first. 0 disables retrying entirely."
+      },
+      {
+       "name": "base_delay_ms",
+       "type": "Int"
+      },
+      {
+       "name": "max_delay_ms",
+       "type": "Int"
+      },
+      {
+       "name": "retry_non_idempotent",
+       "type": "Bool",
+       "summary": "Escape hatch for a caller that knows its `POST` is safe to repeat and cannot add a header. Off, because guessing wrong duplicates a write."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "none",
+       "overloads": [
+        {
+         "signature": "def none() -> Self",
+         "summary": "One request, one answer — the 0.1.x behaviour."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Response",
+     "signature": "struct Response",
+     "summary": "A completed HTTP response: status line, headers, and the whole body.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "status",
+       "type": "Int"
+      },
+      {
+       "name": "headers",
+       "type": "List[Header]"
+      },
+      {
+       "name": "body",
+       "type": "List[UInt8]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, status: Int, var headers: List[Header], var body: List[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "ok",
+       "overloads": [
+        {
+         "signature": "def ok(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "header",
+       "overloads": [
+        {
+         "signature": "def header(self, name: String) -> String",
+         "summary": "The first value for `name` (case-insensitive), or `\"\"`."
+        }
+       ]
+      },
+      {
+       "name": "has_header",
+       "overloads": [
+        {
+         "signature": "def has_header(self, name: String) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "text",
+       "overloads": [
+        {
+         "signature": "def text(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "body_excerpt",
+       "overloads": [
+        {
+         "signature": "def body_excerpt(self, limit: Int = Int(256)) -> String",
+         "summary": "The first `limit` bytes of the body, for error messages.",
+         "description": "S3 and Iceberg REST both answer errors with a short XML or JSON\ndocument; truncating keeps a raised `Error` readable when the body is\na 20 MB object instead."
+        }
+       ]
+      },
+      {
+       "name": "raise_for_status",
+       "overloads": [
+        {
+         "signature": "def raise_for_status(self, what: String)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "BatchRequest",
+     "signature": "struct BatchRequest",
+     "summary": "One request of a batch: a `GET` or `HEAD`, optionally ranged.",
+     "description": "`expect_len`, when known, sizes the response buffer up front.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "method",
+       "type": "String"
+      },
+      {
+       "name": "url",
+       "type": "String"
+      },
+      {
+       "name": "headers",
+       "type": "List[Header]"
+      },
+      {
+       "name": "range_start",
+       "type": "Int"
+      },
+      {
+       "name": "range_end",
+       "type": "Int"
+      },
+      {
+       "name": "expect_len",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "get",
+       "overloads": [
+        {
+         "signature": "def get(var url: String, var headers: List[Header] = List(), range_start: Int = Int(-1), range_end: Int = Int(-1)) -> Self"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "HttpClient",
+     "signature": "struct HttpClient",
+     "summary": "An HTTP client over a persistent, reused connection.",
+     "description": "The client itself holds no socket: `pool` names a curl handle living in\nthe shim, and `SHARED_POOL` — the default — is the process-wide one. Two\n`HttpClient` values therefore share connections, which is what makes an\nIceberg scan that opens a new `S3Client` per file cheap. With the default\npool, threads may each make requests at once.\n\nRedirects are **off** by default: a presigned S3 URL carries its signature\nin the query string and must never be silently re-issued elsewhere.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "timeout_ms",
+       "type": "Int"
+      },
+      {
+       "name": "follow_redirects",
+       "type": "Bool"
+      },
+      {
+       "name": "verify_tls",
+       "type": "Bool"
+      },
+      {
+       "name": "pool",
+       "type": "Int",
+       "summary": "`SHARED_POOL`, or a handle from `new_connection_pool()` that the caller is responsible for freeing."
+      },
+      {
+       "name": "retry",
+       "type": "RetryPolicy"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "request",
+       "overloads": [
+        {
+         "signature": "def request(self, method: String, url: String, headers: List[Header] = List(), body: Span[UInt8] = Span(), range_start: Int = Int(-1), range_end: Int = Int(-1)) -> Response",
+         "summary": "Performs the request, retrying per `self.retry`.",
+         "description": "Raises only on *transport* failure — a 404 or a 500 comes back as a\n`Response` so the caller can decide. A retryable status that survives\nthe last attempt is returned too: the caller sees the server's own\nanswer rather than an invented error."
+        }
+       ]
+      },
+      {
+       "name": "request_many",
+       "overloads": [
+        {
+         "signature": "def request_many(self, reqs: List[BatchRequest], max_parallel: Int = Int(16)) -> List[Response]",
+         "summary": "Every request in `reqs` at once, answers in the same order.",
+         "description": "Like `request`, a status comes back as a `Response` and only a\ntransport failure raises. A request that failed in transport or got\na retryable answer is tried again on its own, under `self.retry`.\nBatches are `GET`s and `HEAD`s, which are always safe to repeat. A\nshim older than ABI 4 has no batches: then they run one by one."
+        }
+       ]
+      },
+      {
+       "name": "get",
+       "overloads": [
+        {
+         "signature": "def get(self, url: String, headers: List[Header] = List(), range_start: Int = Int(-1), range_end: Int = Int(-1)) -> Response"
+        }
+       ]
+      },
+      {
+       "name": "head",
+       "overloads": [
+        {
+         "signature": "def head(self, url: String, headers: List[Header] = List()) -> Response"
+        }
+       ]
+      },
+      {
+       "name": "put",
+       "overloads": [
+        {
+         "signature": "def put(self, url: String, body: Span[UInt8], headers: List[Header] = List()) -> Response"
+        }
+       ]
+      },
+      {
+       "name": "post",
+       "overloads": [
+        {
+         "signature": "def post(self, url: String, body: Span[UInt8], headers: List[Header] = List()) -> Response"
+        }
+       ]
+      },
+      {
+       "name": "delete",
+       "overloads": [
+        {
+         "signature": "def delete(self, url: String, headers: List[Header] = List()) -> Response"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "new_connection_pool",
+     "overloads": [
+      {
+       "signature": "def new_connection_pool() -> Int",
+       "summary": "A private pool: one persistent curl handle, its own connections.",
+       "description": "Returns an opaque handle to pass as `HttpClient.pool`. **The caller owns\nit** and must call `free_connection_pool`; there is no destructor here\nbecause `HttpClient` is `Copyable`, and a copyable owner of a C resource\nis a double free waiting to happen. Most callers want `SHARED_POOL`."
+      }
+     ]
+    },
+    {
+     "name": "free_connection_pool",
+     "overloads": [
+      {
+       "signature": "def free_connection_pool(pool: Int)",
+       "summary": "Closes a pool from `new_connection_pool` and its live connections."
+      }
+     ]
+    },
+    {
+     "name": "pool_stats",
+     "overloads": [
+      {
+       "signature": "def pool_stats(pool: Int = Int(0)) -> Tuple[Int, Int]",
+       "summary": "`(requests, connections)` for a pool since the last `reset_pool_stats`.",
+       "description": "`connections` is what curl actually opened, so reuse is the observation\nthat it stays at 1 while `requests` climbs — which is how the tests prove\nit rather than inferring it from a stopwatch."
+      }
+     ]
+    },
+    {
+     "name": "reset_pool_stats",
+     "overloads": [
+      {
+       "signature": "def reset_pool_stats(pool: Int = Int(0))"
+      }
+     ]
+    },
+    {
+     "name": "shim_abi",
+     "overloads": [
+      {
+       "signature": "def shim_abi() -> Int",
+       "summary": "1 = a fresh curl handle per request (0.1.x); 2 = pooled connections; 3 = `instance_credentials_blob`; 4 = batches (`request_many`); 5 = safe from several threads."
+      }
+     ]
+    },
+    {
+     "name": "instance_credentials_blob",
+     "overloads": [
+      {
+       "signature": "def instance_credentials_blob() -> String",
+       "summary": "The EC2 instance role's credentials, as the shim's IMDSv2 lookup hands     them back: `access-key-id secret token expiry-epoch`, or `\"\"` when     there are none.",
+       "description": "The shim caches the answer for the process, \"none\" included, so this is\n    cheap to call per request. A shim older than ABI 3 has no lookup and\n    answers `\"\"` as well."
+      }
+     ]
+    },
+    {
+     "name": "header_blob",
+     "overloads": [
+      {
+       "signature": "def header_blob(headers: List[Header]) -> String",
+       "summary": "Headers as the shim wants them: `Name: Value` lines joined by LF.",
+       "description": "An HTTP header value cannot contain a bare LF, so this encoding is\nlossless and spares the FFI boundary a `char*[]`."
+      }
+     ]
+    },
+    {
+     "name": "is_idempotent",
+     "overloads": [
+      {
+       "signature": "def is_idempotent(method: String, headers: List[Header]) -> Bool",
+       "summary": "RFC 9110 idempotency, plus the `Idempotency-Key` convention.",
+       "description": "`GET`, `HEAD`, `PUT`, `DELETE`, `OPTIONS` and `TRACE` are idempotent by\ndefinition: repeating one cannot commit a second effect. `POST` and\n`PATCH` are not, so they are only repeatable when the request carries a\nkey the server can deduplicate on."
+      }
+     ]
+    },
+    {
+     "name": "retryable_status",
+     "overloads": [
+      {
+       "signature": "def retryable_status(status: Int) -> Bool",
+       "summary": "429 and 5xx, except the two that mean \"never, no matter how often\".",
+       "description": "501 Not Implemented and 505 HTTP Version Not Supported are permanent facts\nabout the server; retrying them is pure latency."
+      }
+     ]
+    },
+    {
+     "name": "s3_retryable_error",
+     "overloads": [
+      {
+       "signature": "def s3_retryable_error(body: Span[UInt8]) -> Bool",
+       "summary": "S3's two \"come back later\" errors, which arrive with unhelpful statuses.",
+       "description": "`SlowDown` is throttling and `RequestTimeout` means the server gave up\nwaiting on the body; AWS returns the latter as a **400**, so status alone\nwould call it permanent. Only the first bytes are inspected, and only for\na response that already failed, so this never touches an object body."
+      }
+     ]
+    },
+    {
+     "name": "backoff_delay_ms",
+     "overloads": [
+      {
+       "signature": "def backoff_delay_ms(policy: RetryPolicy, attempt: Int) -> Int",
+       "summary": "Exponential backoff with jitter: half the window fixed, half random.",
+       "description": "`attempt` counts from 1. Full jitter would sometimes retry instantly and\nhammer a server that is already asking for room; half is the usual\ncompromise. The jitter source is the monotonic clock's low bits — there is\nno RNG in reach here, and a retry schedule does not need a good one."
+      }
+     ]
+    },
+    {
+     "name": "parse_headers",
+     "overloads": [
+      {
+       "signature": "def parse_headers(raw: String) -> List[Header]",
+       "summary": "Parses curl's raw header text into pairs.",
+       "description": "curl emits one header block per response it sees, so a redirect chain or a\n`100 Continue` produces several. Only the last block describes the\nresponse the caller gets, so a new status line resets the accumulator."
+      }
+     ]
+    },
+    {
+     "name": "batch_stats",
+     "overloads": [
+      {
+       "signature": "def batch_stats() -> Tuple[Int, Int]",
+       "summary": "`(requests, connections)` for batches since `reset_batch_stats`: the connections stay few while requests climb, because batches reuse them."
+      }
+     ]
+    },
+    {
+     "name": "reset_batch_stats",
+     "overloads": [
+      {
+       "signature": "def reset_batch_stats()"
+      }
+     ]
+    },
+    {
+     "name": "curl_version",
+     "overloads": [
+      {
+       "signature": "def curl_version() -> String",
+       "summary": "Libcurl's own version banner, e.g. `libcurl/8.9.1 OpenSSL/3.3.1 …`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "objectstore.httpio",
+   "summary": "`objectstore.httpio` — a read-only `InputFile` over `http(s)://`.",
+   "description": "Two things make this worth having beyond \"download the file\". A `HEAD` gives\nthe length without a body, and a `Range` request gives an arbitrary slice — so\na Parquet file published over plain HTTP is as lazily readable as one in S3.\nAnd a **presigned S3 URL** is, at the point of use, just an HTTPS URL with a\nsignature in the query string: this is the backend that reads it, with no\ncredentials involved.\n\nServers are allowed to ignore `Range` and answer `200` with the whole body.\nThat is handled rather than trusted: a `200` where a `206` was expected is\nsliced locally, so the caller always gets the bytes it asked for.",
+   "structs": [
+    {
+     "name": "HttpInputFile",
+     "signature": "struct HttpInputFile",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "RangeReader"
+     ],
+     "fields": [
+      {
+       "name": "url",
+       "type": "String"
+      },
+      {
+       "name": "client",
+       "type": "HttpClient"
+      },
+      {
+       "name": "headers",
+       "type": "List[Header]",
+       "summary": "Sent with every request. This is what makes the module reusable for GCS (`Authorization: Bearer …`) and Azure (`x-ms-version`) — both reduce to an HTTPS URL plus a fixed set of headers."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var url: String)"
+        },
+        {
+         "signature": "def __init__(out self, var url: String, var client: HttpClient)"
+        }
+       ]
+      },
+      {
+       "name": "location",
+       "overloads": [
+        {
+         "signature": "def location(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "exists",
+       "overloads": [
+        {
+         "signature": "def exists(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "length",
+       "overloads": [
+        {
+         "signature": "def length(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "read_all",
+       "overloads": [
+        {
+         "signature": "def read_all(self) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "read_range",
+       "overloads": [
+        {
+         "signature": "def read_range(self, offset: Int, length: Int) -> List[UInt8]",
+         "summary": "`length` bytes from `offset`. A negative `offset` is a suffix range (`bytes=-N`), the way HTTP itself spells \"the last N bytes\"."
+        }
+       ]
+      },
+      {
+       "name": "read_ranges",
+       "overloads": [
+        {
+         "signature": "def read_ranges(self, ranges: List[ByteRange]) -> List[List[UInt8]]",
+         "summary": "One request per *group* of nearby ranges rather than one per range.",
+         "description": "Connection reuse made a request cheap; this makes it rare. A Parquet\nrow group whose column chunks are laid out consecutively becomes a\nsingle `Range` request, and the bytes of the columns the scan skipped\nare read and thrown away — which is cheaper than the round trip that\nwould have avoided them. The groups are fetched at once."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "HttpOutputFile",
+     "signature": "struct HttpOutputFile",
+     "summary": "A write-only file behind a single `PUT`.",
+     "description": "Only usable where a plain `PUT` to a URL means \"store this object\" — a\npresigned S3 upload URL, GCS's XML endpoint with a bearer token, an Azure\nblob URL with a SAS token. It is not a general HTTP writer, because HTTP\nitself has no create-versus-overwrite distinction: `create` is implemented\nas \"check, then write\", which is racy and says so.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "url",
+       "type": "String"
+      },
+      {
+       "name": "client",
+       "type": "HttpClient"
+      },
+      {
+       "name": "headers",
+       "type": "List[Header]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var url: String, var headers: List[Header])"
+        }
+       ]
+      },
+      {
+       "name": "location",
+       "overloads": [
+        {
+         "signature": "def location(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "exists",
+       "overloads": [
+        {
+         "signature": "def exists(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "create",
+       "overloads": [
+        {
+         "signature": "def create(self, data: Span[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "overwrite",
+       "overloads": [
+        {
+         "signature": "def overwrite(self, data: Span[UInt8])"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "http_delete",
+     "overloads": [
+      {
+       "signature": "def http_delete(url: String, headers: List[Header], client: HttpClient)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "objectstore.local",
+   "summary": "`objectstore.local` — the filesystem backend.",
+   "description": "Range reads use `seek` + `read_bytes(n)`, which Mojo's `FileHandle` supports,\nso reading a Parquet footer out of a 2 GB file costs 64 KiB rather than 2 GB.\nEverything else is a thin wrapper whose value is uniformity: the same\n`InputFile`/`OutputFile` shape as S3 and HTTP, so a caller never branches on\nwhere a table happens to live.",
+   "structs": [
+    {
+     "name": "LocalInputFile",
+     "signature": "struct LocalInputFile",
+     "summary": "A readable file at an ordinary filesystem path.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "path",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "location",
+       "overloads": [
+        {
+         "signature": "def location(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "exists",
+       "overloads": [
+        {
+         "signature": "def exists(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "length",
+       "overloads": [
+        {
+         "signature": "def length(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "read_all",
+       "overloads": [
+        {
+         "signature": "def read_all(self) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "read_range",
+       "overloads": [
+        {
+         "signature": "def read_range(self, offset: Int, length: Int) -> List[UInt8]",
+         "summary": "`length` bytes from `offset`; a short read at EOF is not an error.",
+         "description": "A negative `offset` counts back from the end, the way an HTTP suffix\nrange does — which is how a Parquet reader asks for a footer."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "LocalOutputFile",
+     "signature": "struct LocalOutputFile",
+     "summary": "A writable file at an ordinary filesystem path.",
+     "description": "Parent directories are created on demand: Iceberg writes to deep,\npartition-shaped paths that no one has made in advance.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "path",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "location",
+       "overloads": [
+        {
+         "signature": "def location(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "exists",
+       "overloads": [
+        {
+         "signature": "def exists(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "create",
+       "overloads": [
+        {
+         "signature": "def create(self, data: Span[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "overwrite",
+       "overloads": [
+        {
+         "signature": "def overwrite(self, data: Span[UInt8])"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "local_delete",
+     "overloads": [
+      {
+       "signature": "def local_delete(path: String)",
+       "summary": "Removes a file. A missing file is not an error — deletion is idempotent here for the same reason it is on S3."
+      }
+     ]
+    },
+    {
+     "name": "local_list",
+     "overloads": [
+      {
+       "signature": "def local_list(prefix: String) -> List[String]",
+       "summary": "Every file under `prefix`, recursively, as `file://` URIs.",
+       "description": "A prefix that names a file lists just that file, which keeps the contract\nthe same as S3's: a prefix is a prefix, not necessarily a directory."
+      }
+     ]
+    },
+    {
+     "name": "local_input",
+     "overloads": [
+      {
+       "signature": "def local_input(location: String) -> LocalInputFile",
+       "summary": "Opens a `file://` URI or a bare path."
+      }
+     ]
+    },
+    {
+     "name": "local_output",
+     "overloads": [
+      {
+       "signature": "def local_output(location: String) -> LocalOutputFile"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "objectstore.path",
+   "summary": "`objectstore.path` — URI parsing and location handling.",
+   "description": "Iceberg stores **absolute** locations everywhere: a table's `location`, a\nsnapshot's `manifest-list`, a manifest entry's `file_path`. Those strings are\nthe only addressing this stack has, so parsing them precisely — and rewriting\nthem when a warehouse is copied somewhere else — is a first-class concern\nrather than string fiddling scattered across call sites.\n\nGrammar handled here:\n\n    s3://bucket/key/parts        object stores (s3, s3a, s3n, gs, gcs, abfs*, wasb*)\n    https://host/path?query      HTTP(S), including presigned URLs\n    file:///abs/path             a local file, RFC 8089 style\n    file://host/abs/path         tolerated; the host is ignored\n    /abs/path or rel/path        a bare filesystem path, scheme `file`",
+   "aliases": [
+    {
+     "name": "SCHEME_FILE",
+     "value": "String(\"file\")"
+    },
+    {
+     "name": "SCHEME_S3",
+     "value": "String(\"s3\")"
+    },
+    {
+     "name": "SCHEME_HTTP",
+     "value": "String(\"http\")"
+    },
+    {
+     "name": "SCHEME_HTTPS",
+     "value": "String(\"https\")"
+    },
+    {
+     "name": "SCHEME_GS",
+     "value": "String(\"gs\")"
+    },
+    {
+     "name": "SCHEME_ABFS",
+     "value": "String(\"abfs\")"
+    }
+   ],
+   "structs": [
+    {
+     "name": "Uri",
+     "signature": "struct Uri",
+     "summary": "A parsed location.",
+     "description": "`bucket` is the authority: an S3/GCS bucket, an Azure container's account\nhost, or an HTTP host[:port]. `key` is everything after it with no leading\nslash — which is exactly what an S3 request needs, and exactly what a\nfilesystem path needs once the leading slash is put back for `file`.",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "scheme",
+       "type": "String"
+      },
+      {
+       "name": "bucket",
+       "type": "String"
+      },
+      {
+       "name": "key",
+       "type": "String"
+      },
+      {
+       "name": "query",
+       "type": "String"
+      },
+      {
+       "name": "raw",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var scheme: String, var bucket: String, var key: String, var query: String, var raw: String)"
+        }
+       ]
+      },
+      {
+       "name": "is_local",
+       "overloads": [
+        {
+         "signature": "def is_local(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "is_object_store",
+       "overloads": [
+        {
+         "signature": "def is_object_store(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "local_path",
+       "overloads": [
+        {
+         "signature": "def local_path(self) -> String",
+         "summary": "The filesystem path for a `file:` URI.",
+         "description": "`file:///a/b` and `/a/b` both give `/a/b`; a relative bare path is\nreturned unchanged so `tests/fixtures/x` keeps working."
+        }
+       ]
+      },
+      {
+       "name": "canonical",
+       "overloads": [
+        {
+         "signature": "def canonical(self) -> String",
+         "summary": "The location rebuilt from its parts — round-trips `parse_uri`."
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "parse_uri",
+     "overloads": [
+      {
+       "signature": "def parse_uri(location: String) -> Uri"
+      }
+     ]
+    },
+    {
+     "name": "join",
+     "overloads": [
+      {
+       "signature": "def join(base: String, child: String) -> String",
+       "summary": "Joins a location with a relative child. An absolute `child` wins."
+      }
+     ]
+    },
+    {
+     "name": "basename",
+     "overloads": [
+      {
+       "signature": "def basename(location: String) -> String"
+      }
+     ]
+    },
+    {
+     "name": "parent",
+     "overloads": [
+      {
+       "signature": "def parent(location: String) -> String",
+       "summary": "The containing directory/prefix, with no trailing slash.",
+       "description": "`s3://b/a/b/c` -> `s3://b/a/b`; `s3://b/c` -> `s3://b`; a bare name with\nno slash has no parent and yields `\"\"`."
+      }
+     ]
+    },
+    {
+     "name": "strip_scheme",
+     "overloads": [
+      {
+       "signature": "def strip_scheme(location: String) -> String",
+       "summary": "`file:///a/b` -> `/a/b`; other schemes are returned unchanged.",
+       "description": "Kept byte-compatible with `iceberg.io.strip_scheme` so iceberg.mojo can\nswap its copy for this one."
+      }
+     ]
+    },
+    {
+     "name": "url_encode",
+     "overloads": [
+      {
+       "signature": "def url_encode(s: String, encode_slash: Bool = True) -> String",
+       "summary": "RFC 3986 percent-encoding of everything outside the unreserved set.",
+       "description": "SigV4 needs both variants: path segments keep `/` literal, query keys and\nvalues do not (SigV4 §canonical query string)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "objectstore.ranges",
+   "summary": "`objectstore.ranges` — byte ranges, and the plan that turns many into few.",
+   "description": "A Parquet scan does not read a file, it reads a list of spans: the footer,\nthen one span per column chunk of each row group it kept. Over local storage\nthat is a list of seeks and costs nothing. Over HTTP it is a list of *requests*,\nand even with connection reuse each one still costs a round trip — so the\nuseful optimisation is not making requests faster, it is making fewer of them.\n\nColumn chunks of the same row group are laid out consecutively, which means the\nspans a scan asks for are usually adjacent or separated by the columns it\nskipped. Fetching across a small hole and throwing the hole away is cheaper\nthan a second round trip: this module works out where those holes are.\n\nThe bound is `max_gap` (1 MiB by default), applied per join, so the bytes read\nand discarded are at most `max_gap` times the number of joins — never more than\nthe caller asked for plus that.\n\nThis module deliberately knows nothing about transports; `fileio` and `httpio`\nexecute the plan.",
+   "aliases": [
+    {
+     "name": "DEFAULT_COALESCE_GAP",
+     "value": "1048576",
+     "summary": "Holes up to this size are read and discarded rather than skipped. A MiB is roughly where a loopback round trip stops being cheaper than the bytes; over a real network the crossover is much higher, so this is the conservative end."
+    }
+   ],
+   "structs": [
+    {
+     "name": "ByteRange",
+     "signature": "struct ByteRange",
+     "summary": "`length` bytes starting at `offset`.",
+     "description": "A negative `offset` means what it means to `read_range` — a suffix range,\n\"the last `length` bytes\" — and is never coalesced, because where it lands\nis not known until the length is.",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "offset",
+       "type": "Int"
+      },
+      {
+       "name": "length",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "end",
+       "overloads": [
+        {
+         "signature": "def end(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "CoalescedPlan",
+     "signature": "struct CoalescedPlan",
+     "summary": "How to answer `n` ranges with `len(fetches)` requests.",
+     "description": "For each input range `i`: `group[i]` is the fetch it comes from, or -1 if\nit has to be read on its own (a suffix or empty range), and `group_offset[i]`\nis where inside that fetch its bytes begin.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "fetches",
+       "type": "List[ByteRange]"
+      },
+      {
+       "name": "group",
+       "type": "List[Int]"
+      },
+      {
+       "name": "group_offset",
+       "type": "List[Int]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "requests_saved",
+       "overloads": [
+        {
+         "signature": "def requests_saved(self, asked: Int) -> Int"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "traits": [
+    {
+     "name": "RangeReader",
+     "summary": "The one method coalescing needs. `InputFile` is a superset.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "read_range",
+       "overloads": [
+        {
+         "signature": "def read_range(self, offset: Int, length: Int) -> List[UInt8]"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "plan_ranges",
+     "overloads": [
+      {
+       "signature": "def plan_ranges(ranges: List[ByteRange], max_gap: Int = Int(1048576)) -> CoalescedPlan",
+       "summary": "Groups ranges that are adjacent, overlapping, or `max_gap` apart.",
+       "description": "The input order is preserved in the result — a caller that asked for the\nfooter last still gets the footer last — and ranges are sorted internally\nonly to find the groups."
+      }
+     ]
+    },
+    {
+     "name": "read_ranges_coalesced",
+     "overloads": [
+      {
+       "signature": "def read_ranges_coalesced[T: RangeReader](reader: T, ranges: List[ByteRange], max_gap: Int = Int(1048576)) -> List[List[UInt8]]",
+       "summary": "Fetches the plan's groups one by one and slices the caller's ranges back out. Backends that can fetch groups at once do that instead and call `assemble`."
+      }
+     ]
+    },
+    {
+     "name": "assemble",
+     "overloads": [
+      {
+       "signature": "def assemble[T: RangeReader](reader: T, plan: CoalescedPlan, ranges: List[ByteRange], var buffers: List[List[UInt8]]) -> List[List[UInt8]]",
+       "summary": "The caller's ranges, in order, cut from `buffers` (one per fetch of `plan`). A range a fetch answers exactly gets that buffer, uncopied; a suffix or empty range, which no fetch covers, is read on its own."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "objectstore.s3",
+   "summary": "`objectstore.s3` — an S3 client over `HttpClient`, signed with SigV4.",
+   "description": "Covers what an Iceberg reader and writer actually issue: `GetObject` (with\n`Range`, because a Parquet reader wants the footer before anything else),\n`PutObject` (multipart above a threshold), `HeadObject`, `DeleteObject` and a\npaginated `ListObjectsV2`.\n\nAddressing works both ways. Virtual-host style (`bucket.s3.region.amazonaws.com`)\nis what AWS prefers; path style (`endpoint/bucket/key`) is what MinIO, Ceph and\nmost S3-compatible servers default to, and what a bucket name with dots forces\neven on AWS. `S3Config.path_style` picks, and a custom `endpoint` makes this\nwork against MinIO, R2 or anything else that speaks the protocol.\n\nCredentials come from five places, in the order a caller should expect:\nexplicit properties, the `AWS_*` environment, the **EC2 instance role**\n(IMDSv2, when neither of those set a key and no custom endpoint is\nconfigured), REST-catalog **vended credentials** (which are just properties\nunder a location prefix — see `fileio.FileIOResolver`), and presigned URLs,\nwhich carry the signature in the query string and need no credentials at the\npoint of use at all.\n\nThe instance role is what AWS SDKs fall back to as well. The shim does the\nlookup and caches it for the process, \"not on EC2\" included, until five\nminutes before the credentials expire. `AWS_EC2_METADATA_DISABLED=true` turns\nit off and `AWS_EC2_METADATA_SERVICE_ENDPOINT` points it elsewhere. From a\ncontainer, the instance's metadata hop limit must be at least 2.",
+   "aliases": [
+    {
+     "name": "SERVICE",
+     "value": "String(\"s3\")"
+    },
+    {
+     "name": "DEFAULT_REGION",
+     "value": "String(\"us-east-1\")"
+    },
+    {
+     "name": "MIN_PART_SIZE",
+     "value": "5242880",
+     "summary": "S3's floor for every part but the last. Not a suggestion: a smaller part is rejected at `CompleteMultipartUpload`, after the bytes have been sent."
+    },
+    {
+     "name": "DEFAULT_PART_SIZE",
+     "value": "8388608",
+     "summary": "Big enough that a 5 GB object stays inside the 10 000-part limit with room to spare, small enough that a failed part is cheap to resend."
+    }
+   ],
+   "structs": [
+    {
+     "name": "S3Credentials",
+     "signature": "struct S3Credentials",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "access_key_id",
+       "type": "String"
+      },
+      {
+       "name": "secret_access_key",
+       "type": "String"
+      },
+      {
+       "name": "session_token",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "is_set",
+       "overloads": [
+        {
+         "signature": "def is_set(self) -> Bool"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "S3Config",
+     "signature": "struct S3Config",
+     "summary": "Everything needed to address and sign against one S3 endpoint.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "endpoint",
+       "type": "String",
+       "summary": "`https://minio.local:9000`, or `\"\"` for the AWS regional endpoint."
+      },
+      {
+       "name": "region",
+       "type": "String"
+      },
+      {
+       "name": "path_style",
+       "type": "Bool"
+      },
+      {
+       "name": "credentials",
+       "type": "S3Credentials"
+      },
+      {
+       "name": "sign_payload",
+       "type": "Bool",
+       "summary": "When false, `PUT` bodies are signed as `UNSIGNED-PAYLOAD` — a real option for a large object over TLS, where hashing the payload twice is pure overhead. Set from the `s3.unsigned-payload` property; default on, since dropping it also drops the guarantee that what S3 stored is what was signed."
+      },
+      {
+       "name": "anonymous",
+       "type": "Bool",
+       "summary": "Skip signing entirely: public buckets, and presigned URLs, need no credentials and are rejected by some servers if signed anyway."
+      },
+      {
+       "name": "multipart_threshold",
+       "type": "Int",
+       "summary": "Objects larger than this go up as a multipart upload. 0 disables multipart entirely, which is the 0.1.x behaviour and still correct up to S3's 5 GB single-`PUT` ceiling."
+      },
+      {
+       "name": "multipart_part_size",
+       "type": "Int",
+       "summary": "Bytes per part, clamped up to S3's 5 MiB floor."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        },
+        {
+         "signature": "def __init__(out self, var endpoint: String, var region: String, path_style: Bool, var credentials: S3Credentials, sign_payload: Bool = True, anonymous: Bool = False, multipart_threshold: Int = Int(8388608), multipart_part_size: Int = Int(8388608))"
+        }
+       ]
+      },
+      {
+       "name": "from_env",
+       "overloads": [
+        {
+         "signature": "def from_env() -> Self",
+         "summary": "The standard `AWS_*` variables, plus `AWS_ENDPOINT_URL[_S3]`."
+        }
+       ]
+      },
+      {
+       "name": "from_properties",
+       "overloads": [
+        {
+         "signature": "def from_properties(props: Dict[String, String]) -> Self",
+         "summary": "Iceberg property names, which is what a REST catalog hands back.",
+         "description": "Recognised: `s3.endpoint`, `s3.access-key-id`, `s3.secret-access-key`,\n`s3.session-token`, `s3.region`, `s3.path-style-access`,\n`s3.multipart.part-size-bytes` (Iceberg's own name and units),\n`client.region` as a fallback for the region, and\n`s3.unsigned-payload`.\n\nIceberg's `s3.multipart.threshold` is a *factor* of the part size\nexpressed as a decimal, which needs a float parser this module does\nnot have; the threshold follows the part size instead, and\n`S3Config.multipart_threshold` sets it directly."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ObjectInfo",
+     "signature": "struct ObjectInfo",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "key",
+       "type": "String"
+      },
+      {
+       "name": "size",
+       "type": "Int"
+      },
+      {
+       "name": "last_modified",
+       "type": "String"
+      },
+      {
+       "name": "etag",
+       "type": "String"
+      }
+     ]
+    },
+    {
+     "name": "ListResult",
+     "signature": "struct ListResult",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "objects",
+       "type": "List[ObjectInfo]"
+      },
+      {
+       "name": "common_prefixes",
+       "type": "List[String]"
+      },
+      {
+       "name": "is_truncated",
+       "type": "Bool"
+      },
+      {
+       "name": "next_continuation_token",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "S3Client",
+     "signature": "struct S3Client",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "config",
+       "type": "S3Config"
+      },
+      {
+       "name": "http",
+       "type": "HttpClient"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var config: S3Config)"
+        },
+        {
+         "signature": "def __init__(out self, var config: S3Config, var http: HttpClient)"
+        }
+       ]
+      },
+      {
+       "name": "set_max_retries",
+       "overloads": [
+        {
+         "signature": "def set_max_retries(mut self, n: Int)",
+         "summary": "Retries per request; 3 by default, 0 to disable.",
+         "description": "The full policy — backoff window, ceiling, whether a non-idempotent\nrequest may be repeated — is `self.http.retry`. S3 needs this more\nthan most callers do: `SlowDown` is how a bucket says \"you are going\ntoo fast\", and it arrives at exactly the moment a scan is issuing its\nhundredth range read."
+        }
+       ]
+      },
+      {
+       "name": "url_for",
+       "overloads": [
+        {
+         "signature": "def url_for(self, bucket: String, key: String) -> Tuple[String, String, String]",
+         "summary": "Returns `(url, host header value, signing path)`.",
+         "description": "The signing path is the request target *before* the query string, and\nit must match byte for byte what the server reconstructs — hence\nbuilding it here rather than re-deriving it from the URL later."
+        }
+       ]
+      },
+      {
+       "name": "request",
+       "overloads": [
+        {
+         "signature": "def request(self, method: String, bucket: String, key: String, params: List[QueryParam] = List(), body: Span[UInt8] = Span(), extra_headers: List[Header] = List(), range_start: Int = Int(-1), range_end: Int = Int(-1)) -> Response"
+        }
+       ]
+      },
+      {
+       "name": "get_object",
+       "overloads": [
+        {
+         "signature": "def get_object(self, bucket: String, key: String, range_start: Int = Int(-1), range_end: Int = Int(-1)) -> List[UInt8]",
+         "summary": "Whole object, or the inclusive byte range `[start, end]`."
+        }
+       ]
+      },
+      {
+       "name": "signed_get",
+       "overloads": [
+        {
+         "signature": "def signed_get(self, bucket: String, key: String, range_start: Int = Int(-1), range_end: Int = Int(-1)) -> BatchRequest",
+         "summary": "A signed `GET` of the object or the inclusive range `[start, end]`, to send in a batch."
+        }
+       ]
+      },
+      {
+       "name": "get_many",
+       "overloads": [
+        {
+         "signature": "def get_many(self, reqs: List[BatchRequest], what: List[String]) -> List[List[UInt8]]",
+         "summary": "Runs signed `GET`s at once; raises naming `what[i]` for the first that failed."
+        }
+       ]
+      },
+      {
+       "name": "get_ranges",
+       "overloads": [
+        {
+         "signature": "def get_ranges(self, bucket: String, key: String, ranges: List[Tuple[Int, Int]]) -> List[List[UInt8]]",
+         "summary": "Several inclusive byte ranges `(start, end)` of one object, fetched at once."
+        }
+       ]
+      },
+      {
+       "name": "head_object",
+       "overloads": [
+        {
+         "signature": "def head_object(self, bucket: String, key: String) -> Response"
+        }
+       ]
+      },
+      {
+       "name": "object_length",
+       "overloads": [
+        {
+         "signature": "def object_length(self, bucket: String, key: String) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "object_exists",
+       "overloads": [
+        {
+         "signature": "def object_exists(self, bucket: String, key: String) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "put_object",
+       "overloads": [
+        {
+         "signature": "def put_object(self, bucket: String, key: String, body: Span[UInt8], content_type: String = \"\")",
+         "summary": "Stores the object, as one `PUT` or as a multipart upload.",
+         "description": "The switch is `S3Config.multipart_threshold`. Nothing about the call\nchanges: `AnyOutputFile.overwrite` and `FileIOResolver.write` get\nmultipart for free, which is the point — a Parquet writer should not\nhave to know how big its own output turned out to be."
+        }
+       ]
+      },
+      {
+       "name": "create_multipart_upload",
+       "overloads": [
+        {
+         "signature": "def create_multipart_upload(self, bucket: String, key: String, content_type: String = \"\") -> String",
+         "summary": "`POST /key?uploads` — returns the upload id."
+        }
+       ]
+      },
+      {
+       "name": "upload_part",
+       "overloads": [
+        {
+         "signature": "def upload_part(self, bucket: String, key: String, upload_id: String, part_number: Int, body: Span[UInt8]) -> String",
+         "summary": "`PUT /key?partNumber=N&uploadId=…` — returns the part's ETag.",
+         "description": "Signed like any other request, so every part pays its own SigV4; with\n`sign_payload = False` it pays `UNSIGNED-PAYLOAD` instead, which for a\nmulti-hundred-megabyte object over TLS is the difference between\nhashing the data twice and hashing it once."
+        }
+       ]
+      },
+      {
+       "name": "complete_multipart_upload",
+       "overloads": [
+        {
+         "signature": "def complete_multipart_upload(self, bucket: String, key: String, upload_id: String, etags: List[String])",
+         "summary": "`POST /key?uploadId=…` with the part list, in order."
+        }
+       ]
+      },
+      {
+       "name": "abort_multipart_upload",
+       "overloads": [
+        {
+         "signature": "def abort_multipart_upload(self, bucket: String, key: String, upload_id: String)",
+         "summary": "`DELETE /key?uploadId=…`. Unaborted parts are billed until a lifecycle rule collects them, so this runs on every failure path."
+        }
+       ]
+      },
+      {
+       "name": "put_object_multipart",
+       "overloads": [
+        {
+         "signature": "def put_object_multipart(self, bucket: String, key: String, body: Span[UInt8], content_type: String = \"\")",
+         "summary": "Create, upload each part, complete — aborting if anything fails.",
+         "description": "Parts are `Span` slices of the caller's buffer, so the object is never\nheld twice: peak memory is the caller's own bytes plus one part's\nworth of SigV4 hashing state."
+        }
+       ]
+      },
+      {
+       "name": "delete_object",
+       "overloads": [
+        {
+         "signature": "def delete_object(self, bucket: String, key: String)"
+        }
+       ]
+      },
+      {
+       "name": "list_objects_v2",
+       "overloads": [
+        {
+         "signature": "def list_objects_v2(self, bucket: String, prefix: String = \"\", delimiter: String = \"\", max_keys: Int = Int(0), continuation_token: String = \"\") -> ListResult",
+         "summary": "One page of `ListObjectsV2`. See `list_all` for every page."
+        }
+       ]
+      },
+      {
+       "name": "list_all",
+       "overloads": [
+        {
+         "signature": "def list_all(self, bucket: String, prefix: String = \"\", delimiter: String = \"\") -> ListResult",
+         "summary": "Every page, concatenated. Bounded at 10 000 requests so a server that keeps handing back the same token cannot spin forever."
+        }
+       ]
+      },
+      {
+       "name": "presign_get",
+       "overloads": [
+        {
+         "signature": "def presign_get(self, bucket: String, key: String, expires_seconds: Int = Int(3600)) -> String",
+         "summary": "A URL that grants `GET` on one object for `expires_seconds`.",
+         "description": "Everything travels in the query string, so the holder needs no\ncredentials — which is the whole point, and why `HttpClient` keeps\nredirects off: re-issuing a signed URL elsewhere would leak it."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "instance_credentials",
+     "overloads": [
+      {
+       "signature": "def instance_credentials() -> Optional[S3Credentials]",
+       "summary": "The EC2 instance role's credentials, or `None` off EC2, without a role, or with `AWS_EC2_METADATA_DISABLED=true`."
+      }
+     ]
+    },
+    {
+     "name": "xml_unescape",
+     "overloads": [
+      {
+       "signature": "def xml_unescape(s: String) -> String"
+      }
+     ]
+    },
+    {
+     "name": "xml_escape",
+     "overloads": [
+      {
+       "signature": "def xml_escape(s: String) -> String",
+       "summary": "The three characters that cannot appear in element text.",
+       "description": "Only `CompleteMultipartUpload` needs this, and only for an ETag, which in\npractice is hex — but an ETag is server-chosen and this document decides\nwhether a 40 MB upload lands."
+      }
+     ]
+    },
+    {
+     "name": "xml_element",
+     "overloads": [
+      {
+       "signature": "def xml_element(body: String, tag: String, start: Int = Int(0)) -> Int",
+       "summary": "Byte offset of `<tag>`'s content, or -1. Feeds `xml_text`."
+      }
+     ]
+    },
+    {
+     "name": "xml_text",
+     "overloads": [
+      {
+       "signature": "def xml_text(body: String, tag: String, start: Int = Int(0)) -> String",
+       "summary": "The text of the first `<tag>` at or after `start`; `\"\"` if absent."
+      }
+     ]
+    },
+    {
+     "name": "xml_blocks",
+     "overloads": [
+      {
+       "signature": "def xml_blocks(body: String, tag: String) -> List[String]",
+       "summary": "Every `<tag>` … `</tag>` body, in document order."
+      }
+     ]
+    },
+    {
+     "name": "parse_list_objects",
+     "overloads": [
+      {
+       "signature": "def parse_list_objects(body: String) -> ListResult"
+      }
+     ]
+    },
+    {
+     "name": "s3_error_message",
+     "overloads": [
+      {
+       "signature": "def s3_error_message(resp: Response) -> String",
+       "summary": "`<Error><Code>…</Code><Message>…</Message></Error>` if that is what came back, else the first bytes of whatever did."
+      }
+     ]
+    },
+    {
+     "name": "split_s3_uri",
+     "overloads": [
+      {
+       "signature": "def split_s3_uri(location: String) -> Tuple[String, String]",
+       "summary": "`s3://bucket/a/b` -> `(\"bucket\", \"a/b\")`.",
+       "description": "`s3a://` and `s3n://` (the Hadoop schemes, still common in older Iceberg\nmetadata) address the same objects and are accepted here."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "objectstore.sigv4",
+   "summary": "`objectstore.sigv4` — AWS Signature Version 4, header and query flavours.",
+   "description": "Split out of `s3` because it is pure string algebra over `crypto`: given a\nmethod, a path, query parameters, headers and a payload hash it produces the\ncanonical request, the string to sign, and the signature. That shape is what\nmakes it testable against the published `aws-sig-v4-test-suite` vectors\nwithout a network or an S3 server anywhere in the picture.\n\nTwo callers use it: `S3Client`, which signs with an `Authorization` header,\nand `presign_url`, which moves the same material into the query string so a\nURL can be handed to something that knows nothing about AWS.",
+   "aliases": [
+    {
+     "name": "ALGORITHM",
+     "value": "String(\"AWS4-HMAC-SHA256\")"
+    },
+    {
+     "name": "UNSIGNED_PAYLOAD",
+     "value": "String(\"UNSIGNED-PAYLOAD\")"
+    },
+    {
+     "name": "EMPTY_SHA256",
+     "value": "String(\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\")",
+     "summary": "SHA-256 of the empty string — the payload hash of every bodyless request."
+    }
+   ],
+   "structs": [
+    {
+     "name": "QueryParam",
+     "signature": "struct QueryParam",
+     "summary": "One query parameter, **unencoded**. Signing encodes it.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "value",
+       "type": "String"
+      }
+     ]
+    },
+    {
+     "name": "AmzTime",
+     "signature": "struct AmzTime",
+     "summary": "A signing timestamp in the two forms SigV4 needs.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "amz_date",
+       "type": "String",
+       "summary": "`20150830T123600Z` — the `X-Amz-Date` header value."
+      },
+      {
+       "name": "date_stamp",
+       "type": "String",
+       "summary": "`20150830` — the date half of the credential scope."
+      }
+     ],
+     "functions": [
+      {
+       "name": "from_epoch",
+       "overloads": [
+        {
+         "signature": "def from_epoch(epoch: Int) -> Self",
+         "summary": "UTC calendar date from a Unix timestamp.",
+         "description": "Days-to-civil from Howard Hinnant's `chrono`-compatible algorithm: it\nshifts the era so that leap days land at the end, which makes the\nwhole conversion branch-free integer arithmetic. Mojo has no calendar\nlibrary, and re-deriving this is cheaper than another FFI call."
+        }
+       ]
+      },
+      {
+       "name": "now",
+       "overloads": [
+        {
+         "signature": "def now() -> Self"
+        }
+       ]
+      },
+      {
+       "name": "from_amz_date",
+       "overloads": [
+        {
+         "signature": "def from_amz_date(amz_date: String) -> Self",
+         "summary": "Reuses an `X-Amz-Date` value the caller already has (the test vectors, or a retried request that must keep its timestamp)."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "SignedRequest",
+     "signature": "struct SignedRequest",
+     "summary": "Everything a signing pass produced, so tests can check each stage.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "canonical_request",
+       "type": "String"
+      },
+      {
+       "name": "string_to_sign",
+       "type": "String"
+      },
+      {
+       "name": "signature",
+       "type": "String"
+      },
+      {
+       "name": "signed_headers",
+       "type": "String"
+      },
+      {
+       "name": "authorization",
+       "type": "String"
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "epoch_now",
+     "overloads": [
+      {
+       "signature": "def epoch_now() -> Int",
+       "summary": "Seconds since the Unix epoch, via the FFI shim.",
+       "description": "Mojo's `std.time` offers only a monotonic clock, and SigV4 needs a real\nUTC timestamp — AWS rejects requests more than 15 minutes out of skew."
+      }
+     ]
+    },
+    {
+     "name": "canonical_path",
+     "overloads": [
+      {
+       "signature": "def canonical_path(path: String, normalize: Bool = False) -> String",
+       "summary": "The canonical URI: each segment percent-encoded once, `/` left alone.",
+       "description": "`normalize` collapses `.`/`..` and duplicate slashes, which is what every\nAWS service except S3 wants. **S3 signs the un-normalized path** — an S3\nkey may legitimately contain a literal `..` segment — so the S3 client\nleaves this off."
+      }
+     ]
+    },
+    {
+     "name": "canonical_query",
+     "overloads": [
+      {
+       "signature": "def canonical_query(params: List[QueryParam]) -> String",
+       "summary": "Encoded `k=v` pairs sorted by encoded name, then encoded value."
+      }
+     ]
+    },
+    {
+     "name": "canonical_headers",
+     "overloads": [
+      {
+       "signature": "def canonical_headers(headers: List[Header]) -> Tuple[String, String]",
+       "summary": "Returns `(canonical header block, signed header list)`.",
+       "description": "Names are lowercased and sorted; repeated names are joined with commas in\nthe order they appeared, per the SigV4 spec."
+      }
+     ]
+    },
+    {
+     "name": "canonical_request",
+     "overloads": [
+      {
+       "signature": "def canonical_request(method: String, path: String, params: List[QueryParam], headers: List[Header], payload_hash: String, normalize: Bool = False) -> Tuple[String, String]",
+       "summary": "Returns `(canonical request, signed headers)`."
+      }
+     ]
+    },
+    {
+     "name": "credential_scope",
+     "overloads": [
+      {
+       "signature": "def credential_scope(date_stamp: String, region: String, service: String) -> String"
+      }
+     ]
+    },
+    {
+     "name": "string_to_sign",
+     "overloads": [
+      {
+       "signature": "def string_to_sign(amz_date: String, scope: String, canonical_req: String) -> String"
+      }
+     ]
+    },
+    {
+     "name": "signing_key",
+     "overloads": [
+      {
+       "signature": "def signing_key(secret_key: String, date_stamp: String, region: String, service: String) -> List[UInt8]",
+       "summary": "The four-step HMAC ladder: date, region, service, `aws4_request`."
+      }
+     ]
+    },
+    {
+     "name": "sign",
+     "overloads": [
+      {
+       "signature": "def sign(secret_key: String, date_stamp: String, region: String, service: String, to_sign: String) -> String"
+      }
+     ]
+    },
+    {
+     "name": "sign_request",
+     "overloads": [
+      {
+       "signature": "def sign_request(method: String, path: String, params: List[QueryParam], headers: List[Header], payload_hash: String, access_key: String, secret_key: String, region: String, service: String, when: AmzTime, normalize: Bool = False) -> SignedRequest",
+       "summary": "Header-flavoured SigV4.",
+       "description": "`headers` must already contain `host`, `x-amz-date` and, when a session\ntoken is in play, `x-amz-security-token`: which headers are signed is the\ncaller's decision, and S3 in particular insists that\n`x-amz-content-sha256` be among them."
+      }
+     ]
+    },
+    {
+     "name": "presign_query",
+     "overloads": [
+      {
+       "signature": "def presign_query(method: String, path: String, params: List[QueryParam], headers: List[Header], access_key: String, secret_key: String, session_token: String, region: String, service: String, when: AmzTime, expires_seconds: Int, normalize: Bool = False) -> String",
+       "summary": "Query-flavoured SigV4: returns the full canonical query string, `X-Amz-Signature` included.",
+       "description": "The payload hash for a presigned URL is `UNSIGNED-PAYLOAD`: the point of\npresigning is that whoever follows the URL never sees the credentials, so\nthey cannot be expected to hash a body the signer never had."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

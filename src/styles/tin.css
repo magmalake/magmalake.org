@@ -136,3 +136,63 @@
 }
 .tp__docs-more { color: var(--text-muted); font-size: 0.9375rem; }
 
+
+/* The API reference (/s/<tin>/api), from src/components/ApiModule.astro. */
+.api__from { color: var(--text-muted); font-size: 0.9375rem; max-width: 72ch; margin: 0 0 1.5rem; }
+.api__title code { font-size: 0.85em; overflow-wrap: anywhere; }
+.api__lead { font-size: 1.0625rem; }
+.api__doc { max-width: 72ch; line-height: 1.65; }
+.api__doc p { margin: 0 0 0.8rem; }
+.api__doc pre,
+.api__sig {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.9rem;
+  overflow-x: auto;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  margin: 0 0 0.8rem;
+}
+.api__sig code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.api__toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 1.5rem 0 0;
+  padding: 0.9rem 0;
+  border-block: 1px solid var(--rule);
+  font-size: 0.8125rem;
+}
+.api__toc a { text-decoration: none; }
+.api__group { margin-top: 2.5rem; }
+.api__group > h2 { font-size: 1.3rem; margin: 0 0 1rem; }
+.api__item {
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--rule);
+  scroll-margin-top: 5rem;
+}
+.api__item h3 { font-size: 1.05rem; margin: 0 0 0.6rem; overflow-wrap: anywhere; }
+.api__member { margin: 1.25rem 0 0 0; padding-left: 1rem; border-left: 2px solid var(--rule); scroll-margin-top: 5rem; }
+.api__member h4 { font-size: 0.95rem; margin: 0 0 0.5rem; }
+.api__overload + .api__overload { margin-top: 1rem; }
+.api__dl { margin: 0 0 0.8rem; font-size: 0.9rem; max-width: 72ch; }
+.api__dl-head,
+.api__note span:first-child {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.api__dl dd { margin: 0.2rem 0 0 0; }
+.api__note { font-size: 0.9rem; margin: 0 0 0.5rem; max-width: 72ch; }
+.api__traits { font-size: 0.85rem; color: var(--text-muted); margin: 0 0 0.8rem; }
+.api__mods { list-style: none; margin: 0; padding: 0; }
+.api__mods li { padding: 0.6rem 0; border-top: 1px solid var(--rule); }
+.api__mods a { font-weight: 600; text-decoration: none; }
+.api__mods a:hover { text-decoration: underline; }
+.api__mod-sum { display: block; color: var(--text-muted); font-size: 0.9rem; margin-top: 0.15rem; }
+.api__mod-size { display: block; color: var(--text-faint); font-size: 0.78rem; margin-top: 0.1rem; }
+.api__doc + .api__doc { margin-top: 0.6rem; }
+.api__dl { margin-top: 0.9rem; }

@@ -1,0 +1,2968 @@
+{
+ "tin": "parquet",
+ "version": "0.11.7",
+ "rev": "c15f51aee06ccf73102810e7de143745abba6c90",
+ "package": "parquet",
+ "path": "src/parquet",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "`parquet.mojo` — Apache Parquet in pure Mojo.",
+ "description": "Part of magmalake: data lake building blocks in Mojo.\n\n```mojo\nfrom parquet import ParquetReader\n\nvar r = ParquetReader.open(\"part-0.parquet\")\nvar t = r.read_table()\nfor i in range(t.num_columns()):\n    print(t.name(i), String(t.type(i)))\n```\n\nThe Arrow side — `ArrayData`, `ArrayArena`, `RecordBatch` and the C Data\nInterface — is `arrow-mlake.mojo`, and is re-exported here so that\n`from parquet.arrow import ArrayData` and `from parquet import RecordBatch`\nkeep resolving. Metadata comes from `thrift.mojo`, page CRC32s from\n`hashes.mojo`, Snappy from `snappy.mojo` and the DEFLATE half of GZIP from\n`deflate.mojo` — all pure Mojo and all consumed by source path. `ZSTD` and\n`LZ4` need `parquet_full`, which pulls in the two FFI tins.",
+ "modules": [
+  {
+   "path": "parquet",
+   "summary": "`parquet.mojo` — Apache Parquet in pure Mojo.",
+   "description": "Part of magmalake: data lake building blocks in Mojo.\n\n```mojo\nfrom parquet import ParquetReader\n\nvar r = ParquetReader.open(\"part-0.parquet\")\nvar t = r.read_table()\nfor i in range(t.num_columns()):\n    print(t.name(i), String(t.type(i)))\n```\n\nThe Arrow side — `ArrayData`, `ArrayArena`, `RecordBatch` and the C Data\nInterface — is `arrow-mlake.mojo`, and is re-exported here so that\n`from parquet.arrow import ArrayData` and `from parquet import RecordBatch`\nkeep resolving. Metadata comes from `thrift.mojo`, page CRC32s from\n`hashes.mojo`, Snappy from `snappy.mojo` and the DEFLATE half of GZIP from\n`deflate.mojo` — all pure Mojo and all consumed by source path. `ZSTD` and\n`LZ4` need `parquet_full`, which pulls in the two FFI tins."
+  },
+  {
+   "path": "parquet.alp",
+   "summary": "ALP — Adaptive Lossless floating-Point, Parquet encoding 10.",
+   "description": "From \"ALP: Adaptive Lossless floating-Point Compression\" (Afroozeh, Kuffo and\nBoncz, SIGMOD 2024), specified for Parquet in `AlpEncoding.md`.\n\nThe idea is that most floating-point data in the wild is decimal in origin —\nprices, sensor readings, coordinates — so `v * 10^e / 10^f` lands exactly on an\ninteger for some small `e` and `f`. Those integers are then frame-of-reference\nencoded and bit-packed, which is far denser than the original mantissas. Values\nthat do not survive the round trip are stored verbatim as exceptions, so the\nencoding stays lossless whatever the input.\n\nA page is a 7-byte header, an offset array, then independent vectors:\n\n```text\ncompression_mode : u8      0 = ALP\ninteger_encoding : u8      0 = frame of reference + bit-packing\nlog_vector_size  : u8      log2 of the values per vector, 3..15\nnum_elements     : i32 LE  values in the page\noffsets          : u32 LE * num_vectors, from the start of the offset array\n```\n\nand each vector is\n\n```text\nexponent         : u8      e\nfactor           : u8      f, <= e\nnum_exceptions   : u16 LE\nframe_of_ref     : i32/i64 LE   4 bytes for FLOAT, 8 for DOUBLE\nbit_width        : u8\npacked           : ceil(n * bit_width / 8) bytes, LSB-first\nexc_positions    : u16 LE * num_exceptions\nexc_values       : the original IEEE 754 values\n```\n\nDecoding one value is `(delta + frame_of_reference) * 10^f / 10^e`, then the\nexceptions are written over the positions they name.",
+   "functions": [
+    {
+     "name": "decode_alp",
+     "overloads": [
+      {
+       "signature": "def decode_alp[dt: DType](data: Span[UInt8], count: Int) -> PhysBuffer",
+       "summary": "Decode an ALP page of `count` FLOAT (`dt=float32`) or DOUBLE values."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "parquet.arrow",
+   "summary": "Compatibility re-export. The Arrow layer lives in `arrow-mlake.mojo` now.",
+   "description": "`ArrayData`, `ArrayArena` and `ArrowType` are Arrow's memory layout, not\nParquet's; they lived here only because this is where they were first needed.\nThey moved to [arrow-mlake.mojo](https://github.com/magmalake/arrow-mlake.mojo)\nwhen `lancedb.mojo` needed the same C Data Interface, since depending on\n`parquet-mojo` for it would have taken a binding with no tin dependencies at\nall to nine, three of them compression codecs it would never call.\n\nThis module exists so that `from parquet.arrow import ArrayData` keeps\nresolving for consumers written before the split. New code should import from\n`arrow_mlake.arrow` directly; this shim will go away when arrow-mlake itself is\nreplaced by [marrow](https://github.com/kszucs/marrow)."
+  },
+  {
+   "path": "parquet.assemble",
+   "summary": "Dremel record assembly: definition and repetition levels back into Arrow.",
+   "description": "Every leaf of a Parquet file carries, for each of its value slots, the\ndefinition level (how deep the path to the value is actually present) and the\nrepetition level (at which level of nesting the value repeats). Those two\nnumbers are enough to rebuild the whole nested structure, and that is what\n`build_field` does — one Arrow array per Arrow field, recursively.\n\nThe key idea is a *presence threshold*. A field is asked to build only the\nslots whose definition level is at least `require_def`, which its parent sets:\n\n* the root asks for `require_def = 0`, so every slot is a row;\n* a `LIST` or `MAP` asks its child for `require_def = elem_def_level`, the\n  definition level at which the repeated group actually has an entry — so the\n  child array comes back already containing exactly the list's elements, with\n  the empty and null containers dropped;\n* a `STRUCT` passes its own threshold straight through, because a struct does\n  not change granularity.\n\nLevels come from the field's first descendant leaf. Every leaf under a field\nagrees about the levels at and above that field, so any one of them will do —\nwhich is what makes it possible to build a struct's children independently and\nstill have them line up.",
+   "structs": [
+    {
+     "name": "LeafSlice",
+     "signature": "struct LeafSlice",
+     "summary": "The slot range of one leaf that a batch covers, and where its values start in the chunk's value buffer.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "s0",
+       "type": "Int"
+      },
+      {
+       "name": "s1",
+       "type": "Int"
+      },
+      {
+       "name": "v0",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "first_leaf",
+     "overloads": [
+      {
+       "signature": "def first_leaf(s: ParquetSchema, fi: Int) -> Int",
+       "summary": "The first descendant leaf of Arrow field `fi` — its level source."
+      }
+     ]
+    },
+    {
+     "name": "first_included_leaf",
+     "overloads": [
+      {
+       "signature": "def first_included_leaf(s: ParquetSchema, fi: Int, include: List[Bool]) -> Int",
+       "summary": "`first_leaf`, restricted to the fields `include` selects.",
+       "description": "A pruned read skips whole sub-trees, so the level source of a struct can no\nlonger be its first child: it has to be the first child actually being\nbuilt. Every leaf under a field agrees about the levels at and above that\nfield, so any included one will do."
+      }
+     ]
+    },
+    {
+     "name": "build_field",
+     "overloads": [
+      {
+       "signature": "def build_field(s: ParquetSchema, fi: Int, require_def: Int, chunks: List[ColumnData], slices: List[LeafSlice], mut arena: ArrayArena, include: List[Bool]) -> Int",
+       "summary": "Build the Arrow array for field `fi`; return its index in `arena`.",
+       "description": "`include`, when it is not empty, is one flag per entry of `s.fields`: a\nstruct builds only the children it selects, so a projection that wants\n`a.b` and nothing else decodes exactly the leaves under `a.b`. A list and\na map always build their element (and a map its key), because their\noffsets mean nothing without one."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "parquet.bitio",
+   "summary": "Bit-level readers: little-endian bit packing and the RLE/bit-packed hybrid.",
+   "description": "Parquet packs small integers two ways, and both are here:\n\n* **bit packing** — values of a fixed bit width laid down least-significant\n  bit first, running across byte boundaries. This is the packing used inside\n  a hybrid run and inside a `DELTA_BINARY_PACKED` miniblock. (It is *not* the\n  `BIT_PACKED` legacy level encoding, which packs most-significant bit first;\n  that one has its own reader below.)\n* **the RLE/bit-packed hybrid** — a sequence of runs, each either a repeated\n  value or a block of bit-packed values, introduced by a ULEB128 header.\n  Definition levels, repetition levels, dictionary indices and `RLE`-encoded\n  booleans are all this.\n\nEverything is bounds checked: a truncated buffer, a run that claims more\nvalues than remain, or a bit width above 64 raises rather than reading past\nthe end of the span.",
+   "aliases": [
+    {
+     "name": "HYBRID_BLOCK",
+     "value": "1024",
+     "summary": "How many values `HybridRuns.next_block` hands out at a time.",
+     "description": "Four kilobytes of `UInt32` scratch, which stays in L1 between the decode and\nwhatever consumes it. parquet-cpp's `ProcessValues` and arrow-rs's\n`RleDecoder::get_batch_with_dict` both use exactly 1024. It has to be a\nmultiple of eight, for the reason `next_block` gives."
+    }
+   ],
+   "structs": [
+    {
+     "name": "BitReader",
+     "signature": "struct BitReader[origin: ImmOrigin]",
+     "summary": "Reads little-endian bit-packed values out of a borrowed span.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "data",
+       "type": "Span[UInt8, origin]"
+      },
+      {
+       "name": "bit_pos",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, data: Span[UInt8, origin])"
+        }
+       ]
+      },
+      {
+       "name": "byte_pos",
+       "overloads": [
+        {
+         "signature": "def byte_pos(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "align",
+       "overloads": [
+        {
+         "signature": "def align(mut self)"
+        }
+       ]
+      },
+      {
+       "name": "get",
+       "overloads": [
+        {
+         "signature": "def get(mut self, width: Int) -> UInt64",
+         "summary": "Read one value of `width` bits, least-significant bit first."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "HybridRuns",
+     "signature": "struct HybridRuns[origin: ImmOrigin]",
+     "summary": "An RLE/bit-packed hybrid stream, read a block at a time.",
+     "description": "`decode_hybrid_into` materialises the whole stream. A consumer that reads\neach value once and then throws it away — the dictionary gather — pays for\nthat array twice, once written and once read straight back, and pays for\nthe allocation under it. This hands the same values out in blocks of\n`HYBRID_BLOCK` into a scratch buffer the caller reuses.\n\nEvery run header, bit width and length is validated exactly as\n`decode_hybrid_into` validates it, with the same errors.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "data",
+       "type": "Span[UInt8, origin]"
+      },
+      {
+       "name": "width",
+       "type": "Int"
+      },
+      {
+       "name": "pos",
+       "type": "Int"
+      },
+      {
+       "name": "left",
+       "type": "Int",
+       "summary": "Values still owed to the caller."
+      },
+      {
+       "name": "run_left",
+       "type": "Int",
+       "summary": "Values still to come out of the run in progress."
+      },
+      {
+       "name": "run_value",
+       "type": "UInt64"
+      },
+      {
+       "name": "run_packed",
+       "type": "Bool"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, data: Span[UInt8, origin], width: Int, count: Int)"
+        }
+       ]
+      },
+      {
+       "name": "next_block",
+       "overloads": [
+        {
+         "signature": "def next_block(mut self, mut scratch: List[UInt32]) -> Tuple[Int, Bool]",
+         "summary": "Decode the next values into `scratch[0 : n]`; return `(n, uniform)`.",
+         "description": "`n` is zero once every value asked for has been handed out. `uniform`\nsays the whole block came out of one repeated run, so a consumer that\nhas to validate the values can do it with one comparison instead of a\nscan.\n\n`scratch` must hold at least `HYBRID_BLOCK` values, and a block is that\nmany — a multiple of eight, which is what lets a bit-packed run be\ntaken a block at a time. Eight values of `width` bits are exactly\n`width` bytes, so a block boundary inside a run is still a byte\nboundary; only the very last block of the stream may be shorter, and\nnothing is read after it."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "HybridDecoder",
+     "signature": "struct HybridDecoder[origin: ImmOrigin]",
+     "summary": "The RLE / bit-packed hybrid used for levels, dictionary indices and `RLE` booleans.",
+     "description": "```text\nrun        := bit-packed-run | rle-run\nbit-packed := <ULEB128 (groups << 1 | 1)> <groups * 8 values, bit packed>\nrle-run    := <ULEB128 (count << 1)> <value, ceil(width/8) bytes LE>\n```",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "data",
+       "type": "Span[UInt8, origin]"
+      },
+      {
+       "name": "pos",
+       "type": "Int"
+      },
+      {
+       "name": "width",
+       "type": "Int"
+      },
+      {
+       "name": "buffer",
+       "type": "List[UInt64]"
+      },
+      {
+       "name": "buf_pos",
+       "type": "Int"
+      },
+      {
+       "name": "value",
+       "type": "UInt64"
+      },
+      {
+       "name": "remaining",
+       "type": "Int"
+      },
+      {
+       "name": "is_packed",
+       "type": "Bool"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, data: Span[UInt8, origin], width: Int)"
+        }
+       ]
+      },
+      {
+       "name": "next",
+       "overloads": [
+        {
+         "signature": "def next(mut self) -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "take",
+       "overloads": [
+        {
+         "signature": "def take(mut self, count: Int, mut out: List[UInt64])",
+         "summary": "Append the next `count` values."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "bit_width",
+     "overloads": [
+      {
+       "signature": "def bit_width(max_value: Int) -> Int",
+       "summary": "The number of bits needed to hold `max_value` (0 for 0)."
+      }
+     ]
+    },
+    {
+     "name": "unpack_lsb",
+     "overloads": [
+      {
+       "signature": "def unpack_lsb(data: Span[UInt8], start_byte: Int, width: Int, count: Int, mut out: List[UInt64]) -> Int",
+       "summary": "Append `count` little-endian bit-packed values; return the end byte."
+      }
+     ]
+    },
+    {
+     "name": "unpack_lsb_into",
+     "overloads": [
+      {
+       "signature": "def unpack_lsb_into[dt: DType](data: Span[UInt8], start_byte: Int, width: Int, count: Int, mut out: List[Scalar[dt]], at: Int) -> Int",
+       "summary": "Unpack `count` little-endian bit-packed values of `width` bits into `out[at : at + count]`, which the caller has already sized. Returns the byte just past the run.",
+       "description": "The body of the run is read one *unaligned 64-bit window* per value —\na load, a shift and a mask — which is what makes bit-packed levels and\ndictionary indices cheap. Only the last few values, whose window would\nreach past the end of the buffer, take the byte-at-a-time path."
+      }
+     ]
+    },
+    {
+     "name": "levels_all_equal",
+     "overloads": [
+      {
+       "signature": "def levels_all_equal(data: Span[UInt8], width: Int, count: Int, value: Int) -> Bool",
+       "summary": "Is every one of the next `count` hybrid-encoded levels equal to `value`?",
+       "description": "Only run *headers* are read, so this is O(runs), not O(values). A\nbit-packed run answers `False` without being unpacked: a page whose levels\nare all the maximum is written as RLE runs by every writer in the wild,\nand that is the case worth the fast path."
+      }
+     ]
+    },
+    {
+     "name": "decode_hybrid_into",
+     "overloads": [
+      {
+       "signature": "def decode_hybrid_into[dt: DType](data: Span[UInt8], width: Int, count: Int, mut out: List[Scalar[dt]], at: Int)",
+       "summary": "Decode `count` RLE/bit-packed hybrid values into `out[at : at + count]`, which the caller has already sized.",
+       "description": "Runs are handled whole — a repeated run is a fill, a bit-packed run is one\n`unpack_lsb_into` — so nothing goes through a per-value decoder. This is\nthe hot path for dictionary indices."
+      }
+     ]
+    },
+    {
+     "name": "decode_levels_into",
+     "overloads": [
+      {
+       "signature": "def decode_levels_into(data: Span[UInt8], width: Int, count: Int, max_level: Int, mut out: List[UInt16]) -> Int",
+       "summary": "Append `count` hybrid-encoded levels to `out`; return how many of them equal `max_level`.",
+       "description": "Runs are handled whole: a repeated run is a fill, a bit-packed run is one\n`unpack_lsb_into` call. Nothing goes through a per-value decoder."
+      }
+     ]
+    },
+    {
+     "name": "unpack_msb",
+     "overloads": [
+      {
+       "signature": "def unpack_msb(data: Span[UInt8], start_byte: Int, width: Int, count: Int, mut out: List[UInt64]) -> Int",
+       "summary": "The legacy `BIT_PACKED` level encoding — most-significant bit first."
+      }
+     ]
+    },
+    {
+     "name": "read_uleb128",
+     "overloads": [
+      {
+       "signature": "def read_uleb128(data: Span[UInt8], pos: Int) -> Tuple[UInt64, Int]",
+       "summary": "Decode a ULEB128 at `pos`; return the value and the byte after it."
+      }
+     ]
+    },
+    {
+     "name": "zigzag_decode",
+     "overloads": [
+      {
+       "signature": "def zigzag_decode(u: UInt64) -> Int64",
+       "summary": "Undo zigzag: 0,1,2,3,4 -> 0,-1,1,-2,2."
+      }
+     ]
+    },
+    {
+     "name": "read_zigzag",
+     "overloads": [
+      {
+       "signature": "def read_zigzag(data: Span[UInt8], pos: Int) -> Tuple[Int64, Int]",
+       "summary": "Decode a zigzag ULEB128 at `pos`; return the value and the next byte."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "parquet.bloom",
+   "summary": "Split-block bloom filters — `might_contain` for equality predicates.",
+   "description": "Parquet's bloom filter is the \"split block\" design: the bit set is a sequence\nof 32-byte blocks of eight 32-bit words, a value picks one block from the top\n32 bits of its XXH64 hash, and eight salts turn the bottom 32 bits into one bit\nper word. A value is definitely absent if any of those eight bits is clear.\n\n```mojo\nvar bf = read_bloom_filter(Span(file_bytes), cm)\nif bf and not bf.value().might_contain_string(\"alice\"):\n    ...  # this row group cannot contain it\n```",
+   "aliases": [
+    {
+     "name": "BLOOM_BLOCK_BYTES",
+     "value": "32"
+    },
+    {
+     "name": "SALT0",
+     "value": "UInt32(1203114875)"
+    },
+    {
+     "name": "SALT1",
+     "value": "UInt32(1150766481)"
+    },
+    {
+     "name": "SALT2",
+     "value": "UInt32(2284105051)"
+    },
+    {
+     "name": "SALT3",
+     "value": "UInt32(2729912477)"
+    },
+    {
+     "name": "SALT4",
+     "value": "UInt32(1884591559)"
+    },
+    {
+     "name": "SALT5",
+     "value": "UInt32(770785867)"
+    },
+    {
+     "name": "SALT6",
+     "value": "UInt32(2667333959)"
+    },
+    {
+     "name": "SALT7",
+     "value": "UInt32(1550580529)"
+    }
+   ],
+   "structs": [
+    {
+     "name": "BloomFilter",
+     "signature": "struct BloomFilter",
+     "summary": "One column chunk's split-block bloom filter bit set.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "bits",
+       "type": "List[UInt8]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        },
+        {
+         "signature": "def __init__(out self, var bits: List[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "num_blocks",
+       "overloads": [
+        {
+         "signature": "def num_blocks(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "might_contain_hash",
+       "overloads": [
+        {
+         "signature": "def might_contain_hash(self, hash: UInt64) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "might_contain_bytes",
+       "overloads": [
+        {
+         "signature": "def might_contain_bytes(self, data: Span[UInt8]) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "might_contain_string",
+       "overloads": [
+        {
+         "signature": "def might_contain_string(self, text: StringSpan) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "might_contain_i32",
+       "overloads": [
+        {
+         "signature": "def might_contain_i32(self, v: Int32) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "might_contain_i64",
+       "overloads": [
+        {
+         "signature": "def might_contain_i64(self, v: Int64) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "might_contain_f32",
+       "overloads": [
+        {
+         "signature": "def might_contain_f32(self, v: Float32) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "might_contain_f64",
+       "overloads": [
+        {
+         "signature": "def might_contain_f64(self, v: Float64) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "might_contain",
+       "overloads": [
+        {
+         "signature": "def might_contain(self, value: ScalarValue) -> Bool",
+         "summary": "Hash a `ScalarValue` the way Parquet's PLAIN encoding would."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "read_bloom_filter",
+     "overloads": [
+      {
+       "signature": "def read_bloom_filter(file: Span[UInt8], cm: ColumnMetaData) -> Optional[BloomFilter]",
+       "summary": "Read the bloom filter of one column chunk, or `None` if it has none."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "parquet.carrow",
+   "summary": "Compatibility re-export. The C Data Interface export lives in `arrow-mlake.mojo` now — see `parquet.arrow` for why.",
+   "description": "`from parquet.carrow import export_c` keeps resolving; new code should import\nfrom `arrow_mlake.carrow` directly."
+  },
+  {
+   "path": "parquet.carrow_import",
+   "summary": "Compatibility re-export. The C Data Interface import lives in `arrow-mlake.mojo` now — see `parquet.arrow` for why.",
+   "description": "`from parquet.carrow_import import import_c` keeps resolving; new code should\nimport from `arrow_mlake.carrow_import` directly."
+  },
+  {
+   "path": "parquet.codec",
+   "summary": "Page compression codecs.",
+   "description": "`ParquetReader` is parametrised on a `CodecSet`, a compile-time table of page\ndecompressors, exactly like `avro.mojo`'s block codecs. The default set covers\neverything that needs no FFI:\n\n| codec | where it comes from |\n|---|---|\n| `UNCOMPRESSED` | — |\n| `SNAPPY` | `snappy.mojo`, pure Mojo |\n| `GZIP` | `deflate.mojo`, pure Mojo, with the gzip wrapper parsed here |\n\n`ZSTD`, `BROTLI`, `LZ4_RAW` and the legacy Hadoop-framed `LZ4` need `zstd.mojo`,\n`brotli.mojo` and `lz4.mojo`, which dlopen libzstd, libbrotli and liblz4, so\nthey live in `parquet_full` and its `AllCodecs`:\n\n```mojo\nfrom parquet import ParquetReader\n# -I ../zstd.mojo/src -I ../lz4.mojo/src -I ../brotli.mojo/src\nfrom parquet_full import AllCodecs\n\nvar r = ParquetReader[AllCodecs].open(\"part-0.parquet\")\n```\n\nBetween the two sets that is every codec the Parquet spec defines. A reader on\n`DefaultCodecs` that meets one of the four FFI codecs raises a message naming\nit and pointing at `AllCodecs`; every other column of that file still reads.",
+   "structs": [
+    {
+     "name": "DefaultCodecs",
+     "signature": "struct DefaultCodecs",
+     "summary": "`UNCOMPRESSED`, `SNAPPY` and `GZIP` — no FFI, no shared libraries.",
+     "traits": [
+      "CodecSet",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "supports",
+       "overloads": [
+        {
+         "signature": "def supports(codec: Int32) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "decompress",
+       "overloads": [
+        {
+         "signature": "def decompress[page_origin: ImmOrigin, scratch_origin: MutOrigin](codec: Int32, data: Span[UInt8, page_origin], uncompressed_size: Int, ref[scratch_origin] scratch: List[UInt8]) -> Span[UInt8, origin_of(page_origin, scratch_origin)].Immutable"
+        }
+       ]
+      },
+      {
+       "name": "compress",
+       "overloads": [
+        {
+         "signature": "def compress(codec: Int32, data: Span[UInt8]) -> List[UInt8]"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "traits": [
+    {
+     "name": "CodecSet",
+     "summary": "A compile-time table of Parquet page decompressors.",
+     "functions": [
+      {
+       "name": "supports",
+       "overloads": [
+        {
+         "signature": "def supports(codec: Int32) -> Bool",
+         "summary": "Whether this set can decompress `CompressionCodec` value `codec`."
+        }
+       ]
+      },
+      {
+       "name": "decompress",
+       "overloads": [
+        {
+         "signature": "def decompress[page_origin: ImmOrigin, scratch_origin: MutOrigin](codec: Int32, data: Span[UInt8, page_origin], uncompressed_size: Int, ref[page_origin] scratch: List[UInt8]) -> Span[UInt8, origin_of(page_origin, scratch_origin)].Immutable",
+         "summary": "Decompress one page body, borrowing rather than allocating.",
+         "description": "The result is *a view*, never a fresh buffer. For `UNCOMPRESSED` it is\n`data` itself — the page's own bytes inside the file, handed back\nuntouched, which is what `SerializedPageReader::DecompressIfNeeded`\ndoes in parquet-cpp. For every other codec it is `scratch`, the\ncaller's one decompression buffer per column chunk, grown in place and\nnever shrunk — parquet-cpp's `decompression_buffer_`, resized with\n`shrink_to_fit=false` (`column_reader.cc:564`).\n\n**Lifetime contract — the span is valid only until the next call that\npasses the same `scratch`.** That call overwrites the buffer and may\nreallocate it, so a span held across a page boundary reads another\npage's bytes. parquet-cpp documents the same rule at\n`column_reader.cc:251`: the previous page is invalidated by\n`NextPage()`. Copy out anything that has to outlive the page —\n`decode_plain_into` and its neighbours already do, which is why a\ndictionary page survives the data pages decompressed after it.\n\nMojo's origins cannot make the compiler enforce that. The returned\norigin is the union of the file's and the scratch buffer's, so both are\nkept alive for as long as the span is and it can never dangle, but Mojo\ndoes not treat an outstanding immutable view as blocking a later\nmutation the way an exclusivity checker would — a held span is a wrong\nanswer, not a compile error. So the rule is a contract, and\n`test_a_page_span_is_only_valid_until_the_next_page` is what states it.\n\n`uncompressed_size` is the page header's declared decompressed length,\nwhich for Brotli and raw LZ4 is the only size there is."
+        }
+       ]
+      },
+      {
+       "name": "compress",
+       "overloads": [
+        {
+         "signature": "def compress(codec: Int32, data: Span[UInt8]) -> List[UInt8]",
+         "summary": "Compress one page body. Used by `parquet.writer`."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "copy_of",
+     "overloads": [
+      {
+       "signature": "def copy_of(data: Span[UInt8]) -> List[UInt8]"
+      }
+     ]
+    },
+    {
+     "name": "page_span",
+     "overloads": [
+      {
+       "signature": "def page_span[origin: ImmOrigin](data: Span[UInt8]) -> Span[UInt8, origin]",
+       "summary": "Re-label `data` with the origin `CodecSet.decompress` returns.",
+       "description": "Its two answers live in different places — the file for an uncompressed\npage, the caller's scratch buffer for a compressed one — and the declared\nreturn type is the union of those two origins, which keeps both alive for\nas long as the span is. Neither branch can produce that union type on its\nown, hence this one narrow re-labelling, and it is a no-op at run time: the\nsame pointer and length.\n\nSound because the union outlives either input, so the origin stamped on is\nnever longer-lived than the one the bytes actually have."
+      }
+     ]
+    },
+    {
+     "name": "sized_scratch",
+     "overloads": [
+      {
+       "signature": "def sized_scratch[origin: MutOrigin](ref[origin] scratch: List[UInt8], n: Int) -> Span[UInt8, origin]",
+       "summary": "`scratch`, resized to exactly `n` bytes and ready to be written over.",
+       "description": "Grows in place and never shrinks the allocation, which is what\n`Resize(uncompressed_len, /*shrink_to_fit=*/false)` buys parquet-cpp: after\nthe first page of a chunk, a page no larger than the biggest one so far\ncosts no allocation at all. The bytes are left uninitialised rather than\nzeroed — a decompressor writes every one of them, and a memset per page\nwould be most of what this commit is trying to remove."
+      }
+     ]
+    },
+    {
+     "name": "codec_name",
+     "overloads": [
+      {
+       "signature": "def codec_name(codec: Int32) -> String"
+      }
+     ]
+    },
+    {
+     "name": "unsupported_codec",
+     "overloads": [
+      {
+       "signature": "def unsupported_codec(codec: Int32) -> Error"
+      }
+     ]
+    },
+    {
+     "name": "gunzip",
+     "overloads": [
+      {
+       "signature": "def gunzip(data: Span[UInt8]) -> List[UInt8]",
+       "summary": "Strip a gzip (RFC 1952) wrapper and inflate the DEFLATE stream inside.",
+       "description": "Parquet's `GZIP` codec is gzip-framed, not a bare DEFLATE stream, so the\n10-byte header and its optional extra/name/comment/CRC fields have to come\noff first. A zlib (RFC 1950) stream is accepted too — some writers emit\none — and so is a bare DEFLATE stream.\n\nA gzip stream may be several members concatenated (RFC 1952 §2.2), and a\npage written that way decodes to the members joined in order. Stopping at\nthe first one silently loses the rest, so the members are looped over here."
+      }
+     ]
+    },
+    {
+     "name": "gunzip_into",
+     "overloads": [
+      {
+       "signature": "def gunzip_into(data: Span[UInt8], mut out: List[UInt8])",
+       "summary": "`gunzip` into a buffer the caller already has, replacing its contents.",
+       "description": "The gzip-framed path — every `GZIP` page a Parquet writer emits — inflates\neach member onto the end of `out`, so a decompression buffer reused across\na chunk keeps whatever capacity it has already grown. The zlib and bare\nDEFLATE fallbacks hand `out` a buffer `inflate` allocated: neither shape\ncomes out of a Parquet writer, and neither is worth a second copy to keep\nthe growth in place."
+      }
+     ]
+    },
+    {
+     "name": "gzip_wrap",
+     "overloads": [
+      {
+       "signature": "def gzip_wrap(data: Span[UInt8]) -> List[UInt8]",
+       "summary": "Wrap a DEFLATE stream in the gzip (RFC 1952) framing Parquet's `GZIP` codec expects: a 10-byte header, then the deflate bits, then the CRC32 of the *uncompressed* data and its length modulo 2^32."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "parquet.convert",
+   "summary": "Physical Parquet values to Arrow buffers.",
+   "description": "A Parquet leaf's physical type and its Arrow type are often different widths:\nan `INT32` annotated `Int(8, true)` is one byte in Arrow, a `DECIMAL` over\n`FIXED_LEN_BYTE_ARRAY(7)` is a sign-extended little-endian 16-byte integer, and\n`INT96` is a nanosecond timestamp built from a Julian day and a time of day.\n`append_value` and `append_null` do that translation one value at a time,\nstraight into the destination `ArrayData`'s buffers.",
+   "aliases": [
+    {
+     "name": "JULIAN_UNIX_EPOCH",
+     "value": "2440588"
+    },
+    {
+     "name": "NANOS_PER_DAY",
+     "value": "86400000000000"
+    }
+   ],
+   "functions": [
+    {
+     "name": "int96_to_nanos",
+     "overloads": [
+      {
+       "signature": "def int96_to_nanos(src: Span[UInt8]) -> Int64",
+       "summary": "`INT96`: 8 little-endian bytes of nanoseconds within the day, then a little-endian Julian day number."
+      }
+     ]
+    },
+    {
+     "name": "append_null",
+     "overloads": [
+      {
+       "signature": "def append_null(mut out: ArrayData, leaf: LeafColumn)",
+       "summary": "Append a null slot, keeping every buffer the right length.",
+       "description": "Validity is the caller's business — `parquet.assemble` maintains it, and\nonly materialises a bitmap once a null actually turns up."
+      }
+     ]
+    },
+    {
+     "name": "append_value",
+     "overloads": [
+      {
+       "signature": "def append_value(mut out: ArrayData, leaf: LeafColumn, vals: PhysBuffer, vi: Int)",
+       "summary": "Append value `vi` of `vals`, translated to `out`'s Arrow type."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "parquet.display",
+   "summary": "Human- and JSON-readable rendering of decoded Arrow arrays, for the CLI.",
+   "aliases": [
+    {
+     "name": "HEXDIGITS",
+     "value": "\"0123456789abcdef\""
+    }
+   ],
+   "functions": [
+    {
+     "name": "hex_string",
+     "overloads": [
+      {
+       "signature": "def hex_string(data: Span[UInt8]) -> String"
+      }
+     ]
+    },
+    {
+     "name": "json_escape",
+     "overloads": [
+      {
+       "signature": "def json_escape(s: StringSpan) -> String"
+      }
+     ]
+    },
+    {
+     "name": "decimal_text",
+     "overloads": [
+      {
+       "signature": "def decimal_text(bytes: Span[UInt8], scale: Int) -> String",
+       "summary": "A 16-byte little-endian two's-complement decimal, with its point."
+      }
+     ]
+    },
+    {
+     "name": "scalar_json",
+     "overloads": [
+      {
+       "signature": "def scalar_json(a: ArrayData, i: Int) -> String"
+      }
+     ]
+    },
+    {
+     "name": "value_json",
+     "overloads": [
+      {
+       "signature": "def value_json(arena: ArrayArena, node: Int, i: Int) -> String",
+       "summary": "One value of one array, as a JSON fragment."
+      }
+     ]
+    },
+    {
+     "name": "value_text",
+     "overloads": [
+      {
+       "signature": "def value_text(arena: ArrayArena, node: Int, i: Int) -> String",
+       "summary": "One value, for the plain-text `cat` output."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "parquet.encoding",
+   "summary": "Value encodings: PLAIN, dictionaries, the DELTA family, BYTE_STREAM_SPLIT.",
+   "description": "Everything decodes into a `PhysBuffer` — values still in their *physical*\nParquet form (an `INT32` is four little-endian bytes whatever logical type\nannotates it). `parquet.convert` is what turns a `PhysBuffer` plus definition\nlevels into an Arrow buffer.\n\nThree physical shapes cover all eight Parquet types:\n\n* `PK_BOOL` — a bit-packed bitmap, LSB first, one bit per value.\n* `PK_FIXED` — `count * width` bytes; `width` is 4, 8 or 12 for the numeric\n  types and `type_length` for `FIXED_LEN_BYTE_ARRAY`.\n* `PK_VAR` — `count + 1` offsets into a data buffer, for `BYTE_ARRAY`.",
+   "aliases": [
+    {
+     "name": "PK_BOOL",
+     "value": "0"
+    },
+    {
+     "name": "PK_FIXED",
+     "value": "1"
+    },
+    {
+     "name": "PK_VAR",
+     "value": "2"
+    },
+    {
+     "name": "MAX_ARROW_VAR_BYTES",
+     "value": "2147483647",
+     "summary": "How many bytes of `BYTE_ARRAY` data one Arrow array can address.",
+     "description": "Arrow's `binary`/`string` layout addresses value bytes with **32-bit** offsets,\nso this is the ceiling on a *record batch*, not on a column chunk:\n`PhysBuffer.offsets` is `List[Int]`, wide enough for anything a chunk can hold,\nand the reader cuts a batch short before its value bytes reach this. Keeping\nthe physical buffer wide is what makes that cut possible at all — an overflow\nthat has already happened during decode cannot be split away afterwards."
+    }
+   ],
+   "structs": [
+    {
+     "name": "PhysBuffer",
+     "signature": "struct PhysBuffer",
+     "summary": "Decoded values still in their physical Parquet representation.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "kind",
+       "type": "Int"
+      },
+      {
+       "name": "width",
+       "type": "Int"
+      },
+      {
+       "name": "count",
+       "type": "Int"
+      },
+      {
+       "name": "bytes",
+       "type": "List[UInt8]"
+      },
+      {
+       "name": "offsets",
+       "type": "List[Int]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        },
+        {
+         "signature": "def __init__(out self, kind: Int, width: Int)"
+        }
+       ]
+      },
+      {
+       "name": "bool_at",
+       "overloads": [
+        {
+         "signature": "def bool_at(self, i: Int) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "append_bool",
+       "overloads": [
+        {
+         "signature": "def append_bool(mut self, v: Bool)"
+        }
+       ]
+      },
+      {
+       "name": "append_bytes",
+       "overloads": [
+        {
+         "signature": "def append_bytes(mut self, src: Span[UInt8])",
+         "summary": "Append one `PK_VAR` value."
+        }
+       ]
+      },
+      {
+       "name": "reserve_values",
+       "overloads": [
+        {
+         "signature": "def reserve_values(mut self, count: Int, bytes: Int)",
+         "summary": "Size the buffers for `count` more values and `bytes` more bytes, so that a chunk of many pages does not grow its buffer log-many times."
+        }
+       ]
+      },
+      {
+       "name": "extend",
+       "overloads": [
+        {
+         "signature": "def extend(mut self, other: Self)",
+         "summary": "Append every value of `other`, which must have the same shape."
+        }
+       ]
+      },
+      {
+       "name": "value_span",
+       "overloads": [
+        {
+         "signature": "def value_span(self, i: Int) -> Span[UInt8, origin_of(self.bytes)]",
+         "summary": "The bytes of value `i` — `PK_VAR` or `PK_FIXED` only."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "physical_width",
+     "overloads": [
+      {
+       "signature": "def physical_width(phys: Int32, type_length: Int) -> Int",
+       "summary": "Bytes per value for a fixed-width physical type; 0 for the others."
+      }
+     ]
+    },
+    {
+     "name": "physical_kind",
+     "overloads": [
+      {
+       "signature": "def physical_kind(phys: Int32) -> Int"
+      }
+     ]
+    },
+    {
+     "name": "decode_plain",
+     "overloads": [
+      {
+       "signature": "def decode_plain(phys: Int32, type_length: Int, data: Span[UInt8], count: Int) -> PhysBuffer",
+       "summary": "PLAIN: fixed-width values little-endian, byte arrays length-prefixed."
+      }
+     ]
+    },
+    {
+     "name": "decode_plain_into",
+     "overloads": [
+      {
+       "signature": "def decode_plain_into(mut out: PhysBuffer, phys: Int32, type_length: Int, data: Span[UInt8], count: Int)",
+       "summary": "PLAIN-decode `count` values onto the end of `out`.",
+       "description": "Decoding straight into the chunk's buffer is what keeps a many-page column\nfrom copying every byte twice: once into the page's own buffer and again\nwhen the page is concatenated."
+      }
+     ]
+    },
+    {
+     "name": "gather",
+     "overloads": [
+      {
+       "signature": "def gather(dict: PhysBuffer, indices: List[UInt32]) -> PhysBuffer",
+       "summary": "Materialise dictionary-encoded values from a dictionary page."
+      }
+     ]
+    },
+    {
+     "name": "gather_into",
+     "overloads": [
+      {
+       "signature": "def gather_into(mut out: PhysBuffer, dict: PhysBuffer, indices: List[UInt32])",
+       "summary": "Gather `indices` out of `dict` onto the end of `out`.",
+       "description": "Fixed-width entries are a straight gather — one load and one store of the\nwhole element per index. Byte arrays take two passes: the lengths into the\noffsets, then the bytes."
+      }
+     ]
+    },
+    {
+     "name": "decode_dict_indices",
+     "overloads": [
+      {
+       "signature": "def decode_dict_indices(data: Span[UInt8], count: Int) -> List[UInt32]",
+       "summary": "`RLE_DICTIONARY` / `PLAIN_DICTIONARY` data: a bit width byte, then a hybrid RLE run of that many indices."
+      }
+     ]
+    },
+    {
+     "name": "gather_dict_into",
+     "overloads": [
+      {
+       "signature": "def gather_dict_into(mut out: PhysBuffer, dict: PhysBuffer, data: Span[UInt8], count: Int)",
+       "summary": "Decode `count` dictionary indices out of `data` and gather them out of `dict` onto the end of `out`, a block at a time.",
+       "description": "`decode_dict_indices` followed by `gather_into` is the same work in three\npasses over a page-sized `List[UInt32]`: one to write it, one to\nbounds-check it, one to gather it — four bytes per value written to memory\nand read back twice, plus the allocation. This walks the hybrid runs into\n4 KiB of scratch instead, and each block is checked and gathered while it\nis still in L1. parquet-cpp's `GetBatchWithDict` and arrow-rs's\n`RleDecoder::get_batch_with_dict` are both this shape.\n\nThe bounds check is the same check in the same order — blocks come off the\nstream in order and `_check_dict_block` reports the first offending index\nin the first offending block — so a corrupt file raises exactly what it\nraised before. Unlike `gather_into` the check is no longer complete\n*before* the first value is written, so `out` may hold part of the page\nwhen this raises; the caller is abandoning the read either way."
+      }
+     ]
+    },
+    {
+     "name": "decode_rle_bool",
+     "overloads": [
+      {
+       "signature": "def decode_rle_bool(data: Span[UInt8], count: Int) -> PhysBuffer",
+       "summary": "The `RLE` value encoding for booleans: a 4-byte length, then a hybrid run of 1-bit values."
+      }
+     ]
+    },
+    {
+     "name": "decode_delta_ints",
+     "overloads": [
+      {
+       "signature": "def decode_delta_ints(data: Span[UInt8], count: Int, mut end: Int) -> List[Int64]",
+       "summary": "`DELTA_BINARY_PACKED`, the block / miniblock delta encoding.",
+       "description": "```text\nheader    := block_size_in_values, miniblocks_per_block, total_count, first_value\nblock     := min_delta, list-of-bitwidths-of-miniblocks, miniblocks\n```\nAll four header fields are ULEB128, `first_value` and `min_delta` zigzag.\nValues wrap around at 64 bits, exactly as the spec says."
+      }
+     ]
+    },
+    {
+     "name": "decode_delta_binary_packed",
+     "overloads": [
+      {
+       "signature": "def decode_delta_binary_packed(data: Span[UInt8], count: Int, width: Int) -> PhysBuffer"
+      }
+     ]
+    },
+    {
+     "name": "decode_delta_length_byte_array",
+     "overloads": [
+      {
+       "signature": "def decode_delta_length_byte_array(data: Span[UInt8], count: Int) -> PhysBuffer",
+       "summary": "Lengths as `DELTA_BINARY_PACKED`, then the bytes back to back."
+      }
+     ]
+    },
+    {
+     "name": "decode_delta_byte_array",
+     "overloads": [
+      {
+       "signature": "def decode_delta_byte_array(data: Span[UInt8], count: Int) -> PhysBuffer",
+       "summary": "Prefix lengths, suffix lengths, then the suffix bytes: each value is the first `prefix` bytes of the value before it plus its own suffix."
+      }
+     ]
+    },
+    {
+     "name": "decode_byte_stream_split",
+     "overloads": [
+      {
+       "signature": "def decode_byte_stream_split(data: Span[UInt8], count: Int, width: Int) -> PhysBuffer",
+       "summary": "`BYTE_STREAM_SPLIT`: `width` streams of `count` bytes, the k-th stream holding byte k of every value."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "parquet.page",
+   "summary": "Page decoding: headers, compression, levels, and the values inside.",
+   "description": "`read_column_chunk` walks every page of one column chunk — the optional\ndictionary page and then the data pages, v1 or v2 — and returns the whole\nchunk as three parallel things:\n\n* `defs` — one definition level per *slot*, absent when the leaf's maximum\n  definition level is 0;\n* `reps` — one repetition level per slot, absent when the maximum repetition\n  level is 0;\n* `values` — the non-null values, back to back, still physical.\n\nPage CRC32s are verified when the writer stored them. Every length in a page\nheader is checked against the bytes that are actually there, so a truncated or\ndoctored file raises instead of reading past the end of the buffer.",
+   "structs": [
+    {
+     "name": "PageWindow",
+     "signature": "struct PageWindow",
+     "summary": "Which pages of a column chunk `read_column_chunk` has to decode.",
+     "description": "Default-constructed — no page rows, an empty row range — it means *all of\nthem*, which is what every read without page pruning asks for and is the\npath this reader always had.\n\n`first_rows` is `OffsetIndex.page_locations[k].first_row_index`, one entry\nper **data** page in file order: the number of records of the row group\nthat are complete before page `k` starts. With `first_rows[npages]` taken\nto be `group_rows`, page `k` can hold values for rows\n\n    [first_rows[k], first_rows[k + 1]]\n\n— closed at the top, because a record can still be *in flight* when a page\nends and then has values in both pages. That one row of overhang is the\nwhole difference between a repeated column and a flat one here, and getting\nit wrong drops list elements at a page seam. A flat column's pages hold\n`[first_rows[k], first_rows[k + 1])` exactly, one slot per row.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "first_rows",
+       "type": "List[Int]",
+       "summary": "Per data page, the first row of the row group it can hold. Empty means no page index, so nothing can be skipped."
+      },
+      {
+       "name": "row_lo",
+       "type": "Int"
+      },
+      {
+       "name": "row_hi",
+       "type": "Int",
+       "summary": "The rows the caller still wants, as one outer hull. `row_hi <= row_lo` means no restriction."
+      },
+      {
+       "name": "group_rows",
+       "type": "Int",
+       "summary": "Rows in the whole row group — the implied `first_rows[npages]`."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "restricts",
+       "overloads": [
+        {
+         "signature": "def restricts(self) -> Bool",
+         "summary": "Is there anything here that could let a page be skipped?"
+        }
+       ]
+      },
+      {
+       "name": "page_first_row",
+       "overloads": [
+        {
+         "signature": "def page_first_row(self, k: Int) -> Int",
+         "summary": "`first_rows[k]`, with the one-past-the-end entry spelled out."
+        }
+       ]
+      },
+      {
+       "name": "page_range",
+       "overloads": [
+        {
+         "signature": "def page_range(self, flat: Bool) -> Tuple[Int, Int]",
+         "summary": "The half-open range of data pages that can hold the wanted rows.",
+         "description": "A page is in it when the rows it can hold meet `[row_lo, row_hi)`. For\na flat column that is `first_rows[k] < row_hi` and\n`first_rows[k + 1] > row_lo`; a repeated column widens the second test\nto `>=`, which is the in-flight record the struct's own note describes."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ColumnData",
+     "signature": "struct ColumnData",
+     "summary": "One decoded column chunk: levels and non-null values.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "defs",
+       "type": "List[UInt16]"
+      },
+      {
+       "name": "reps",
+       "type": "List[UInt16]"
+      },
+      {
+       "name": "values",
+       "type": "PhysBuffer"
+      },
+      {
+       "name": "num_slots",
+       "type": "Int",
+       "summary": "Level slots — the number of values including nulls."
+      },
+      {
+       "name": "first_row",
+       "type": "Int",
+       "summary": "The row group row this chunk's first record is. Non-zero only when page pruning let whole leading pages be skipped."
+      },
+      {
+       "name": "num_rows",
+       "type": "Int",
+       "summary": "Records this chunk covers, or -1 when it covers the whole row group and the row group's own count is the answer."
+      },
+      {
+       "name": "pages_read",
+       "type": "Int",
+       "summary": "Data pages actually decompressed and decoded."
+      },
+      {
+       "name": "all_present",
+       "type": "Bool",
+       "summary": "Every slot is at the leaf's maximum definition level, so `defs` was never materialised. This is the usual case — a column with no nulls — and skipping the per-slot level array is worth a great deal on a wide read."
+      },
+      {
+       "name": "page_slot",
+       "type": "List[Int]",
+       "summary": "The first slot of each data page from the first one with a null in it, and one final entry equal to `num_slots`. Empty until then, and so empty altogether for a chunk with no nulls."
+      },
+      {
+       "name": "page_value",
+       "type": "List[Int]",
+       "summary": "The first value of each data page `page_slot` covers, and one final entry equal to the number of values in `values`."
+      },
+      {
+       "name": "packed",
+       "type": "Bool",
+       "summary": "This leaf's definition levels *are* a validity bitmap — `max_def == 1` and `max_rep == 0`, so a level is one bit — and `mask`, not `defs`, is where they land. Set by `read_column_chunk` from the leaf's descriptor before a single page is read, so it is a property of the column and not of what any one page happened to contain."
+      },
+      {
+       "name": "mask",
+       "type": "List[UInt8]",
+       "summary": "Packed validity when `packed`: bit `i`, LSB-first, is 1 when slot `i` is at `max_def`. Empty when the chunk turned out to have no nulls at all, which is what `all_present` then says."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "masked",
+       "overloads": [
+        {
+         "signature": "def masked(self) -> Bool",
+         "summary": "Validity for this chunk is a bitmap, not an array of levels."
+        }
+       ]
+      },
+      {
+       "name": "value_at",
+       "overloads": [
+        {
+         "signature": "def value_at(self, row: Int, max_def: Int) -> Int",
+         "summary": "How many of the first `row` slots hold a value.",
+         "description": "The answer for a slot that is a page boundary is stored; for anything\nelse it is that answer plus a scan of at most one page — a popcount\nover the validity mask where there is one. Nothing here is per row,\nwhich is the point: the caller wants this at a handful of batch\nboundaries, not at every row."
+        }
+       ]
+      },
+      {
+       "name": "def_at",
+       "overloads": [
+        {
+         "signature": "def def_at(self, i: Int, max_def: Int) -> Int",
+         "summary": "The definition level of slot `i`."
+        }
+       ]
+      },
+      {
+       "name": "rep_at",
+       "overloads": [
+        {
+         "signature": "def rep_at(self, i: Int) -> Int"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "copy_mask_bits",
+     "overloads": [
+      {
+       "signature": "def copy_mask_bits(src: List[UInt8], at: Int, mut dst: List[UInt8], n: Int) -> Int",
+       "summary": "Copy `n` bits from bit `at` of `src` to bit 0 of `dst`, and return how many of them are set.",
+       "description": "`dst` is already sized to `(n + 7) // 8` and zeroed. A batch that starts on\na byte boundary — every batch whose size is a multiple of 8, which is every\ndefault one — makes this a `memcpy`; otherwise it is one shift per byte.\nThis is how a leaf's Arrow validity buffer gets built when the chunk's\ndefinition levels were decoded as a bitmap in the first place: no pass over\nlevels, and the null count comes out of the same popcount."
+      }
+     ]
+    },
+    {
+     "name": "chunk_start",
+     "overloads": [
+      {
+       "signature": "def chunk_start(cm: ColumnMetaData) -> Int",
+       "summary": "Where a column chunk's pages begin — the dictionary page if it has one."
+      }
+     ]
+    },
+    {
+     "name": "read_column_chunk",
+     "overloads": [
+      {
+       "signature": "def read_column_chunk[Codecs: CodecSet](file: Span[UInt8], cm: ColumnMetaData, leaf: LeafColumn, verify_crc: Bool, window: PageWindow) -> ColumnData",
+       "summary": "Decode the pages of one column chunk that `window` still wants.",
+       "description": "A default `PageWindow` — what every read without page pruning passes — is\nevery page, and then this is the whole-chunk decode it always was: nothing\nbelow branches on the window until there is one.\n\nWith a window, the pages outside it are found from the page index and never\ndecompressed. Their headers are still read, because that is how the next\npage's offset is known, so what is saved is decompression, level decoding\nand value decoding — everything after `Codecs.decompress` — which is where\na column chunk's time is.\n\n**A record can span a page boundary.** The Parquet spec has pages change on\nrecord boundaries when there is an `OffsetIndex`, but nothing in a file\nproves it, and a window that starts inside a record would drop that\nrecord's leading values and silently shorten a list. That is exactly what\nthe first slot's repetition level says: a chunk that begins a record has\n`reps[0] == 0`. When it does not, this falls back to decoding the whole\nchunk rather than trusting the seam — a rare, self-correcting cost, and the\nonly alternative that cannot be wrong."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "parquet.reader",
+   "summary": "`ParquetReader` — open a file, pick columns and row groups, read batches.",
+   "description": "```mojo\nfrom parquet import ParquetReader\n\nvar r = ParquetReader.open(\"part-0.parquet\")\nr.select_columns([\"id\", \"name\"])\nvar t = r.read_table()\nprint(t.num_rows, \"rows\")\n```\n\nThe reader is parametrised on a `CodecSet` (see `parquet.codec`); the default\ncovers `UNCOMPRESSED`, `SNAPPY` and `GZIP` with no FFI, and\n`parquet_full.AllCodecs` adds `ZSTD` and `LZ4`.\n\nProjection is by name, by dotted leaf path, or — for Iceberg — by Parquet\n**field id**. Row groups can be chosen explicitly, or pruned automatically\nfrom their statistics against simple `column op literal` predicates.",
+   "aliases": [
+    {
+     "name": "OP_EQ",
+     "value": "0"
+    },
+    {
+     "name": "OP_NE",
+     "value": "1"
+    },
+    {
+     "name": "OP_LT",
+     "value": "2"
+    },
+    {
+     "name": "OP_LE",
+     "value": "3"
+    },
+    {
+     "name": "OP_GT",
+     "value": "4"
+    },
+    {
+     "name": "OP_GE",
+     "value": "5"
+    },
+    {
+     "name": "FileBytes",
+     "value": "Span[UInt8, ImmUntrackedOrigin]",
+     "summary": "How `ParquetReader` holds the file, whether or not it owns the bytes.",
+     "description": "The origin is untracked because a borrowing reader has no lifetime relation\nthe compiler can express, and a real origin parameter here would infect every\ntype that holds a reader."
+    }
+   ],
+   "structs": [
+    {
+     "name": "Predicate",
+     "signature": "struct Predicate",
+     "summary": "`column op literal`, for row-group and page pruning.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "column",
+       "type": "String"
+      },
+      {
+       "name": "op",
+       "type": "Int"
+      },
+      {
+       "name": "value",
+       "type": "ScalarValue"
+      }
+     ]
+    },
+    {
+     "name": "ParquetReader",
+     "signature": "struct ParquetReader[Codecs: CodecSet = DefaultCodecs]",
+     "summary": "A Parquet file, projected and batched.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "data",
+       "type": "FileBytes",
+       "summary": "The file bytes, however they are held. Points into `_owned` when this reader owns them."
+      },
+      {
+       "name": "meta",
+       "type": "FileMetaData"
+      },
+      {
+       "name": "schema",
+       "type": "ParquetSchema"
+      },
+      {
+       "name": "batch_size",
+       "type": "Int"
+      },
+      {
+       "name": "max_batch_value_bytes",
+       "type": "Int",
+       "summary": "The most `BYTE_ARRAY` bytes one batch may carry, per column."
+      },
+      {
+       "name": "verify_crc",
+       "type": "Bool"
+      },
+      {
+       "name": "num_workers",
+       "type": "Int",
+       "summary": "How many OS threads turn file bytes into Arrow at once."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var data: List[UInt8])",
+         "summary": "Take ownership of the file bytes."
+        },
+        {
+         "signature": "def __init__(out self, *, unsafe_borrowing: Span[UInt8, ImmUntrackedOrigin])",
+         "summary": "Initialise every field over a buffer owned by someone else.",
+         "description": "`from_span` is the public spelling. This exists so the owning\nconstructor can share it rather than keeping a second copy in sync."
+        }
+       ]
+      },
+      {
+       "name": "from_span",
+       "overloads": [
+        {
+         "signature": "def from_span(data: Span[UInt8]) -> Self",
+         "summary": "Read a file out of a buffer this reader does **not** own.",
+         "description": "The caller must keep `data` alive for as long as the reader and must\nnot mutate it; nothing checks either. Use it when the bytes already\nexist somewhere that outlives the read -- a mapped file, a shared\narena, a benchmark timing many reads over one buffer. Prefer the\nowning constructor otherwise."
+        }
+       ]
+      },
+      {
+       "name": "open",
+       "overloads": [
+        {
+         "signature": "def open(path: StringSpan) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "open_projected",
+       "overloads": [
+        {
+         "signature": "def open_projected(path: StringSpan, columns: List[String]) -> Self",
+         "summary": "Open `path`, fetching only the bytes `columns` actually needs.",
+         "description": "`open` slurps the whole file. That is the right default when a caller\nwants all of it, and pure waste when it does not: a four-column\nprojection out of a nineteen-column file touches about a fifth of the\nbytes, and on a 60 MiB NYC-taxi file reading the other four fifths\ncosts more than decompressing the fifth that is wanted.\n\nSo this reads the footer, applies the projection, asks\n`needed_byte_ranges` which chunks that reaches, and reads those. The\nbuffer is still the file's full length — Parquet addresses everything\nby absolute offset, so a sparse buffer decodes exactly as the whole\nfile does — but the gaps are never written and so are never faulted\nin. Filling them with zeroes instead would put most of the cost back.\n\n**The returned reader is projected already, and may not be\nre-projected.** Selecting a column whose bytes were not fetched reads\nthe gap, which is uninitialised memory: `select_columns`,\n`select_fields` and `select_all` are not safe on it. Nothing enforces\nthat, which is the price of not reading the file twice.\n\nAnything unexpected about the footer — too short, bad magic, a length\nthat does not fit — falls back to reading the whole file, so this is\nnever wrong, only sometimes no faster."
+        }
+       ]
+      },
+      {
+       "name": "fill_range",
+       "overloads": [
+        {
+         "signature": "def fill_range(mut self, offset: Int, src: Span[UInt8])",
+         "summary": "Write `src` into this reader's file buffer at absolute `offset`.",
+         "description": "The other half of `footer_only_buffer`. A footer is enough to build a\nreader, resolve a projection against it and ask `needed_byte_ranges`\nwhich chunks that reaches — but not to decode them, because those\nbytes have not been fetched. This is where a caller with its own I/O\n— an object store, an `iceberg.FileIO` — puts them.\n\nLegal only on a reader that owns its buffer, and only for bytes it\nhas not read yet. The footer is already parsed into values of the\nreader's own, so filling a gap changes nothing it has looked at;\nwriting past the end of the file raises rather than leaving a reader\nthat would go on to decode nonsense."
+        }
+       ]
+      },
+      {
+       "name": "needed_byte_ranges",
+       "overloads": [
+        {
+         "signature": "def needed_byte_ranges(self) -> List[Tuple[Int, Int]]",
+         "summary": "The file bytes a read with this projection would actually touch.",
+         "description": "One `(offset, length)` per column chunk that the current projection\nand row-group selection reach, in ascending offset order, with\nneighbours that touch or overlap merged into one. The footer is not\nin the list: a caller cannot have built this reader without it.\n\nThis is what a reader over a network wants — it turns \"download the\nobject\" into one range request per run of wanted chunks — and it is\nwhat `open_projected` uses for a local path. Row-group pruning is\nhonoured, so calling `prune_row_groups` first narrows the answer."
+        }
+       ]
+      },
+      {
+       "name": "num_rows",
+       "overloads": [
+        {
+         "signature": "def num_rows(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "num_row_groups",
+       "overloads": [
+        {
+         "signature": "def num_row_groups(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "created_by",
+       "overloads": [
+        {
+         "signature": "def created_by(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "key_value_metadata",
+       "overloads": [
+        {
+         "signature": "def key_value_metadata(self) -> List[Tuple[String, String]]"
+        }
+       ]
+      },
+      {
+       "name": "split_offsets",
+       "overloads": [
+        {
+         "signature": "def split_offsets(self) -> List[Int64]",
+         "summary": "Iceberg's `data_file.split_offsets`: where each row group starts."
+        }
+       ]
+      },
+      {
+       "name": "statistics",
+       "overloads": [
+        {
+         "signature": "def statistics(self, rg: Int, leaf: Int) -> TypedStats",
+         "summary": "The decoded statistics of one column chunk, empty if absent."
+        }
+       ]
+      },
+      {
+       "name": "offset_index",
+       "overloads": [
+        {
+         "signature": "def offset_index(self, rg: Int, leaf: Int) -> Optional[OffsetIndex]"
+        }
+       ]
+      },
+      {
+       "name": "column_index",
+       "overloads": [
+        {
+         "signature": "def column_index(self, rg: Int, leaf: Int) -> Optional[ColumnIndex]"
+        }
+       ]
+      },
+      {
+       "name": "select_fields",
+       "overloads": [
+        {
+         "signature": "def select_fields(mut self, fields: List[Int])",
+         "summary": "Project by Arrow field index, sub-fields included.",
+         "description": "A selected field brings its whole sub-tree; every ancestor is kept as a\nwrapper, so the value still arrives inside the struct it belongs to,\nand nothing else is decoded. Roots come out in the order they were\nasked for, which is the contract `select_columns` already has.\n`select_columns` is the special case where every selection is a root."
+        }
+       ]
+      },
+      {
+       "name": "select_field_ids_deep",
+       "overloads": [
+        {
+         "signature": "def select_field_ids_deep(mut self, ids: List[Int32])",
+         "summary": "`select_fields`, addressing the fields by Parquet field id."
+        }
+       ]
+      },
+      {
+       "name": "select_all",
+       "overloads": [
+        {
+         "signature": "def select_all(mut self)"
+        }
+       ]
+      },
+      {
+       "name": "select_columns",
+       "overloads": [
+        {
+         "signature": "def select_columns(mut self, names: List[String])",
+         "summary": "Project by top-level column name."
+        }
+       ]
+      },
+      {
+       "name": "select_field_ids",
+       "overloads": [
+        {
+         "signature": "def select_field_ids(mut self, ids: List[Int32])",
+         "summary": "Project by Parquet field id — what Iceberg schema evolution needs."
+        }
+       ]
+      },
+      {
+       "name": "select_row_groups",
+       "overloads": [
+        {
+         "signature": "def select_row_groups(mut self, var groups: List[Int])"
+        }
+       ]
+      },
+      {
+       "name": "prune_row_groups",
+       "overloads": [
+        {
+         "signature": "def prune_row_groups(mut self, predicates: List[Predicate]) -> Int",
+         "summary": "Drop row groups whose statistics prove no row can match. Returns the number of row groups left."
+        }
+       ]
+      },
+      {
+       "name": "rewind",
+       "overloads": [
+        {
+         "signature": "def rewind(mut self)"
+        }
+       ]
+      },
+      {
+       "name": "pages_read",
+       "overloads": [
+        {
+         "signature": "def pages_read(self) -> Int",
+         "summary": "Data pages this reader has decoded since the last `rewind`.",
+         "description": "What `prune_pages` is *for*: a page the page index puts outside every\nwanted row range has its header parsed, so that the next page can be\nfound, and is then stepped over — not decompressed, not decoded. This\nis the count that drops when that happens, and the only way to tell a\nread that skipped pages from one that read them all, since both give\nthe same values."
+        }
+       ]
+      },
+      {
+       "name": "has_next",
+       "overloads": [
+        {
+         "signature": "def has_next(mut self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "read_batch",
+       "overloads": [
+        {
+         "signature": "def read_batch(mut self) -> RecordBatch",
+         "summary": "The next batch of at most `batch_size` rows. A batch never spans two row groups, and never crosses a gap left by page pruning."
+        }
+       ]
+      },
+      {
+       "name": "page_row_ranges",
+       "overloads": [
+        {
+         "signature": "def page_row_ranges(self, rg: Int, predicates: List[Predicate]) -> List[Tuple[Int, Int]]",
+         "summary": "The rows of row group `rg` whose pages could satisfy `predicates`.",
+         "description": "Uses the `ColumnIndex` bounds and the `OffsetIndex` first-row indices.\nA column without a page index puts no restriction on the answer, so a\nfile written without one behaves exactly as it did before.\n\n**A repeated column's pages do line up with rows** — through\n`OffsetIndex.first_row_index`, which is the number of records of the\nrow group complete before the page starts. What it does *not* line up\nwith is record boundaries: a record can still be in flight when a page\nends, so page `k` holds values for rows\n\n    [first_row_index[k], first_row_index[k + 1]]\n\nwith the top end *closed*. That last row is the overhang, and this\nrounds outward to keep it: a page whose bounds match contributes one\nrow more than it completes. Rounding inward instead — treating the\nrange as half-open, as a flat column's is — drops the row whose list\nstraddles the seam, which is a wrong answer that looks like a right\none. A flat column has no records to be in flight and keeps the\nhalf-open range it always had."
+        }
+       ]
+      },
+      {
+       "name": "prune_pages",
+       "overloads": [
+        {
+         "signature": "def prune_pages(mut self, predicates: List[Predicate]) -> Int",
+         "summary": "Restrict reading to the pages whose bounds could match. Returns the number of rows left."
+        }
+       ]
+      },
+      {
+       "name": "read_table",
+       "overloads": [
+        {
+         "signature": "def read_table(mut self) -> Table",
+         "summary": "Every selected row group, as a list of batches.",
+         "description": "This is the one entry point that parallelises across **row groups** as\nwell as columns, and the reason is a memory contract rather than a\nperformance one. `read_table` was always going to hold every row group\nof the selection at once — that is what returning a `Table` means — so\ndecoding several of them at once asks for no lifetime the caller was\nnot already granting. The streaming path makes the opposite promise,\nand keeps it: `read_batch` holds one row group and is untouched.\n\nWhat it does add is intermediate state. A loaded row group holds\ndecompressed pages, level arrays and per-row indices *on top of* the\nArrow batches built from them, and sequentially only one row group's\nworth is ever alive. So the window is capped at `num_workers` row\ngroups: peak decode state grows by at most `num_workers - 1` row groups\nover the sequential path, never with the size of the file, and at\n`num_workers = 1` — the default — this is the same loop it always was,\nbyte for byte and allocation for allocation.\n\nWithin a window the batches are cut by the ordinary iterator walk —\n`_plan_window`, which is `read_batch` with the building taken out — and\nthen built by a second fan-out over *(batch, top-level field)* pairs,\nbecause sequential Arrow assembly was the whole serial remainder of a\nthreaded read. They are appended in file order on this thread whatever\norder the workers finished in, and each field is grafted into its batch\nat the index it would have had sequentially, so neither row order nor\narena layout depends on the worker count."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Table",
+     "signature": "struct Table",
+     "summary": "Every batch of a read, with accessors that run across all of them.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "batches",
+       "type": "List[RecordBatch]"
+      },
+      {
+       "name": "num_rows",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "num_columns",
+       "overloads": [
+        {
+         "signature": "def num_columns(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name(self, i: Int) -> String"
+        }
+       ]
+      },
+      {
+       "name": "type",
+       "overloads": [
+        {
+         "signature": "def type(self, i: Int) -> ArrowType"
+        }
+       ]
+      },
+      {
+       "name": "column_i64",
+       "overloads": [
+        {
+         "signature": "def column_i64(self, i: Int) -> Tuple[List[Int64], List[Bool]]"
+        }
+       ]
+      },
+      {
+       "name": "column_f64",
+       "overloads": [
+        {
+         "signature": "def column_f64(self, i: Int) -> Tuple[List[Float64], List[Bool]]"
+        }
+       ]
+      },
+      {
+       "name": "column_bool",
+       "overloads": [
+        {
+         "signature": "def column_bool(self, i: Int) -> Tuple[List[Bool], List[Bool]]"
+        }
+       ]
+      },
+      {
+       "name": "column_str",
+       "overloads": [
+        {
+         "signature": "def column_str(self, i: Int) -> Tuple[List[String], List[Bool]]"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "footer_start_of",
+     "overloads": [
+      {
+       "signature": "def footer_start_of(size: Int, tail: Span[UInt8]) -> Int",
+       "summary": "Where the serialised `FileMetaData` begins, from a file's last 8 bytes.",
+       "description": "`-1` when `tail` is not a Parquet trailer or the length it declares does\nnot fit, so a caller that reads the tail speculatively can fall back to\nreading the whole file instead of raising."
+      }
+     ]
+    },
+    {
+     "name": "footer_only_buffer",
+     "overloads": [
+      {
+       "signature": "def footer_only_buffer(size: Int, footer_start: Int, footer: Span[UInt8]) -> List[UInt8]",
+       "summary": "A `size`-byte buffer holding nothing but the magic and the footer.",
+       "description": "`ParquetReader` addresses every page by its absolute file offset, so a\nbuffer of the file's real length with the chunks a projection wants\nwritten into it decodes exactly as the whole file does — and the bytes\nbetween them are never read. This builds that buffer with the gap left\n**uninitialised**: fresh pages are not faulted in until something writes\nthem, and zero-filling instead would cost most of what the sparse read\nsaves. Fill the wanted ranges — `needed_byte_ranges` names them — before\nhanding it to a reader, and never read a byte outside them.\n\n`footer` is the file from `footer_start` to its end: the metadata, the\n4-byte length and the trailing `PAR1`."
+      }
+     ]
+    },
+    {
+     "name": "op_name",
+     "overloads": [
+      {
+       "signature": "def op_name(op: Int) -> String"
+      }
+     ]
+    },
+    {
+     "name": "range_can_match",
+     "overloads": [
+      {
+       "signature": "def range_can_match(op: Int, lo: ScalarValue, hi: ScalarValue, v: ScalarValue) -> Bool",
+       "summary": "Could any value in `[lo, hi]` satisfy `x op v`?"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "parquet.rle_encode",
+   "summary": "Encoders for the two bit-level formats a Parquet writer needs.",
+   "structs": [
+    {
+     "name": "BitPacker",
+     "signature": "struct BitPacker",
+     "summary": "Packs values of a fixed bit width, least-significant bit first.",
+     "description": "Bits go into a 64-bit accumulator and leave it eight at a time, so a value\ncosts a shift, an or and at most a few byte stores — not a loop over its\nbits with a bounds-checked list grow inside it.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "out",
+       "type": "List[UInt8]"
+      },
+      {
+       "name": "acc",
+       "type": "UInt64"
+      },
+      {
+       "name": "bits",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "reserve",
+       "overloads": [
+        {
+         "signature": "def reserve(mut self, count: Int, width: Int)"
+        }
+       ]
+      },
+      {
+       "name": "put",
+       "overloads": [
+        {
+         "signature": "def put(mut self, value: UInt64, width: Int)"
+        }
+       ]
+      },
+      {
+       "name": "align",
+       "overloads": [
+        {
+         "signature": "def align(mut self)"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "write_uleb128",
+     "overloads": [
+      {
+       "signature": "def write_uleb128(mut out: List[UInt8], value: UInt64)"
+      }
+     ]
+    },
+    {
+     "name": "encode_hybrid",
+     "overloads": [
+      {
+       "signature": "def encode_hybrid(values: Span[UInt16], width: Int) -> List[UInt8]",
+       "summary": "The RLE / bit-packed hybrid: repeated runs of eight or more values, and bit-packed groups for everything else."
+      }
+     ]
+    },
+    {
+     "name": "encode_levels",
+     "overloads": [
+      {
+       "signature": "def encode_levels(values: Span[UInt16], width: Int) -> List[UInt8]",
+       "summary": "Levels as a v1 data page wants them: a 4-byte length, then the hybrid."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "parquet.schema",
+   "summary": "The Parquet schema tree, its leaf columns, and the Arrow schema it means.",
+   "description": "A Parquet file's schema is a flat list of `SchemaElement`s in depth-first\norder, each group carrying its child count. `ParquetSchema` turns that back\ninto a tree, computes the **maximum definition and repetition level** of every\nleaf, and then derives the *Arrow* field tree by applying the LogicalTypes\nrules — including the backward-compatibility rules for two-level lists that\nold writers produced.\n\nThree views come out of it:\n\n* `nodes` — the Parquet tree itself, one node per `SchemaElement`.\n* `leaves` — the columns that actually hold data, in column-chunk order.\n* `fields` / `roots` — the Arrow field tree, which is what a `RecordBatch`\n  looks like. A `LIST` field collapses the annotated group *and* its repeated\n  child into one node; a `MAP` field collapses the annotated group and keeps\n  the `key_value` group as its single `STRUCT` child, exactly as Arrow wants.",
+   "aliases": [
+    {
+     "name": "REP_REQUIRED",
+     "value": "0"
+    },
+    {
+     "name": "REP_OPTIONAL",
+     "value": "1"
+    },
+    {
+     "name": "REP_REPEATED",
+     "value": "2"
+    }
+   ],
+   "structs": [
+    {
+     "name": "SchemaNode",
+     "signature": "struct SchemaNode",
+     "summary": "One node of the Parquet schema tree.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "elem",
+       "type": "Int",
+       "summary": "Index into `FileMetaData.schema`."
+      },
+      {
+       "name": "parent",
+       "type": "Int"
+      },
+      {
+       "name": "children",
+       "type": "List[Int]"
+      },
+      {
+       "name": "repetition",
+       "type": "Int"
+      },
+      {
+       "name": "max_def",
+       "type": "Int"
+      },
+      {
+       "name": "max_rep",
+       "type": "Int"
+      },
+      {
+       "name": "is_leaf",
+       "type": "Bool"
+      },
+      {
+       "name": "leaf",
+       "type": "Int",
+       "summary": "Index into `ParquetSchema.leaves`, or -1."
+      },
+      {
+       "name": "path",
+       "type": "List[String]"
+      },
+      {
+       "name": "field_id",
+       "type": "Int32",
+       "summary": "The Parquet field id, or -1 when the writer did not set one."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "LeafColumn",
+     "signature": "struct LeafColumn",
+     "summary": "A column that holds data — one column chunk per row group.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "node",
+       "type": "Int"
+      },
+      {
+       "name": "path",
+       "type": "List[String]"
+      },
+      {
+       "name": "physical",
+       "type": "Int32"
+      },
+      {
+       "name": "type_length",
+       "type": "Int"
+      },
+      {
+       "name": "max_def",
+       "type": "Int"
+      },
+      {
+       "name": "max_rep",
+       "type": "Int"
+      },
+      {
+       "name": "arrow",
+       "type": "ArrowType"
+      },
+      {
+       "name": "field_id",
+       "type": "Int32"
+      },
+      {
+       "name": "converted",
+       "type": "Int32",
+       "summary": "The `ConvertedType`, or -1."
+      },
+      {
+       "name": "scale",
+       "type": "Int"
+      },
+      {
+       "name": "precision",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "dotted",
+       "overloads": [
+        {
+         "signature": "def dotted(self) -> String"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ArrowField",
+     "signature": "struct ArrowField",
+     "summary": "One node of the Arrow field tree derived from the Parquet schema.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "type",
+       "type": "ArrowType"
+      },
+      {
+       "name": "nullable",
+       "type": "Bool"
+      },
+      {
+       "name": "children",
+       "type": "List[Int]"
+      },
+      {
+       "name": "leaf",
+       "type": "Int",
+       "summary": "Index into `ParquetSchema.leaves` for a primitive field, else -1."
+      },
+      {
+       "name": "field_id",
+       "type": "Int32"
+      },
+      {
+       "name": "node",
+       "type": "Int",
+       "summary": "The Parquet node this field came from."
+      },
+      {
+       "name": "def_level",
+       "type": "Int",
+       "summary": "This field is null in a record whose definition level is below this."
+      },
+      {
+       "name": "rep_level",
+       "type": "Int"
+      },
+      {
+       "name": "elem_def_level",
+       "type": "Int",
+       "summary": "`LIST`/`MAP` only: at or above this level the container has an element."
+      },
+      {
+       "name": "elem_rep_level",
+       "type": "Int",
+       "summary": "`LIST`/`MAP` only: a repetition level of exactly this continues a list."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ParquetSchema",
+     "signature": "struct ParquetSchema",
+     "summary": "The schema tree, its leaves, and the Arrow fields they add up to.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "nodes",
+       "type": "List[SchemaNode]"
+      },
+      {
+       "name": "leaves",
+       "type": "List[LeafColumn]"
+      },
+      {
+       "name": "fields",
+       "type": "List[ArrowField]"
+      },
+      {
+       "name": "roots",
+       "type": "List[Int]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "num_leaves",
+       "overloads": [
+        {
+         "signature": "def num_leaves(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "leaf_by_path",
+       "overloads": [
+        {
+         "signature": "def leaf_by_path(self, path: StringSpan) -> Int",
+         "summary": "The leaf whose dotted path is `path`, or -1."
+        }
+       ]
+      },
+      {
+       "name": "field_by_name",
+       "overloads": [
+        {
+         "signature": "def field_by_name(self, name: StringSpan) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "field_by_id",
+       "overloads": [
+        {
+         "signature": "def field_by_id(self, id: Int32) -> Int",
+         "summary": "Depth-first search of the whole tree for a Parquet field id."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "arrow_type_of",
+     "overloads": [
+      {
+       "signature": "def arrow_type_of(el: SchemaElement) -> ArrowType",
+       "summary": "The Arrow type of one primitive `SchemaElement`.",
+       "description": "`LogicalType` wins when present; `ConvertedType` is the fallback for files\nwritten before Parquet 2.4. Anything unrecognised falls back to the plain\nphysical type, which is what every other reader does."
+      }
+     ]
+    },
+    {
+     "name": "build_schema",
+     "overloads": [
+      {
+       "signature": "def build_schema(elements: List[SchemaElement]) -> ParquetSchema",
+       "summary": "Turn the flat depth-first `SchemaElement` list into a `ParquetSchema`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "parquet.stats",
+   "summary": "Column statistics, decoded from their raw bytes to typed values.",
+   "description": "`Statistics.min_value` / `max_value` are the *physical* bytes of a value — four\nlittle-endian bytes for an `INT32` column, the raw string for a `BYTE_ARRAY`\none — so every consumer has to decode them against the column's physical type.\n`TypedStats` does that once and hands back `Int64`, `Float64`, `String` or raw\nbytes, which is what `iceberg.mojo` wants for `lower_bounds` / `upper_bounds`.\n\nThe deprecated `min` / `max` fields are used only when `min_value` /\n`max_value` are absent, and only for types whose old sort order was already\ncorrect (everything except signed comparisons of `BYTE_ARRAY`, where\nparquet-mr's historical order was wrong — such a column reports no bounds\nrather than a wrong one).",
+   "aliases": [
+    {
+     "name": "SV_NONE",
+     "value": "0"
+    },
+    {
+     "name": "SV_INT",
+     "value": "1"
+    },
+    {
+     "name": "SV_UINT",
+     "value": "2"
+    },
+    {
+     "name": "SV_FLOAT",
+     "value": "3"
+    },
+    {
+     "name": "SV_BYTES",
+     "value": "4"
+    },
+    {
+     "name": "SV_BOOL",
+     "value": "5"
+    }
+   ],
+   "structs": [
+    {
+     "name": "ScalarValue",
+     "signature": "struct ScalarValue",
+     "summary": "One decoded statistic, or one predicate literal.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "kind",
+       "type": "Int"
+      },
+      {
+       "name": "i",
+       "type": "Int64"
+      },
+      {
+       "name": "u",
+       "type": "UInt64"
+      },
+      {
+       "name": "f",
+       "type": "Float64"
+      },
+      {
+       "name": "b",
+       "type": "List[UInt8]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "of_int",
+       "overloads": [
+        {
+         "signature": "def of_int(v: Int64) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "of_uint",
+       "overloads": [
+        {
+         "signature": "def of_uint(v: UInt64) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "of_float",
+       "overloads": [
+        {
+         "signature": "def of_float(v: Float64) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "of_bool",
+       "overloads": [
+        {
+         "signature": "def of_bool(v: Bool) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "of_bytes",
+       "overloads": [
+        {
+         "signature": "def of_bytes(data: Span[UInt8]) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "of_string",
+       "overloads": [
+        {
+         "signature": "def of_string(text: StringSpan) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "as_string",
+       "overloads": [
+        {
+         "signature": "def as_string(self) -> String"
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "TypedStats",
+     "signature": "struct TypedStats",
+     "summary": "One column chunk's statistics, decoded.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "has_min_max",
+       "type": "Bool"
+      },
+      {
+       "name": "min",
+       "type": "ScalarValue"
+      },
+      {
+       "name": "max",
+       "type": "ScalarValue"
+      },
+      {
+       "name": "has_null_count",
+       "type": "Bool"
+      },
+      {
+       "name": "null_count",
+       "type": "Int64"
+      },
+      {
+       "name": "has_distinct_count",
+       "type": "Bool"
+      },
+      {
+       "name": "distinct_count",
+       "type": "Int64"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "compare_bytes",
+     "overloads": [
+      {
+       "signature": "def compare_bytes(a: Span[UInt8], b: Span[UInt8]) -> Int"
+      }
+     ]
+    },
+    {
+     "name": "compare_scalars",
+     "overloads": [
+      {
+       "signature": "def compare_scalars(a: ScalarValue, b: ScalarValue) -> Int",
+       "summary": "Order two scalars of the same kind. Raises on a kind mismatch."
+      }
+     ]
+    },
+    {
+     "name": "decode_statistic",
+     "overloads": [
+      {
+       "signature": "def decode_statistic(leaf: LeafColumn, raw: Span[UInt8]) -> ScalarValue",
+       "summary": "Decode one raw statistic against the leaf's physical and Arrow types."
+      }
+     ]
+    },
+    {
+     "name": "decode_stats",
+     "overloads": [
+      {
+       "signature": "def decode_stats(leaf: LeafColumn, st: Statistics) -> TypedStats",
+       "summary": "Decode a `Statistics` struct against one leaf column."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "parquet.writer",
+   "summary": "`ParquetWriter` — write Arrow arrays back out as a Parquet file.",
+   "description": "The writer takes exactly what the reader produces: an `ArrayArena` and the\nindices of the top-level arrays in it. That makes a round trip one line, and it\nmeans anything the reader can decode, the writer can write back.\n\n```mojo\nfrom parquet import ParquetReader, ParquetWriter, WriterOptions\n\nvar r = ParquetReader.open(\"in.parquet\")\nvar t = r.read_table()\n\nvar opts = WriterOptions()\nopts.codec = CompressionCodec.SNAPPY.value\nvar w = ParquetWriter(opts^)\nfor b in t.batches:\n    w.write_batch(b.arena, b.roots)\nvar bytes = w^.finish()\n```\n\nWhat it writes: Parquet 2.6 metadata with v1 data pages, `PLAIN` and\n`RLE_DICTIONARY` values, `RLE` levels, three-level lists, `key_value` maps,\nstructs, field ids, per-chunk statistics with the sort order each logical type\nrequires, an `OffsetIndex` and a `ColumnIndex` per chunk, and key/value\nmetadata. Decimals go out as `FIXED_LEN_BYTE_ARRAY(16)`, which is legal for\nevery precision Arrow can hold.",
+   "aliases": [
+    {
+     "name": "WN_PRIM",
+     "value": "0"
+    },
+    {
+     "name": "WN_LIST",
+     "value": "1"
+    },
+    {
+     "name": "WN_MAP",
+     "value": "2"
+    },
+    {
+     "name": "WN_STRUCT",
+     "value": "3"
+    },
+    {
+     "name": "CREATED_BY",
+     "value": "\"parquet.mojo version 0.3.1\""
+    },
+    {
+     "name": "MM_GENERIC",
+     "value": "0",
+     "summary": "This type needs the generic byte comparator."
+    },
+    {
+     "name": "MM_BOUNDS",
+     "value": "1",
+     "summary": "Bounds found and written."
+    },
+    {
+     "name": "MM_NONE",
+     "value": "2",
+     "summary": "Handled, but there is nothing to report: every value was NaN."
+    },
+    {
+     "name": "DICT_MAX_VALUES",
+     "value": "8192",
+     "summary": "How many distinct values a column chunk's dictionary may hold.",
+     "description": "Past this the build is abandoned and the chunk is written `PLAIN`, so this is\nboth the size rule and the ceiling on the work a chunk that will never be\ndictionary-encoded can cost: `DICT_MAX_VALUES` inserts, not one per value.\n\n8192 is where a dictionary stops paying on compressible data. Writing 65,536\nvalues with SNAPPY, dictionary against `PLAIN`, on values drawn cyclically from\na pool of that size:\n\n| distinct | `INT64` | `DOUBLE` | `BYTE_ARRAY` |\n| --- | --- | --- | --- |\n| 512 | 0.23× | 0.23× | 0.14× |\n| 2048 | 0.47× | 0.47× | 0.29× |\n| 8192 | 0.74× | 0.74× | 0.53× |\n| 16384 | 1.02× | 1.02× | 0.79× |\n| 32768 | 1.28× | 1.31× | 1.10× |\n\nAt 32768 — which is what a cap of `n_values / 2` allows — the dictionary makes\nthe fixed-width chunks 30% *bigger*. On values that do not compress the\ndictionary keeps winning further out (0.82× at 32768 distinct `INT64`), so a\nchunk with 8k–32k distinct incompressible values is the case this cap gives up\non; a mid-chunk fallback that kept what it had already encoded, the way\nparquet-cpp does, would not have to choose.\n\nThe dictionary indices are `UInt16`, so the cap can never exceed 65535."
+    }
+   ],
+   "structs": [
+    {
+     "name": "WriterOptions",
+     "signature": "struct WriterOptions",
+     "summary": "How to write. Every field has a sensible default.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "codec",
+       "type": "Int32"
+      },
+      {
+       "name": "row_group_size",
+       "type": "Int"
+      },
+      {
+       "name": "data_page_size",
+       "type": "Int",
+       "summary": "Target *uncompressed* bytes of values per data page."
+      },
+      {
+       "name": "use_dictionary",
+       "type": "Bool"
+      },
+      {
+       "name": "write_statistics",
+       "type": "Bool"
+      },
+      {
+       "name": "write_page_index",
+       "type": "Bool"
+      },
+      {
+       "name": "created_by",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "WNode",
+     "signature": "struct WNode",
+     "summary": "One node of the tree the writer walks, mirroring the Arrow field tree.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "kind",
+       "type": "Int"
+      },
+      {
+       "name": "arrow",
+       "type": "ArrowType"
+      },
+      {
+       "name": "nullable",
+       "type": "Bool"
+      },
+      {
+       "name": "field_id",
+       "type": "Int32"
+      },
+      {
+       "name": "children",
+       "type": "List[Int]"
+      },
+      {
+       "name": "def_level",
+       "type": "Int"
+      },
+      {
+       "name": "rep_level",
+       "type": "Int"
+      },
+      {
+       "name": "elem_def_level",
+       "type": "Int"
+      },
+      {
+       "name": "elem_rep_level",
+       "type": "Int"
+      },
+      {
+       "name": "leaf",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "WLeaf",
+     "signature": "struct WLeaf",
+     "summary": "A column the writer will produce chunks for.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "path",
+       "type": "List[String]"
+      },
+      {
+       "name": "arrow",
+       "type": "ArrowType"
+      },
+      {
+       "name": "physical",
+       "type": "Int32"
+      },
+      {
+       "name": "type_length",
+       "type": "Int"
+      },
+      {
+       "name": "max_def",
+       "type": "Int"
+      },
+      {
+       "name": "max_rep",
+       "type": "Int"
+      },
+      {
+       "name": "field_id",
+       "type": "Int32"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "WriteSchema",
+     "signature": "struct WriteSchema",
+     "summary": "The writer's mirror of the Arrow field tree, plus the Parquet schema.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "nodes",
+       "type": "List[WNode]"
+      },
+      {
+       "name": "roots",
+       "type": "List[Int]"
+      },
+      {
+       "name": "leaves",
+       "type": "List[WLeaf]"
+      },
+      {
+       "name": "elements",
+       "type": "List[SchemaElement]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "LeafBuffer",
+     "signature": "struct LeafBuffer",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "defs",
+       "type": "List[UInt16]"
+      },
+      {
+       "name": "reps",
+       "type": "List[UInt16]"
+      },
+      {
+       "name": "values",
+       "type": "PhysBuffer"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "DictBuilder",
+     "signature": "struct DictBuilder",
+     "summary": "Distinct values in first-seen order, with an open-addressed index.",
+     "description": "The index is a flat power-of-two table of `Int32` dictionary indices with\nlinear probing — one array, no per-bucket allocation, no `Dict` and no\n`List` of collisions.\n\nA 4- or 8-byte fixed-width column sets `key_width` and is indexed by the\ninteger value itself: the hash is a multiply-shift of the key and the\ncomparison is an integer compare, so a value costs no span construction\nand no byte loop at all. Everything else hashes and compares bytes.",
+     "traits": [
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "values",
+       "type": "PhysBuffer"
+      },
+      {
+       "name": "slots",
+       "type": "List[Int32]"
+      },
+      {
+       "name": "mask",
+       "type": "UInt64"
+      },
+      {
+       "name": "used",
+       "type": "Int"
+      },
+      {
+       "name": "key_width",
+       "type": "Int",
+       "summary": "4 or 8 for the integer-keyed mode, 0 for the byte-keyed one."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        },
+        {
+         "signature": "def __init__(out self, kind: Int, width: Int, expect: Int = Int(0))"
+        }
+       ]
+      },
+      {
+       "name": "index_of_key",
+       "overloads": [
+        {
+         "signature": "def index_of_key(mut self, key: UInt64) -> Int",
+         "summary": "The dictionary index of an integer-keyed value, adding it if new."
+        }
+       ]
+      },
+      {
+       "name": "index_of",
+       "overloads": [
+        {
+         "signature": "def index_of(mut self, v: Span[UInt8]) -> Int"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ParquetWriter",
+     "signature": "struct ParquetWriter[Codecs: CodecSet = DefaultCodecs]",
+     "summary": "Writes Arrow arrays out as Parquet. One `write_batch` per record batch.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "options",
+       "type": "WriterOptions"
+      },
+      {
+       "name": "schema",
+       "type": "WriteSchema"
+      },
+      {
+       "name": "out",
+       "type": "List[UInt8]"
+      },
+      {
+       "name": "row_groups",
+       "type": "List[RowGroup]"
+      },
+      {
+       "name": "offset_indexes",
+       "type": "List[List[OffsetIndex]]"
+      },
+      {
+       "name": "column_indexes",
+       "type": "List[List[ColumnIndex]]"
+      },
+      {
+       "name": "num_rows",
+       "type": "Int64"
+      },
+      {
+       "name": "kv",
+       "type": "List[KeyValue]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var options: WriterOptions)"
+        }
+       ]
+      },
+      {
+       "name": "add_metadata",
+       "overloads": [
+        {
+         "signature": "def add_metadata(mut self, key: StringSpan, value: StringSpan)"
+        }
+       ]
+      },
+      {
+       "name": "write_batch",
+       "overloads": [
+        {
+         "signature": "def write_batch(mut self, arena: ArrayArena, roots: List[Int])",
+         "summary": "Write one record batch, split into row groups of `row_group_size`."
+        }
+       ]
+      },
+      {
+       "name": "finish",
+       "overloads": [
+        {
+         "signature": "def finish(deinit self) -> List[UInt8]",
+         "summary": "Close the file and return its bytes."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "physical_for",
+     "overloads": [
+      {
+       "signature": "def physical_for(t: ArrowType) -> Tuple[Int32, Int]",
+       "summary": "The Parquet physical type and `type_length` for an Arrow type."
+      }
+     ]
+    },
+    {
+     "name": "annotate",
+     "overloads": [
+      {
+       "signature": "def annotate(mut el: SchemaElement, t: ArrowType)",
+       "summary": "Give a `SchemaElement` the LogicalType and ConvertedType of `t`."
+      }
+     ]
+    },
+    {
+     "name": "w_def",
+     "overloads": [
+      {
+       "signature": "def w_def(s: WriteSchema, node: Int) -> Int"
+      }
+     ]
+    },
+    {
+     "name": "build_write_schema",
+     "overloads": [
+      {
+       "signature": "def build_write_schema(arena: ArrayArena, roots: List[Int]) -> WriteSchema",
+       "summary": "Derive the Parquet schema from the Arrow arrays that will be written."
+      }
+     ]
+    },
+    {
+     "name": "append_physical",
+     "overloads": [
+      {
+       "signature": "def append_physical(mut out: PhysBuffer, leaf: WLeaf, a: ArrayData, i: Int)",
+       "summary": "Append value `i` of `a` in the leaf's physical Parquet representation."
+      }
+     ]
+    },
+    {
+     "name": "shred_flat",
+     "overloads": [
+      {
+       "signature": "def shred_flat(s: WriteSchema, w: Int, arena: ArrayArena, node: Int, r0: Int, r1: Int, mut cols: List[LeafBuffer]) -> Bool",
+       "summary": "Shred a whole run of rows of an unnested column in one pass per buffer.",
+       "description": "A top-level primitive column has one slot per row and no repetition, so\nits definition levels are a fill (with the null slots knocked back to\nzero) and its values are a copy. Returns `False` for anything that needs\nthe recursive path — a nested column, or an Arrow type whose bytes are not\nthe Parquet bytes."
+      }
+     ]
+    },
+    {
+     "name": "shred",
+     "overloads": [
+      {
+       "signature": "def shred(s: WriteSchema, w: Int, arena: ArrayArena, node: Int, i: Int, parent_def: Int, rep: Int, mut cols: List[LeafBuffer])",
+       "summary": "Write one value of one Arrow array into the leaf buffers under it."
+      }
+     ]
+    },
+    {
+     "name": "min_max",
+     "overloads": [
+      {
+       "signature": "def min_max(leaf: WLeaf, values: PhysBuffer, start: Int, count: Int) -> Tuple[List[UInt8], List[UInt8], Bool]",
+       "summary": "The bounds of `count` values from `start`, in this column's sort order."
+      }
+     ]
+    },
+    {
+     "name": "column_statistics",
+     "overloads": [
+      {
+       "signature": "def column_statistics(leaf: WLeaf, buf: LeafBuffer, null_count: Int) -> Statistics"
+      }
+     ]
+    },
+    {
+     "name": "dict_value_cap",
+     "overloads": [
+      {
+       "signature": "def dict_value_cap(n_values: Int) -> Int",
+       "summary": "The largest dictionary index `n_values` values may produce, or abandon.",
+       "description": "Half the chunk is the older, weaker bound and still applies to a short\nchunk, where 8192 distinct values are not reachable anyway; the floor of 64\nkeeps a tiny chunk — which cannot pay for a dictionary page either way —\nfrom abandoning on its second value."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

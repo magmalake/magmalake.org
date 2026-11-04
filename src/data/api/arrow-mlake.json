@@ -1,0 +1,1761 @@
+{
+ "tin": "arrow-mlake",
+ "version": "0.2.1",
+ "rev": "178aae6e0da0dbe105f9cb02632a51cfd35b9dda",
+ "package": "arrow_mlake",
+ "path": "src/arrow_mlake",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "`arrow-mlake.mojo` — the Arrow memory layout and the C Data Interface, in pure Mojo.",
+ "description": "Part of magmalake: data lake building blocks in Mojo.\n\n```mojo\nfrom arrow_mlake import ImportedStream\n\nvar s = ImportedStream(stream_address)   # a producer's ArrowArrayStream\nwhile True:\n    var got = s.next()\n    if not got:\n        break\n    ref batch = got.value()\n    print(batch.num_rows, \"rows,\", batch.num_columns(), \"columns\")\n```\n\nSeven modules, and no dependencies on anything but `std`:\n\n* `arrow_mlake.arrow` — `ArrowType`, `ArrayData` and `ArrayArena`: one Arrow\n  array as the columnar spec lays it out, with nesting held in an arena\n  because Mojo does not allow a struct to contain a `List` of itself.\n* `arrow_mlake.carrow` — the C Data Interface outbound. `export_c` turns an\n  array into an `ArrowSchema`/`ArrowArray` pair any Arrow implementation can\n  consume.\n* `arrow_mlake.carrow_import` — the same interface inbound, including\n  `ArrowArrayStream`, which is the shape a scan arrives in.\n* `arrow_mlake.carrow_stream` — `export_stream`, the outbound half of that:\n  a sequence of batches as one `ArrowArrayStream` a consumer pulls from.\n* `arrow_mlake.batch` — `RecordBatch`, a run of rows as one array per column.\n* `arrow_mlake.ipc` — the Arrow IPC stream format: `IpcWriter` and\n  `read_ipc_stream`, batches to bytes and back, for files, sockets and shared\n  mappings. `arrow_mlake.flatbuf` is the FlatBuffers builder and reader under\n  it.\n\n**This tin is a stopgap.** The community Arrow implementation for Mojo is\n[marrow](https://github.com/kszucs/marrow), which is more complete than this\nand which this should be replaced by as soon as it builds on Mojo 1.x. See the\nREADME.",
+ "modules": [
+  {
+   "path": "arrow_mlake",
+   "summary": "`arrow-mlake.mojo` — the Arrow memory layout and the C Data Interface, in pure Mojo.",
+   "description": "Part of magmalake: data lake building blocks in Mojo.\n\n```mojo\nfrom arrow_mlake import ImportedStream\n\nvar s = ImportedStream(stream_address)   # a producer's ArrowArrayStream\nwhile True:\n    var got = s.next()\n    if not got:\n        break\n    ref batch = got.value()\n    print(batch.num_rows, \"rows,\", batch.num_columns(), \"columns\")\n```\n\nSeven modules, and no dependencies on anything but `std`:\n\n* `arrow_mlake.arrow` — `ArrowType`, `ArrayData` and `ArrayArena`: one Arrow\n  array as the columnar spec lays it out, with nesting held in an arena\n  because Mojo does not allow a struct to contain a `List` of itself.\n* `arrow_mlake.carrow` — the C Data Interface outbound. `export_c` turns an\n  array into an `ArrowSchema`/`ArrowArray` pair any Arrow implementation can\n  consume.\n* `arrow_mlake.carrow_import` — the same interface inbound, including\n  `ArrowArrayStream`, which is the shape a scan arrives in.\n* `arrow_mlake.carrow_stream` — `export_stream`, the outbound half of that:\n  a sequence of batches as one `ArrowArrayStream` a consumer pulls from.\n* `arrow_mlake.batch` — `RecordBatch`, a run of rows as one array per column.\n* `arrow_mlake.ipc` — the Arrow IPC stream format: `IpcWriter` and\n  `read_ipc_stream`, batches to bytes and back, for files, sockets and shared\n  mappings. `arrow_mlake.flatbuf` is the FlatBuffers builder and reader under\n  it.\n\n**This tin is a stopgap.** The community Arrow implementation for Mojo is\n[marrow](https://github.com/kszucs/marrow), which is more complete than this\nand which this should be replaced by as soon as it builds on Mojo 1.x. See the\nREADME."
+  },
+  {
+   "path": "arrow_mlake.arrow",
+   "summary": "Arrow types and Arrow array data, in the layout the C Data Interface wants.",
+   "description": "`ArrayData` is one Arrow array: a type, a length, an optional validity bitmap,\nup to one offsets buffer, a values buffer, and children. Nesting is stored in\nan *arena* (`ArrayArena`) with children referenced by index, because Mojo does\nnot allow a struct to contain a `List` of itself.\n\nBuffer layouts follow the Arrow columnar spec exactly, so\n`arrow_mlake.carrow` can hand the buffers to another runtime without touching\nthem:\n\n| type | buffers |\n|---|---|\n| null | — |\n| boolean | validity, values (bit-packed, LSB first) |\n| fixed width | validity, values |\n| utf8 / binary | validity, offsets (i32), data |\n| large utf8 / large binary | validity, offsets (i64), data |\n| fixed-size binary, decimal128 | validity, values |\n| list / map | validity, offsets (i32) + one child |\n| large list | validity, offsets (i64) + one child |\n| struct | validity + N children |",
+   "aliases": [
+    {
+     "name": "AT_NULL",
+     "value": "0"
+    },
+    {
+     "name": "AT_BOOL",
+     "value": "1"
+    },
+    {
+     "name": "AT_INT8",
+     "value": "2"
+    },
+    {
+     "name": "AT_INT16",
+     "value": "3"
+    },
+    {
+     "name": "AT_INT32",
+     "value": "4"
+    },
+    {
+     "name": "AT_INT64",
+     "value": "5"
+    },
+    {
+     "name": "AT_UINT8",
+     "value": "6"
+    },
+    {
+     "name": "AT_UINT16",
+     "value": "7"
+    },
+    {
+     "name": "AT_UINT32",
+     "value": "8"
+    },
+    {
+     "name": "AT_UINT64",
+     "value": "9"
+    },
+    {
+     "name": "AT_FLOAT16",
+     "value": "10"
+    },
+    {
+     "name": "AT_FLOAT32",
+     "value": "11"
+    },
+    {
+     "name": "AT_FLOAT64",
+     "value": "12"
+    },
+    {
+     "name": "AT_UTF8",
+     "value": "13"
+    },
+    {
+     "name": "AT_LARGE_UTF8",
+     "value": "14"
+    },
+    {
+     "name": "AT_BINARY",
+     "value": "15"
+    },
+    {
+     "name": "AT_LARGE_BINARY",
+     "value": "16"
+    },
+    {
+     "name": "AT_FIXED_SIZE_BINARY",
+     "value": "17"
+    },
+    {
+     "name": "AT_DECIMAL128",
+     "value": "18"
+    },
+    {
+     "name": "AT_DATE32",
+     "value": "19"
+    },
+    {
+     "name": "AT_TIME32",
+     "value": "20"
+    },
+    {
+     "name": "AT_TIME64",
+     "value": "21"
+    },
+    {
+     "name": "AT_TIMESTAMP",
+     "value": "22"
+    },
+    {
+     "name": "AT_LIST",
+     "value": "23"
+    },
+    {
+     "name": "AT_LARGE_LIST",
+     "value": "24"
+    },
+    {
+     "name": "AT_STRUCT",
+     "value": "25"
+    },
+    {
+     "name": "AT_MAP",
+     "value": "26"
+    },
+    {
+     "name": "TU_SECOND",
+     "value": "0"
+    },
+    {
+     "name": "TU_MILLI",
+     "value": "1"
+    },
+    {
+     "name": "TU_MICRO",
+     "value": "2"
+    },
+    {
+     "name": "TU_NANO",
+     "value": "3"
+    }
+   ],
+   "structs": [
+    {
+     "name": "ArrowType",
+     "signature": "struct ArrowType",
+     "summary": "One Arrow logical type. `id` is one of the `AT_*` constants.",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "id",
+       "type": "Int"
+      },
+      {
+       "name": "byte_width",
+       "type": "Int",
+       "summary": "Element width for `AT_FIXED_SIZE_BINARY` and `AT_DECIMAL128` (16)."
+      },
+      {
+       "name": "precision",
+       "type": "Int"
+      },
+      {
+       "name": "scale",
+       "type": "Int"
+      },
+      {
+       "name": "unit",
+       "type": "Int",
+       "summary": "Time unit for time/timestamp types, one of the `TU_*` constants."
+      },
+      {
+       "name": "tz",
+       "type": "String",
+       "summary": "`\"UTC\"` for a UTC-adjusted timestamp, empty for a local one."
+      },
+      {
+       "name": "extension",
+       "type": "String",
+       "summary": "An Arrow extension name such as `arrow.uuid`, or empty."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, id: Int)"
+        },
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "is_nested",
+       "overloads": [
+        {
+         "signature": "def is_nested(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "fixed_width",
+       "overloads": [
+        {
+         "signature": "def fixed_width(self) -> Int",
+         "summary": "Bytes per element for a fixed-width type, or 0 if not fixed width."
+        }
+       ]
+      },
+      {
+       "name": "format",
+       "overloads": [
+        {
+         "signature": "def format(self) -> String",
+         "summary": "The Arrow C Data Interface format string for this type."
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ArrayData",
+     "signature": "struct ArrayData",
+     "summary": "One Arrow array. Children are indices into the owning `ArrayArena`.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "type",
+       "type": "ArrowType"
+      },
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "nullable",
+       "type": "Bool"
+      },
+      {
+       "name": "field_id",
+       "type": "Int32"
+      },
+      {
+       "name": "length",
+       "type": "Int"
+      },
+      {
+       "name": "null_count",
+       "type": "Int"
+      },
+      {
+       "name": "validity",
+       "type": "List[UInt8]"
+      },
+      {
+       "name": "offsets",
+       "type": "List[Int32]"
+      },
+      {
+       "name": "large_offsets",
+       "type": "List[Int64]"
+      },
+      {
+       "name": "values",
+       "type": "List[UInt8]"
+      },
+      {
+       "name": "children",
+       "type": "List[Int]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var type: ArrowType, var name: String)"
+        },
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "is_valid",
+       "overloads": [
+        {
+         "signature": "def is_valid(self, i: Int) -> Bool"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ArrayArena",
+     "signature": "struct ArrayArena",
+     "summary": "Owns every `ArrayData` of a batch; children are referenced by index.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "nodes",
+       "type": "List[ArrayData]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "add",
+       "overloads": [
+        {
+         "signature": "def add(mut self, var node: ArrayData) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "graft",
+       "overloads": [
+        {
+         "signature": "def graft(mut self, mut other: Self, root: Int) -> Int",
+         "summary": "Move every node of `other` in here, keeping its order; return where `root` ended up.",
+         "description": "This is what lets an array be *built* somewhere else and still land in a\ncaller-chosen place in this arena. Children are indices, so a subtree\nbuilt on its own — starting at index 0 — needs every one of them shifted\nby however many nodes are already here. Because the nodes keep their\nrelative order, the result is byte for byte the arena that building the\nsame subtree straight into this one would have produced.\n\nThat equivalence is the whole point: it is what makes it safe to build\nseveral top-level fields at once and concatenate them in field order\nafterwards, whatever order they actually finished in.\n\n`other` is left holding that many empty arrays — an `ArrayData` owns its\nbuffers, so this moves them out one slot at a time rather than copying."
+        }
+       ]
+      },
+      {
+       "name": "__len__",
+       "overloads": [
+        {
+         "signature": "def __len__(self) -> Int"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "unit_suffix",
+     "overloads": [
+      {
+       "signature": "def unit_suffix(unit: Int) -> String"
+      }
+     ]
+    },
+    {
+     "name": "unit_name",
+     "overloads": [
+      {
+       "signature": "def unit_name(unit: Int) -> String"
+      }
+     ]
+    },
+    {
+     "name": "at",
+     "overloads": [
+      {
+       "signature": "def at(id: Int) -> ArrowType"
+      }
+     ]
+    },
+    {
+     "name": "at_fixed",
+     "overloads": [
+      {
+       "signature": "def at_fixed(width: Int) -> ArrowType"
+      }
+     ]
+    },
+    {
+     "name": "at_decimal",
+     "overloads": [
+      {
+       "signature": "def at_decimal(precision: Int, scale: Int) -> ArrowType"
+      }
+     ]
+    },
+    {
+     "name": "at_timestamp",
+     "overloads": [
+      {
+       "signature": "def at_timestamp(unit: Int, var tz: String) -> ArrowType"
+      }
+     ]
+    },
+    {
+     "name": "at_time",
+     "overloads": [
+      {
+       "signature": "def at_time(unit: Int) -> ArrowType"
+      }
+     ]
+    },
+    {
+     "name": "bitmap_bytes",
+     "overloads": [
+      {
+       "signature": "def bitmap_bytes(n: Int) -> Int"
+      }
+     ]
+    },
+    {
+     "name": "bit_get",
+     "overloads": [
+      {
+       "signature": "def bit_get(bitmap: Span[UInt8], i: Int) -> Bool"
+      }
+     ]
+    },
+    {
+     "name": "bit_fill_valid",
+     "overloads": [
+      {
+       "signature": "def bit_fill_valid(mut bitmap: List[UInt8], count: Int)",
+       "summary": "Materialise a bitmap in which the first `count` entries are all valid."
+      }
+     ]
+    },
+    {
+     "name": "bit_set",
+     "overloads": [
+      {
+       "signature": "def bit_set(mut bitmap: List[UInt8], i: Int, value: Bool)"
+      }
+     ]
+    },
+    {
+     "name": "load_i32",
+     "overloads": [
+      {
+       "signature": "def load_i32(buf: Span[UInt8], i: Int) -> Int32"
+      }
+     ]
+    },
+    {
+     "name": "load_i64",
+     "overloads": [
+      {
+       "signature": "def load_i64(buf: Span[UInt8], i: Int) -> Int64"
+      }
+     ]
+    },
+    {
+     "name": "load_u64",
+     "overloads": [
+      {
+       "signature": "def load_u64(buf: Span[UInt8], i: Int) -> UInt64"
+      }
+     ]
+    },
+    {
+     "name": "load_f32",
+     "overloads": [
+      {
+       "signature": "def load_f32(buf: Span[UInt8], i: Int) -> Float32"
+      }
+     ]
+    },
+    {
+     "name": "load_f64",
+     "overloads": [
+      {
+       "signature": "def load_f64(buf: Span[UInt8], i: Int) -> Float64"
+      }
+     ]
+    },
+    {
+     "name": "store_u32",
+     "overloads": [
+      {
+       "signature": "def store_u32(mut buf: List[UInt8], v: UInt32)"
+      }
+     ]
+    },
+    {
+     "name": "store_u64",
+     "overloads": [
+      {
+       "signature": "def store_u64(mut buf: List[UInt8], v: UInt64)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "arrow_mlake.batch",
+   "summary": "`RecordBatch` — a run of rows as Arrow arrays, one per column.",
+   "description": "A batch is `{arena, roots, num_rows}` and nothing else: the arrays live in one\n`ArrayArena`, `roots` names the column at the top of each tree, and `num_rows`\nis the length every root shares. That is the shape a Parquet reader hands back,\nthe shape `import_batch_c` unwraps a `+s` root into, and the shape a scan over\nthe C Data Interface arrives in, so it lives here rather than in any one of\nthem.\n\nThe `column_*` accessors widen a column to a Mojo `List` — `Int64` for any\ninteger, date, time or timestamp, `Float64` for any float, `String` for utf8\nand binary — paired with a per-element validity list. They copy, which is the\npoint: they are for reading a column out into ordinary Mojo values, not for\nthe columnar path, where `ArrayData`'s buffers are read in place.\n\n```mojo\nvar b = import_batch_c(array_addr, schema_addr)\nfor i in range(b.num_columns()):\n    print(b.name(i), String(b.type(i)))\nvar ids = b.column_i64(0)      # (values, validity)\n```",
+   "structs": [
+    {
+     "name": "RecordBatch",
+     "signature": "struct RecordBatch",
+     "summary": "A contiguous run of rows as Arrow arrays, one per selected column.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "arena",
+       "type": "ArrayArena"
+      },
+      {
+       "name": "roots",
+       "type": "List[Int]"
+      },
+      {
+       "name": "num_rows",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "num_columns",
+       "overloads": [
+        {
+         "signature": "def num_columns(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "column",
+       "overloads": [
+        {
+         "signature": "def column(ref self, i: Int) -> ref[self.arena.nodes[\"element\"]] ArrayData"
+        }
+       ]
+      },
+      {
+       "name": "child",
+       "overloads": [
+        {
+         "signature": "def child(ref self, node: Int, k: Int) -> ref[self.arena.nodes[\"element\"]] ArrayData"
+        }
+       ]
+      },
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name(self, i: Int) -> String"
+        }
+       ]
+      },
+      {
+       "name": "type",
+       "overloads": [
+        {
+         "signature": "def type(self, i: Int) -> ArrowType"
+        }
+       ]
+      },
+      {
+       "name": "export_c",
+       "overloads": [
+        {
+         "signature": "def export_c(self, i: Int) -> ExportedArray",
+         "summary": "Column `i` over the Arrow C Data Interface. The result owns copies of every buffer, so it outlives this batch."
+        }
+       ]
+      },
+      {
+       "name": "column_i64",
+       "overloads": [
+        {
+         "signature": "def column_i64(self, i: Int) -> Tuple[List[Int64], List[Bool]]"
+        }
+       ]
+      },
+      {
+       "name": "column_f64",
+       "overloads": [
+        {
+         "signature": "def column_f64(self, i: Int) -> Tuple[List[Float64], List[Bool]]"
+        }
+       ]
+      },
+      {
+       "name": "column_bool",
+       "overloads": [
+        {
+         "signature": "def column_bool(self, i: Int) -> Tuple[List[Bool], List[Bool]]"
+        }
+       ]
+      },
+      {
+       "name": "column_str",
+       "overloads": [
+        {
+         "signature": "def column_str(self, i: Int) -> Tuple[List[String], List[Bool]]"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "array_i64_into",
+     "overloads": [
+      {
+       "signature": "def array_i64_into(a: ArrayData, mut vals: List[Int64], mut valid: List[Bool])",
+       "summary": "Widen any integer, date, time or timestamp array to `Int64`."
+      }
+     ]
+    },
+    {
+     "name": "array_f64_into",
+     "overloads": [
+      {
+       "signature": "def array_f64_into(a: ArrayData, mut vals: List[Float64], mut valid: List[Bool])"
+      }
+     ]
+    },
+    {
+     "name": "array_bool_into",
+     "overloads": [
+      {
+       "signature": "def array_bool_into(a: ArrayData, mut vals: List[Bool], mut valid: List[Bool])"
+      }
+     ]
+    },
+    {
+     "name": "array_str_into",
+     "overloads": [
+      {
+       "signature": "def array_str_into(a: ArrayData, mut vals: List[String], mut valid: List[Bool])"
+      }
+     ]
+    },
+    {
+     "name": "array_i64",
+     "overloads": [
+      {
+       "signature": "def array_i64(a: ArrayData) -> Tuple[List[Int64], List[Bool]]"
+      }
+     ]
+    },
+    {
+     "name": "array_f64",
+     "overloads": [
+      {
+       "signature": "def array_f64(a: ArrayData) -> Tuple[List[Float64], List[Bool]]"
+      }
+     ]
+    },
+    {
+     "name": "array_bool",
+     "overloads": [
+      {
+       "signature": "def array_bool(a: ArrayData) -> Tuple[List[Bool], List[Bool]]"
+      }
+     ]
+    },
+    {
+     "name": "array_str",
+     "overloads": [
+      {
+       "signature": "def array_str(a: ArrayData) -> Tuple[List[String], List[Bool]]"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "arrow_mlake.carrow",
+   "summary": "The Arrow C Data Interface — this library's public output contract.",
+   "description": "`export_c` turns one `ArrayData` tree into the two C structs every Arrow\nimplementation understands:\n\n```c\nstruct ArrowSchema { const char* format; const char* name; const char* metadata;\n                     int64_t flags; int64_t n_children; ArrowSchema** children;\n                     ArrowSchema* dictionary; void (*release)(ArrowSchema*);\n                     void* private_data; };\nstruct ArrowArray  { int64_t length; int64_t null_count; int64_t offset;\n                     int64_t n_buffers; int64_t n_children; const void** buffers;\n                     ArrowArray** children; ArrowArray* dictionary;\n                     void (*release)(ArrowArray*); void* private_data; };\n```\n\nEach export is **two** allocations — one for the whole schema tree, one for the\nwhole array tree — laid out as: the structs, then the pointer arrays, then the\nformat and name strings and the metadata blocks, then copies of every buffer.\nThe root's `private_data` is the base of its block and its `release` frees the\nlot; children carry a release that only clears itself, because a consumer\nreleases the root and the root owns everything. Both callbacks are `abi(\"C\")`,\nso they can be called from C, Python or Rust.\n\nBuffers are copied rather than borrowed, which is what makes the export\noutlive the `RecordBatch` it came from and makes `ExportedArray` safe to hand\nto a runtime that will release it whenever it likes.\n\n```mojo\nvar e = export_c(batch.arena, batch.roots[0])\nprint(e.array, e.schema)   # two addresses, ready for _import_from_c\ne.into_raw()               # hand ownership to the consumer\n```\n\n`arrow_mlake.carrow_import` is the other direction — a foreign `ArrowSchema`\nand `ArrowArray` read back into an `ArrayData`, and `ArrowArrayStream`\niterated — and it implements the consumer's half of the same release\nconvention.",
+   "aliases": [
+    {
+     "name": "ARROW_FLAG_NULLABLE",
+     "value": "Int64(2)"
+    },
+    {
+     "name": "SchemaReleaseFn",
+     "value": "def(Pointer[CArrowSchema, MutUntrackedOrigin]) abi(\"C\") thin -> None"
+    },
+    {
+     "name": "ArrayReleaseFn",
+     "value": "def(Pointer[CArrowArray, MutUntrackedOrigin]) abi(\"C\") thin -> None"
+    }
+   ],
+   "structs": [
+    {
+     "name": "CArrowSchema",
+     "signature": "struct CArrowSchema",
+     "summary": "The C `ArrowSchema`, field for field. Pointers are held as addresses.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "format",
+       "type": "Int"
+      },
+      {
+       "name": "name",
+       "type": "Int"
+      },
+      {
+       "name": "metadata",
+       "type": "Int"
+      },
+      {
+       "name": "flags",
+       "type": "Int64"
+      },
+      {
+       "name": "n_children",
+       "type": "Int64"
+      },
+      {
+       "name": "children",
+       "type": "Int"
+      },
+      {
+       "name": "dictionary",
+       "type": "Int"
+      },
+      {
+       "name": "release",
+       "type": "Int"
+      },
+      {
+       "name": "private_data",
+       "type": "Int"
+      }
+     ]
+    },
+    {
+     "name": "CArrowArray",
+     "signature": "struct CArrowArray",
+     "summary": "The C `ArrowArray`, field for field. Pointers are held as addresses.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "length",
+       "type": "Int64"
+      },
+      {
+       "name": "null_count",
+       "type": "Int64"
+      },
+      {
+       "name": "offset",
+       "type": "Int64"
+      },
+      {
+       "name": "n_buffers",
+       "type": "Int64"
+      },
+      {
+       "name": "n_children",
+       "type": "Int64"
+      },
+      {
+       "name": "buffers",
+       "type": "Int"
+      },
+      {
+       "name": "children",
+       "type": "Int"
+      },
+      {
+       "name": "dictionary",
+       "type": "Int"
+      },
+      {
+       "name": "release",
+       "type": "Int"
+      },
+      {
+       "name": "private_data",
+       "type": "Int"
+      }
+     ]
+    },
+    {
+     "name": "ExportedArray",
+     "signature": "struct ExportedArray",
+     "summary": "An exported pair of C structs, still owned by Mojo until `into_raw`.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "array",
+       "type": "Int",
+       "summary": "Address of the `ArrowArray`."
+      },
+      {
+       "name": "schema",
+       "type": "Int",
+       "summary": "Address of the `ArrowSchema`."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, array: Int, schema: Int)"
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "into_raw",
+       "overloads": [
+        {
+         "signature": "def into_raw(mut self) -> Tuple[Int, Int]",
+         "summary": "Give the two structs to the consumer; they must release them."
+        }
+       ]
+      },
+      {
+       "name": "release",
+       "overloads": [
+        {
+         "signature": "def release(mut self)"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "release_array",
+     "overloads": [
+      {
+       "signature": "def release_array(p: Pointer[CArrowArray, MutUntrackedOrigin])",
+       "summary": "Free the whole exported array tree. `private_data` is the block."
+      }
+     ]
+    },
+    {
+     "name": "release_schema",
+     "overloads": [
+      {
+       "signature": "def release_schema(p: Pointer[CArrowSchema, MutUntrackedOrigin])",
+       "summary": "Free the whole exported schema tree."
+      }
+     ]
+    },
+    {
+     "name": "release_child_array",
+     "overloads": [
+      {
+       "signature": "def release_child_array(p: Pointer[CArrowArray, MutUntrackedOrigin])",
+       "summary": "A child is owned by its root; releasing one only marks it released."
+      }
+     ]
+    },
+    {
+     "name": "release_child_schema",
+     "overloads": [
+      {
+       "signature": "def release_child_schema(p: Pointer[CArrowSchema, MutUntrackedOrigin])"
+      }
+     ]
+    },
+    {
+     "name": "n_buffers_for_type",
+     "overloads": [
+      {
+       "signature": "def n_buffers_for_type(i: Int) -> Int",
+       "summary": "How many buffers an `ArrowArray` of this type id must carry.",
+       "description": "The export writes this many and `arrow_mlake.carrow_import` rejects a\nproducer that sends any other number, so the count is stated once rather\nthan twice."
+      }
+     ]
+    },
+    {
+     "name": "n_buffers_for",
+     "overloads": [
+      {
+       "signature": "def n_buffers_for(a: ArrayData) -> Int"
+      }
+     ]
+    },
+    {
+     "name": "export_c",
+     "overloads": [
+      {
+       "signature": "def export_c(arena: ArrayArena, root: Int) -> ExportedArray",
+       "summary": "Export one array of an arena over the Arrow C Data Interface."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "arrow_mlake.carrow_import",
+   "summary": "The Arrow C Data Interface, inbound — another runtime's arrays read into this one.",
+   "description": "`arrow_mlake.carrow` is the outbound half: an `ArrayData` tree becomes a C\n`ArrowSchema`/`ArrowArray` pair that pyarrow, DuckDB or a Rust crate can\nconsume. This module is its inverse. `import_c` turns that same pair back into\nan `ArrayData` in an `ArrayArena`, and `ImportedStream` drives the third struct\nof the interface, `ArrowArrayStream`, which is how a producer hands over a\n*sequence* of batches:\n\n```c\nstruct ArrowArrayStream {\n  int (*get_schema)(struct ArrowArrayStream*, struct ArrowSchema* out);\n  int (*get_next)(struct ArrowArrayStream*, struct ArrowArray* out);\n  const char* (*get_last_error)(struct ArrowArrayStream*);\n  void (*release)(struct ArrowArrayStream*);\n  void* private_data;\n};\n```\n\nThat is what a scan returns, so it is the entry point a LanceDB or ADBC\nbinding actually needs.\n\n**Importing copies.** `ArrayData` owns its buffers as `List[UInt8]`, so every\nbuffer a producer hands over is copied into Mojo memory. The alternative — an\n`ArrayData` that borrows a foreign pointer and keeps the producer's release\ncallback alive behind it — would be zero-copy but changes the type every\nconsumer of `ArrayData` reads, so it is deliberately not what this does. On a\n16-column, 65k-row batch the copy runs at memory-copy speed, which is a\nrounding error next to decoding the same data out of a file format.\n\n**Who releases what.** The C Data Interface makes the *consumer* responsible\nfor the structs it is handed: it calls the root's `release`, which frees the\nwhole tree, and a released struct is recognised by a null `release` pointer.\nChildren are never released on their own — the root owns them. This module\nimplements exactly that side of the convention:\n\n* `import_c` **borrows**. It reads the pair and copies out of it, and it does\n  not release anything. A caller that owns the pair — because a producer moved\n  it into caller storage — decides when to release it.\n* `ImportedArray` **owns**. Constructing one asserts \"this pair is mine now\";\n  it releases the root array and the root schema exactly once, on `release()`\n  or on destruction, and `release()` is idempotent because it checks for the\n  null `release` pointer first.\n* `ImportedStream` owns the stream, the schema it pulled out of `get_schema`,\n  and every array `get_next` moves into it. Each array is released as soon as\n  its batch has been copied, so a long scan holds one batch of producer memory\n  at a time and not the whole stream.\n\n**Nothing about a producer is trusted.** `n_buffers` is checked against the\nformat string, `n_children` against the type, offsets for monotonicity and\nagainst the child length they index into, and every format string this module\ncannot name is an error carrying the string itself. The interface does *not*\ncarry buffer sizes — a `const void**` and nothing more — so a truncated\n`utf8` data buffer is undetectable by construction; what can be cross-checked\nis checked, and the limit is stated rather than papered over.\n\n```mojo\nvar arena = ArrayArena()\nvar root = import_c(arena, array_addr, schema_addr)   # borrowing\nvar batch = ImportedArray(array_addr, schema_addr).into_batch()  # owning\n```",
+   "aliases": [
+    {
+     "name": "MAX_IMPORT_DEPTH",
+     "value": "64",
+     "summary": "How deep a foreign type may nest before we call it a malformed producer.",
+     "description": "Children are reached through pointers a producer wrote, so a cycle is possible\nand would otherwise be an unbounded walk. Real Arrow schemas are a handful of\nlevels deep; anything past this is a bug on the other side of the interface."
+    },
+    {
+     "name": "StreamGetSchemaFn",
+     "value": "def(Pointer[CArrowArrayStream, MutUntrackedOrigin], Pointer[CArrowSchema, MutUntrackedOrigin]) abi(\"C\") thin -> Int32"
+    },
+    {
+     "name": "StreamGetNextFn",
+     "value": "def(Pointer[CArrowArrayStream, MutUntrackedOrigin], Pointer[CArrowArray, MutUntrackedOrigin]) abi(\"C\") thin -> Int32"
+    },
+    {
+     "name": "StreamGetLastErrorFn",
+     "value": "def(Pointer[CArrowArrayStream, MutUntrackedOrigin]) abi(\"C\") thin -> Int"
+    },
+    {
+     "name": "StreamReleaseFn",
+     "value": "def(Pointer[CArrowArrayStream, MutUntrackedOrigin]) abi(\"C\") thin -> None"
+    }
+   ],
+   "structs": [
+    {
+     "name": "ImportedArray",
+     "signature": "struct ImportedArray",
+     "summary": "One C `ArrowArray`/`ArrowSchema` pair, owned by us until released.",
+     "description": "Construct this when a producer has *moved* the two structs into storage\nyou hold — which is what \"consuming\" means in the C Data Interface — and\nit will call the root release callbacks exactly once, on `release()` or at\ndestruction. The addresses stay valid afterwards, but their contents do\nnot, so import before releasing.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "array",
+       "type": "Int",
+       "summary": "Address of the `ArrowArray`."
+      },
+      {
+       "name": "schema",
+       "type": "Int",
+       "summary": "Address of the `ArrowSchema`."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, array: Int, schema: Int)"
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "into_arena",
+       "overloads": [
+        {
+         "signature": "def into_arena(self, mut arena: ArrayArena) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "into_batch",
+       "overloads": [
+        {
+         "signature": "def into_batch(self) -> RecordBatch"
+        }
+       ]
+      },
+      {
+       "name": "release",
+       "overloads": [
+        {
+         "signature": "def release(mut self)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "CArrowArrayStream",
+     "signature": "struct CArrowArrayStream",
+     "summary": "The C `ArrowArrayStream`, field for field. Pointers are addresses.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "get_schema",
+       "type": "Int"
+      },
+      {
+       "name": "get_next",
+       "type": "Int"
+      },
+      {
+       "name": "get_last_error",
+       "type": "Int"
+      },
+      {
+       "name": "release",
+       "type": "Int"
+      },
+      {
+       "name": "private_data",
+       "type": "Int"
+      }
+     ]
+    },
+    {
+     "name": "ImportedStream",
+     "signature": "struct ImportedStream",
+     "summary": "A producer's `ArrowArrayStream`, consumed batch by batch.",
+     "description": "This is the shape a scan arrives in: one schema up front, then arrays\nuntil the producer signals the end by handing back a *released* array —\na null `release` pointer and nothing else. `get_next` returning non-zero\nis a real error, and `get_last_error` says what it was; the two are\ndistinguished here because conflating them turns a failed scan into a\nshort one.\n\nOwnership runs three ways and all three are ours. The stream is released\nwhen this object dies. The schema is moved out of `get_schema` into\nstorage this object allocates, and released with it. Each array `get_next`\nmoves into us is released as soon as its batch has been copied, which is\nwhat keeps a long scan to one batch of producer memory at a time rather\nthan the whole stream.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "stream",
+       "type": "Int",
+       "summary": "Address of the caller's `ArrowArrayStream`."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, stream: Int)",
+         "summary": "Take ownership of `stream` and pull its schema."
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "format",
+       "overloads": [
+        {
+         "signature": "def format(self) -> String",
+         "summary": "The root format string of the stream's schema, usually `+s`."
+        }
+       ]
+      },
+      {
+       "name": "schema_address",
+       "overloads": [
+        {
+         "signature": "def schema_address(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "next",
+       "overloads": [
+        {
+         "signature": "def next(mut self) -> Optional[RecordBatch]",
+         "summary": "The next batch, or nothing once the stream has ended."
+        }
+       ]
+      },
+      {
+       "name": "release",
+       "overloads": [
+        {
+         "signature": "def release(mut self)"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "release_c_array",
+     "overloads": [
+      {
+       "signature": "def release_c_array(addr: Int)",
+       "summary": "Call a producer's `release` on an `ArrowArray`, once.",
+       "description": "A released struct carries a null `release`, which is both how the producer\ntells us it is gone and how this stays idempotent. Only ever called on a\n*root*: the interface says children are freed by their parent, and calling\na child's release does nothing but mark it."
+      }
+     ]
+    },
+    {
+     "name": "release_c_schema",
+     "overloads": [
+      {
+       "signature": "def release_c_schema(addr: Int)",
+       "summary": "Call a producer's `release` on an `ArrowSchema`, once."
+      }
+     ]
+    },
+    {
+     "name": "parse_format",
+     "overloads": [
+      {
+       "signature": "def parse_format(fmt: StringSpan) -> ArrowType",
+       "summary": "One Arrow C Data Interface format string as an `ArrowType`.",
+       "description": "Every string this library can *write* round-trips, plus the temporal and\ndecimal spellings a foreign producer will send that our writer never\nemits. Everything else raises with the string in the message: guessing at\nan unrecognised format would mean reinterpreting somebody else's buffer,\nwhich is the one failure mode that produces wrong numbers silently rather\nthan an error."
+      }
+     ]
+    },
+    {
+     "name": "n_children_for_type",
+     "overloads": [
+      {
+       "signature": "def n_children_for_type(id: Int) -> Int",
+       "summary": "How many children a type must have, or -1 where any number is legal."
+      }
+     ]
+    },
+    {
+     "name": "extension_name",
+     "overloads": [
+      {
+       "signature": "def extension_name(metadata: Int) -> String",
+       "summary": "`ARROW:extension:name` out of a C schema's metadata block, if present.",
+       "description": "The encoding is Arrow's own: an `int32` count, then that many\n(`int32` length, bytes) pairs alternating key and value, native-endian and\nunaligned. Nothing in the interface bounds the block, so the counts are\nsanity-checked before they are used as loop bounds — a garbage `n` here\nwould otherwise be an unbounded read of somebody else's address space."
+      }
+     ]
+    },
+    {
+     "name": "parquet_field_id",
+     "overloads": [
+      {
+       "signature": "def parquet_field_id(metadata: Int) -> Int32",
+       "summary": "`PARQUET:field_id` out of a C schema's metadata, or -1.",
+       "description": "Arrow's Parquet writers put the Iceberg/Parquet field id here as decimal\ntext, and this library's `ArrayData` has a slot for it. Our own exporter\ndoes not write the key, so a round trip through it drops the id; a foreign\nproducer that does write it keeps it."
+      }
+     ]
+    },
+    {
+     "name": "import_c",
+     "overloads": [
+      {
+       "signature": "def import_c(mut arena: ArrayArena, array: Int, schema: Int) -> Int",
+       "summary": "Copy a foreign C array into `arena`; return the index of its root.",
+       "description": "Borrowing: the pair is read, never released. The caller owns it — see\n`ImportedArray` for the owning form."
+      }
+     ]
+    },
+    {
+     "name": "import_batch_c",
+     "overloads": [
+      {
+       "signature": "def import_batch_c(array: Int, schema: Int) -> RecordBatch",
+       "summary": "A foreign C array as a `RecordBatch`.",
+       "description": "A stream's arrays are struct arrays by definition — the struct's fields\nare the batch's columns — so a `+s` root is unwrapped into one root per\nfield. Anything else becomes a one-column batch, which is what a caller\nimporting a bare column wants.\n\nA struct root with nulls of its own has no representation here, because a\n`RecordBatch` is a list of columns and not an array; that raises rather\nthan dropping the row-level nulls on the floor."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "arrow_mlake.carrow_shared",
+   "summary": "Publish a batch into a shared mapping, for a consumer in another process.",
+   "description": "`carrow.mojo` exports over the C Data Interface, which hands a consumer\n**pointers**. That is why it cannot cross a process: a pointer means nothing\nin another address space. This writes the same buffers — the same Arrow memory\nlayout, byte for byte — into a `MappedRegion`, and describes where each one\nlanded in a small JSON manifest.\n\nA consumer maps the file, adds its own base to every offset, and wraps the\nbuffers where they lie. Nothing is decoded and nothing is copied on the\nreading side:\n\n```python\nbase, _ = map_the_file(path)\nbuf = pa.foreign_buffer(base + off, length, owner)\ncol = pa.Array.from_buffers(pa.float64(), n, [validity, buf], null_count=k)\n```\n\n## What it costs, honestly\n\nOne copy, on the producer's side: the decode wrote its buffers somewhere, and\nthis moves them into the mapping. That is the same copy `export_c` already\nmakes for an in-process handover — so this is a *cross-process* handover at\nthe price of the in-process one, not a free lunch.\n\nRemoving that copy as well means the decode allocating into the region in the\nfirst place, which is a change to `ArrayData`'s buffers rather than to this\nfile. `memory_region` is the half of that which already exists.\n\n## Flat columns only, for now\n\nPrimitive, `utf8` and `binary` columns: validity, offsets and values. Nested\ntypes — struct, list, map — have children, and a manifest that describes a\ntree is a bigger thing than the one here. `export_shared` raises on them\nrather than writing something a consumer would misread.",
+   "functions": [
+    {
+     "name": "shared_size",
+     "overloads": [
+      {
+       "signature": "def shared_size(arena: ArrayArena, roots: List[Int]) -> Int",
+       "summary": "How many bytes publishing these columns will take.",
+       "description": "A region cannot grow, so a caller publishing several batches into one has\nto add this up first. Every buffer is padded to 8 because a consumer casts\nthem where they lie."
+      }
+     ]
+    },
+    {
+     "name": "export_shared_into",
+     "overloads": [
+      {
+       "signature": "def export_shared_into(mut bump: BumpAllocator[MappedRegion], arena: ArrayArena, roots: List[Int], names: List[String]) -> String",
+       "summary": "Write these columns into a region already open, and describe them.",
+       "description": "The offsets in the manifest are from the region's base, not from this\nbatch, so several batches can share one mapping: the producer sizes it for\nall of them, writes each in turn, and publishes each as it lands. That is\nwhat keeps a mapping's create/size/map/unmap cycle from being paid per\nbatch — it was the larger half of publishing, bigger than the copy."
+      }
+     ]
+    },
+    {
+     "name": "export_shared",
+     "overloads": [
+      {
+       "signature": "def export_shared(arena: ArrayArena, roots: List[Int], names: List[String], path: String) -> String",
+       "summary": "One batch into a mapping of its own; returns the manifest.",
+       "description": "The convenience form of `export_shared_into` for a caller with a single\nbatch to publish. The region is unmapped before returning: the producer is\nfinished with it, and the file carries the bytes."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "arrow_mlake.carrow_stream",
+   "summary": "Producing an `ArrowArrayStream`: the C Data Interface, outbound, in batches.",
+   "description": "`carrow.export_c` hands one array across the boundary. This hands a *sequence*\nof them, which is the shape every consumer wants for a scan — DuckDB, pyarrow\nand polars all take an `ArrowArrayStream` and pull batches until it ends.\n\n## Why this is the local answer\n\nFlight moves Arrow between processes. In one process there is nothing to move:\nthe consumer reads our buffers where they already are, and the only thing that\ncrosses is a struct of pointers. A DuckDB extension loading a Mojo shared\nlibrary is exactly that case, and reaching for a wire protocol there would add\nan encode and a decode to a problem with neither.\n\n## The contract, and who frees what\n\nA stream is five fields: four C function pointers and a `private_data` the\nproducer owns. The consumer calls `get_next` until it receives an array whose\n`release` is NULL — that, not an error, is how a stream ends — and then calls\n`release` on the stream itself.\n\nOwnership is strict and worth stating because getting it wrong is a\ndouble-free rather than a wrong answer:\n\n* Every array handed out becomes **the consumer's** to release. This exports\n  each batch up front and then *moves* it out on `get_next`, clearing our copy\n  so nothing is released twice.\n* The schema is handed out the same way, once per `get_schema` call, so a\n  consumer that asks twice gets two independently-releasable copies.\n* Whatever the consumer never asked for is freed by `release`.\n\nThe callbacks are `abi(\"C\")` and take raw addresses because that is what the\nother side of the boundary can call. Everything they touch is heap-allocated\nand outlives the Mojo frame that built it — a stream handed to C and then\npointing at a stack is the mistake this file exists to not make.",
+   "functions": [
+    {
+     "name": "export_stream_of",
+     "overloads": [
+      {
+       "signature": "def export_stream_of(var exported: List[ExportedArray]) -> Int",
+       "summary": "Turn already-exported arrays into a stream; returns its address.",
+       "description": "The general form. Each `ExportedArray` has copied its buffers out of its\narena already, so the batches need not come from the same arena — which is\nwhat a scan produces, one arena per batch. Ownership passes here: the\nstream releases everything the consumer does not take.\n\nEvery array is exported before the consumer sees the first one. A lazier\nstream that read inside `get_next` would hold one batch instead of all of\nthem; that needs a scan that can be resumed from inside a C callback, and\nthis Mojo has no way to keep such an object alive across the boundary."
+      }
+     ]
+    },
+    {
+     "name": "export_stream",
+     "overloads": [
+      {
+       "signature": "def export_stream(arena: ArrayArena, roots: List[Int]) -> Int",
+       "summary": "Export one arena's arrays as a stream; returns its address.",
+       "description": "The caller hands the address on and then forgets it: the stream owns\neverything from here, and the consumer's `release` frees it — including\nthe stream struct, which is why this returns an address rather than a\nvalue it would have to outlive."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "arrow_mlake.flatbuf",
+   "summary": "FlatBuffers, as much as Arrow IPC metadata needs: a builder and a reader.",
+   "description": "**The builder** came from flight.mojo, where it wrote `Schema` and\n`RecordBatch` messages. Writing means we choose the layout, so it only has to\nbe self-consistent and spec-legal. Buffers are built back to front: `_head`\nstarts at the end of the storage and walks downwards, so the root table ends\nup nearest the front and every child it points at is already written behind\nit. `offset()` is \"bytes written so far\", measured from the end, and every\nstored offset is a backwards distance from the field to its target, which is\nwhy `_ref` subtracts.\n\nA table is written as: field data, then a vtable listing where each field\nlanded, then a signed backwards offset from the table to that vtable. Absent\nfields are simply not written. There is no vtable deduplication; Arrow\nmessages are small.\n\n**The reader** takes whatever layout a producer chose, so it trusts nothing:\nevery offset is bounds-checked before it is followed, and a field the vtable\ndoesn't reach reads as absent. It copies the message into a `FlatReader`\nrather than borrowing it, because IPC metadata is a few hundred bytes and an\nowned buffer keeps origins out of the API.",
+   "structs": [
+    {
+     "name": "FlatBufferBuilder",
+     "signature": "struct FlatBufferBuilder",
+     "summary": "Builds one FlatBuffer, back to front.",
+     "description": "Not reusable: `finish` leaves the builder holding the completed buffer,\nand the intended lifecycle is one builder per message.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, initial: Int = Int(1024))"
+        }
+       ]
+      },
+      {
+       "name": "offset",
+       "overloads": [
+        {
+         "signature": "def offset(self) -> Int",
+         "summary": "Bytes written so far, which is also the position of the next write measured from the end of the buffer."
+        }
+       ]
+      },
+      {
+       "name": "prepend_u8",
+       "overloads": [
+        {
+         "signature": "def prepend_u8(mut self, v: UInt8)"
+        }
+       ]
+      },
+      {
+       "name": "prepend_bool",
+       "overloads": [
+        {
+         "signature": "def prepend_bool(mut self, v: Bool)"
+        }
+       ]
+      },
+      {
+       "name": "prepend_i16",
+       "overloads": [
+        {
+         "signature": "def prepend_i16(mut self, v: Int)"
+        }
+       ]
+      },
+      {
+       "name": "prepend_i32",
+       "overloads": [
+        {
+         "signature": "def prepend_i32(mut self, v: Int)"
+        }
+       ]
+      },
+      {
+       "name": "prepend_i64",
+       "overloads": [
+        {
+         "signature": "def prepend_i64(mut self, v: Int)"
+        }
+       ]
+      },
+      {
+       "name": "start_table",
+       "overloads": [
+        {
+         "signature": "def start_table(mut self, num_slots: Int)"
+        }
+       ]
+      },
+      {
+       "name": "add_bool",
+       "overloads": [
+        {
+         "signature": "def add_bool(mut self, slot: Int, v: Bool, default: Bool = False)",
+         "summary": "Add a field, unless it already holds the schema default.",
+         "description": "Omitting defaults is not just a size trick: a reader that asks for an\nabsent field gets the default back, so writing it would be identical\nbut larger."
+        }
+       ]
+      },
+      {
+       "name": "add_i16",
+       "overloads": [
+        {
+         "signature": "def add_i16(mut self, slot: Int, v: Int, default: Int = Int(0))"
+        }
+       ]
+      },
+      {
+       "name": "add_i32",
+       "overloads": [
+        {
+         "signature": "def add_i32(mut self, slot: Int, v: Int, default: Int = Int(0))"
+        }
+       ]
+      },
+      {
+       "name": "add_i64",
+       "overloads": [
+        {
+         "signature": "def add_i64(mut self, slot: Int, v: Int, default: Int = Int(0))"
+        }
+       ]
+      },
+      {
+       "name": "add_u8",
+       "overloads": [
+        {
+         "signature": "def add_u8(mut self, slot: Int, v: UInt8, default: UInt8 = UInt8(0))"
+        }
+       ]
+      },
+      {
+       "name": "add_offset",
+       "overloads": [
+        {
+         "signature": "def add_offset(mut self, slot: Int, target: Int)",
+         "summary": "Add a reference field (table, string or vector). `0` means absent."
+        }
+       ]
+      },
+      {
+       "name": "end_table",
+       "overloads": [
+        {
+         "signature": "def end_table(mut self) -> Int",
+         "summary": "Finish the table and return its offset.",
+         "description": "Writes the vtable, then the table's own backwards pointer to it. The\nvtable is trimmed to the last field actually set, which is what lets a\nreader of a longer schema see the extra fields as absent rather than\nas garbage."
+        }
+       ]
+      },
+      {
+       "name": "create_string",
+       "overloads": [
+        {
+         "signature": "def create_string(mut self, s: String) -> Int",
+         "summary": "Write a length-prefixed, NUL-terminated UTF-8 string."
+        }
+       ]
+      },
+      {
+       "name": "start_vector",
+       "overloads": [
+        {
+         "signature": "def start_vector(mut self, elem_size: Int, count: Int, align: Int)",
+         "summary": "Begin a vector; elements are prepended in reverse order."
+        }
+       ]
+      },
+      {
+       "name": "end_vector",
+       "overloads": [
+        {
+         "signature": "def end_vector(mut self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "create_offset_vector",
+       "overloads": [
+        {
+         "signature": "def create_offset_vector(mut self, offsets: List[Int]) -> Int",
+         "summary": "A vector of references, written back to front."
+        }
+       ]
+      },
+      {
+       "name": "finish",
+       "overloads": [
+        {
+         "signature": "def finish(mut self, root: Int) -> List[UInt8]",
+         "summary": "Write the root offset and return the finished buffer."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "FlatReader",
+     "signature": "struct FlatReader",
+     "summary": "One FlatBuffer, read through absolute byte positions.",
+     "description": "Tables, vectors and strings are named by where they start in the buffer.\nA position of 0 means absent: no table can start there, because the\nbuffer starts with the root offset.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "buf",
+       "type": "List[UInt8]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var buf: List[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "u8",
+       "overloads": [
+        {
+         "signature": "def u8(self, pos: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "u16",
+       "overloads": [
+        {
+         "signature": "def u16(self, pos: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "u32",
+       "overloads": [
+        {
+         "signature": "def u32(self, pos: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "i16",
+       "overloads": [
+        {
+         "signature": "def i16(self, pos: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "i32",
+       "overloads": [
+        {
+         "signature": "def i32(self, pos: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "i64",
+       "overloads": [
+        {
+         "signature": "def i64(self, pos: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "root",
+       "overloads": [
+        {
+         "signature": "def root(self) -> Int",
+         "summary": "Where the root table starts."
+        }
+       ]
+      },
+      {
+       "name": "field",
+       "overloads": [
+        {
+         "signature": "def field(self, table: Int, slot: Int) -> Int",
+         "summary": "Where field `slot` of `table` is stored, or 0 if it's absent."
+        }
+       ]
+      },
+      {
+       "name": "get_bool",
+       "overloads": [
+        {
+         "signature": "def get_bool(self, table: Int, slot: Int, default: Bool = False) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "get_u8",
+       "overloads": [
+        {
+         "signature": "def get_u8(self, table: Int, slot: Int, default: Int = Int(0)) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "get_i16",
+       "overloads": [
+        {
+         "signature": "def get_i16(self, table: Int, slot: Int, default: Int = Int(0)) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "get_i32",
+       "overloads": [
+        {
+         "signature": "def get_i32(self, table: Int, slot: Int, default: Int = Int(0)) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "get_i64",
+       "overloads": [
+        {
+         "signature": "def get_i64(self, table: Int, slot: Int, default: Int = Int(0)) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "get_ref",
+       "overloads": [
+        {
+         "signature": "def get_ref(self, table: Int, slot: Int) -> Int",
+         "summary": "Follow a table, vector or string field; 0 if it's absent."
+        }
+       ]
+      },
+      {
+       "name": "get_string",
+       "overloads": [
+        {
+         "signature": "def get_string(self, table: Int, slot: Int) -> String",
+         "summary": "A string field, or \"\" if it's absent."
+        }
+       ]
+      },
+      {
+       "name": "vector_len",
+       "overloads": [
+        {
+         "signature": "def vector_len(self, vector: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "vector_table",
+       "overloads": [
+        {
+         "signature": "def vector_table(self, vector: Int, i: Int) -> Int",
+         "summary": "Element `i` of a vector of tables."
+        }
+       ]
+      },
+      {
+       "name": "vector_struct",
+       "overloads": [
+        {
+         "signature": "def vector_struct(self, vector: Int, i: Int, size: Int) -> Int",
+         "summary": "Where element `i` of a vector of `size`-byte structs starts."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "arrow_mlake.ipc",
+   "summary": "The Arrow IPC stream format: `RecordBatch`es to bytes and back.",
+   "description": "The C Data Interface hands buffers to another library in the same process.\nIPC is for everything else: a file, a socket, a shared mapping another\nprocess reads. pyarrow's `ipc.open_stream` reads what `IpcWriter` writes, and\n`read_ipc_stream` reads what pyarrow's `ipc.new_stream` writes.\n\n```mojo\nvar w = IpcWriter(batch)      # the schema comes from the first batch\nw.write(batch)\nvar bytes = w^.finish()\n\nvar s = read_ipc_stream(Span(bytes))\nprint(len(s.batches), \"batches of\", s.schema.num_columns(), \"columns\")\n```\n\n## The framing\n\nEach message in a stream is:\n\n    ffffffff                  continuation marker\n    <int32 metadata_size>     little-endian, a multiple of 8\n    <flatbuffer Message>      padded out to metadata_size\n    <body>                    the buffers, each padded to a multiple of 8\n\nand the stream ends with a continuation marker and a zero length. The first\nmessage is the `Schema`; every later one is a `RecordBatch` whose `nodes` and\n`buffers` list each array in pre-order, parent before children. The reader\nalso accepts the pre-0.15 framing without the continuation marker.\n\n## What is supported\n\nEvery type `ArrayData` holds: null, bool, the eight integers, the three\nfloats, utf8 and binary and their large forms, fixed-size binary,\ndecimal128, date32, time32/64, timestamps with a unit and zone, list, large\nlist, struct and map, nested to any depth. Fields carry their nullability\nand two metadata keys, `ARROW:extension:name` and `PARQUET:field_id`, which\nis where `ArrowType.extension` and `ArrayData.field_id` travel.\n\nDictionary encoding, compression, unions, run-end encoding, the view types\nand the IPC *file* format are not implemented; a stream that uses them is\nrejected with an error that names the feature.\n\nA validity bitmap is only written when an array has nulls; otherwise the\nbuffer is empty, which the format allows. Reading copies each buffer into\nthe `ArrayData`'s own lists.",
+   "structs": [
+    {
+     "name": "IpcWriter",
+     "signature": "struct IpcWriter",
+     "summary": "Writes an Arrow IPC stream: the schema, then one message per batch.",
+     "description": "Every batch must have the schema's columns, in order, with the same\ntypes; `write` checks the top-level types.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, schema: RecordBatch)",
+         "summary": "Starts a stream with `schema`'s columns. Only the types and names are read; its rows are not written."
+        }
+       ]
+      },
+      {
+       "name": "write",
+       "overloads": [
+        {
+         "signature": "def write(mut self, batch: RecordBatch)"
+        }
+       ]
+      },
+      {
+       "name": "finish",
+       "overloads": [
+        {
+         "signature": "def finish(deinit self) -> List[UInt8]",
+         "summary": "The finished stream, end-of-stream marker included."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "IpcStream",
+     "signature": "struct IpcStream",
+     "summary": "What `read_ipc_stream` found: the schema, as a batch of no rows, and every record batch in order.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "schema",
+       "type": "RecordBatch"
+      },
+      {
+       "name": "batches",
+       "type": "List[RecordBatch]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var schema: RecordBatch, var batches: List[RecordBatch])"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "encode_schema_message",
+     "overloads": [
+      {
+       "signature": "def encode_schema_message(batch: RecordBatch) -> List[UInt8]",
+       "summary": "The flatbuffer `Message` holding `batch`'s schema, unframed."
+      }
+     ]
+    },
+    {
+     "name": "write_ipc_stream",
+     "overloads": [
+      {
+       "signature": "def write_ipc_stream(batches: List[RecordBatch]) -> List[UInt8]",
+       "summary": "`batches` as one stream; the first batch gives the schema."
+      }
+     ]
+    },
+    {
+     "name": "read_ipc_stream",
+     "overloads": [
+      {
+       "signature": "def read_ipc_stream(data: Span[UInt8]) -> IpcStream",
+       "summary": "Reads a whole Arrow IPC stream. Every buffer is copied out of `data`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "arrow_mlake.memory_shim",
+   "summary": "Opening a region, for a caller that does not want the allocator's types.",
+   "description": "`export_shared_into` takes a `BumpAllocator[MappedRegion]`, which a tool would\notherwise have to name — and naming it means importing `memory_region` just to\nspell a parameter. This is the one line that saves every publisher from that.",
+   "functions": [
+    {
+     "name": "open_split_region",
+     "overloads": [
+      {
+       "signature": "def open_split_region(path: String, size: Int) -> BumpAllocator[MappedRegion]",
+       "summary": "A mapping at `path`, sized for everything about to go into it."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,70 @@
+---
+/**
+ * A tin's API reference, /s/<tin>/api: where it came from, the package's own
+ * docs and declarations, and its modules, each with a page of its own
+ * ([...module].astro). From src/data/api/<slug>.json (src/data/apiref.ts).
+ */
+import TinPage from "../../../../components/TinPage.astro";
+import ApiModule from "../../../../components/ApiModule.astro";
+import { slugOf, type Tin } from "../../../../data/tins";
+import { apiTins } from "../../../../data/tinpages";
+import { apiOf, rootOf, subModules, apiHref, sourceOf, counts, docHtml, provenance, inlineHtml } from "../../../../data/apiref";
+
+export function getStaticPaths() {
+  return apiTins().map((t) => ({ params: { tin: slugOf(t) }, props: { tin: t } }));
+}
+
+interface Props {
+  tin: Tin;
+}
+const { tin } = Astro.props;
+const slug = slugOf(tin);
+const api = apiOf(slug)!;
+const root = rootOf(api);
+const mods = subModules(api);
+const size = (m: (typeof mods)[number]) => {
+  const c = counts(m);
+  return [
+    c.structs && `${c.structs} struct${c.structs > 1 ? "s" : ""}`,
+    c.traits && `${c.traits} trait${c.traits > 1 ? "s" : ""}`,
+    c.functions && `${c.functions} function${c.functions > 1 ? "s" : ""}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+};
+const description = `The API of ${tin.name}: the ${api.package} package's modules, structs, traits and functions, with their signatures and docstrings.`;
+---
+
+<TinPage tin={tin} title="API" description={description}>
+  <section class="section section--flush api" id="api">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow"><a href="/tins">Tins</a> · <a href={`/s/${slug}`}>{tin.name}</a></p>
+      <h1 class="section-title">API reference</h1>
+      <p class="api__from">
+        The <code>{api.package}</code> package, from <span set:html={inlineHtml(provenance(api))} />.
+        <a href={sourceOf(tin.repo, api)} rel="noopener">Source</a>.
+      </p>
+      {root?.summary && <div class="api__doc api__lead" set:html={docHtml(root.summary)} />}
+      {root?.description && <div class="api__doc" set:html={docHtml(root.description)} />}
+
+      {
+        mods.length > 0 && (
+          <section class="api__group">
+            <h2>Modules</h2>
+            <ul class="api__mods">
+              {mods.map((m) => (
+                <li>
+                  <a href={apiHref(slug, api, m)}><code>{m.path}</code></a>
+                  {m.summary && <span class="api__mod-sum" set:html={inlineHtml(m.summary)} />}
+                  {size(m) && <span class="api__mod-size">{size(m)}</span>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      }
+
+      {root && <ApiModule module={root} />}
+    </div>
+  </section>
+</TinPage>

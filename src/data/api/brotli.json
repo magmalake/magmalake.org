@@ -1,0 +1,137 @@
+{
+ "tin": "brotli",
+ "version": "0.1.4",
+ "rev": "dcbf840d22e3deaf24c587d12d28570a9a882b7f",
+ "package": "brotli",
+ "path": "src/brotli",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "`brotli` — Mojo bindings to libbrotlienc/libbrotlidec (RFC 7932) via a thin C shim (libbrotlimojo.{dylib,so}), loaded through an `OwnedDLHandle`.",
+ "description": "Brotli is a Parquet page codec (`CompressionCodec.BROTLI`) and the last one\nmagmalake could not read. A Brotli stream records **no uncompressed size**\nanywhere — not in a header, not in a trailer — which shapes this API:\n\n- `decompress(data, uncompressed_size)` is the Parquet path. A page header\n  carries `uncompressed_page_size`, so the output buffer can be sized exactly\n  and the stream decoded in a single pass.\n- `decompress_unsized(data)` is for everything else (a bare `.br` file, a blob\n  from somewhere that did not record a length). It guesses a capacity and\n  doubles it until the stream fits, re-decoding from the start each time —\n  Brotli's one-shot decoder cannot resume, so a short buffer costs a full\n  retry. Use the sized form whenever the size is known.\n\nMirrors zstd.mojo's and lz4.mojo's FFI pattern: a single-call C wrapper\n(shim/brotli_wrapper.c, built to $CONDA_PREFIX/lib/libbrotlimojo.{dylib,so} by\nthe brotli-shim pixi package) so Mojo never reads back internal library state\nafter a foreign call. The handle is opened **once per process** and never\nclosed (`_LIB` below) — a `dlopen`/`dlclose` cycle costs hundreds of\nmicroseconds, far more than decompressing a Parquet page, so opening one per\ncall made the binding's fixed cost dwarf the work it wrapped. It is passed as\nan `imm` borrow to each worker function, so Mojo's ASAP destruction cannot\n`dlclose` the library between `get_function` and the call it returned.",
+ "modules": [
+  {
+   "path": "brotli",
+   "summary": "`brotli` — Mojo bindings to libbrotlienc/libbrotlidec (RFC 7932) via a thin C shim (libbrotlimojo.{dylib,so}), loaded through an `OwnedDLHandle`.",
+   "description": "Brotli is a Parquet page codec (`CompressionCodec.BROTLI`) and the last one\nmagmalake could not read. A Brotli stream records **no uncompressed size**\nanywhere — not in a header, not in a trailer — which shapes this API:\n\n- `decompress(data, uncompressed_size)` is the Parquet path. A page header\n  carries `uncompressed_page_size`, so the output buffer can be sized exactly\n  and the stream decoded in a single pass.\n- `decompress_unsized(data)` is for everything else (a bare `.br` file, a blob\n  from somewhere that did not record a length). It guesses a capacity and\n  doubles it until the stream fits, re-decoding from the start each time —\n  Brotli's one-shot decoder cannot resume, so a short buffer costs a full\n  retry. Use the sized form whenever the size is known.\n\nMirrors zstd.mojo's and lz4.mojo's FFI pattern: a single-call C wrapper\n(shim/brotli_wrapper.c, built to $CONDA_PREFIX/lib/libbrotlimojo.{dylib,so} by\nthe brotli-shim pixi package) so Mojo never reads back internal library state\nafter a foreign call. The handle is opened **once per process** and never\nclosed (`_LIB` below) — a `dlopen`/`dlclose` cycle costs hundreds of\nmicroseconds, far more than decompressing a Parquet page, so opening one per\ncall made the binding's fixed cost dwarf the work it wrapped. It is passed as\nan `imm` borrow to each worker function, so Mojo's ASAP destruction cannot\n`dlclose` the library between `get_function` and the call it returned.",
+   "aliases": [
+    {
+     "name": "MODE_GENERIC",
+     "value": "0",
+     "summary": "No assumption about the input (`BROTLI_MODE_GENERIC`). The Parquet default."
+    },
+    {
+     "name": "MODE_TEXT",
+     "value": "1",
+     "summary": "UTF-8 text (`BROTLI_MODE_TEXT`)."
+    },
+    {
+     "name": "MODE_FONT",
+     "value": "2",
+     "summary": "WOFF 2.0 font data (`BROTLI_MODE_FONT`)."
+    },
+    {
+     "name": "MIN_QUALITY",
+     "value": "0"
+    },
+    {
+     "name": "MAX_QUALITY",
+     "value": "11"
+    },
+    {
+     "name": "DEFAULT_QUALITY",
+     "value": "11",
+     "summary": "`BROTLI_DEFAULT_QUALITY`. Slow and small; 4–5 is the usual Parquet trade."
+    },
+    {
+     "name": "MIN_WINDOW_BITS",
+     "value": "10"
+    },
+    {
+     "name": "MAX_WINDOW_BITS",
+     "value": "24"
+    },
+    {
+     "name": "DEFAULT_WINDOW_BITS",
+     "value": "22",
+     "summary": "`BROTLI_DEFAULT_WINDOW` — a 4 MiB sliding window."
+    }
+   ],
+   "functions": [
+    {
+     "name": "compress",
+     "overloads": [
+      {
+       "signature": "def compress(data: Span[UInt8], quality: Int = Int(11), lgwin: Int = Int(22), mode: Int = Int(0)) -> List[UInt8]",
+       "summary": "Compress `data` into a single Brotli stream.",
+       "description": "Zero-length `data` is a real (if degenerate) case: Brotli emits a valid\none-byte stream that decodes back to nothing.",
+       "args": [
+        {
+         "name": "data",
+         "doc": "Bytes to compress."
+        },
+        {
+         "name": "quality",
+         "doc": "0..11; higher is slower and smaller. 11 is libbrotli's own\n    default and is *very* slow on large inputs — 4 or 5 is the usual\n    choice for Parquet pages."
+        },
+        {
+         "name": "lgwin",
+         "doc": "Sliding-window size in bits, 10..24 (22 = 4 MiB)."
+        },
+        {
+         "name": "mode",
+         "doc": "`MODE_GENERIC`, `MODE_TEXT`, or `MODE_FONT` — a hint that\n    selects the encoder's context model."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "decompress_into",
+     "overloads": [
+      {
+       "signature": "def decompress_into(data: Span[UInt8], dst: Span[UInt8]) -> Int",
+       "summary": "Decompress a Brotli stream into a caller-supplied buffer, returning the number of bytes written.",
+       "description": "Raises if `dst` is too small — Brotli records no uncompressed size, so this\ncannot grow the buffer for you. Use `decompress_unsized` when the size is\ngenuinely unknown."
+      }
+     ]
+    },
+    {
+     "name": "decompress",
+     "overloads": [
+      {
+       "signature": "def decompress(data: Span[UInt8], uncompressed_size: Int) -> List[UInt8]",
+       "summary": "Decompress a Brotli stream whose decoded length is already known — the Parquet page path, where `uncompressed_page_size` comes from the page header. `uncompressed_size` must be exact; a stream that decodes to a different length is treated as corrupt."
+      }
+     ]
+    },
+    {
+     "name": "decompress_unsized",
+     "overloads": [
+      {
+       "signature": "def decompress_unsized(data: Span[UInt8]) -> List[UInt8]",
+       "summary": "Decompress a Brotli stream of unknown decoded length.",
+       "description": "Starts from a guess and doubles until the stream fits. Each retry decodes\nfrom the beginning — Brotli's decoder cannot resume a one-shot call into a\nbigger buffer — so prefer `decompress` whenever the size is known out of\nband, which for Parquet it always is."
+      }
+     ]
+    },
+    {
+     "name": "encoder_version",
+     "overloads": [
+      {
+       "signature": "def encoder_version() -> String",
+       "summary": "The libbrotlienc version this process is linked against, e.g. \"1.1.0\"."
+      }
+     ]
+    },
+    {
+     "name": "decoder_version",
+     "overloads": [
+      {
+       "signature": "def decoder_version() -> String",
+       "summary": "The libbrotlidec version this process is linked against, e.g. \"1.1.0\"."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
