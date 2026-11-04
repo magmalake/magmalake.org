@@ -286,7 +286,7 @@ export const tins: Tin[] = [
     version: "0.2.1",
     tier: "format",
     what:
-      "The Apache Arrow memory layout, the C Data Interface and IPC streams in pure Mojo, with no dependencies and no FFI. A stopgap until marrow, the community Arrow for Mojo, builds on Mojo 1.x.",
+      "The Apache Arrow memory layout, the C Data Interface and IPC streams in pure Mojo, with no FFI: its one dependency is memory-region-mojo. A stopgap until marrow, the community Arrow for Mojo, builds on Mojo 1.x.",
     oracle: "pyarrow imports what it exports over C, and reads and writes its IPC streams both ways",
     bullets: [
       "ArrayData and ArrayArena: flat, nested and extension types",
