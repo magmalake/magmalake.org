@@ -6,7 +6,7 @@ import GettingStartedPager from "../../components/GettingStartedPager.astro";
 import { GHARCHIVE_REPO } from "../../data/gharchive";
 
 const description =
-  "Let a coding agent build a lake of GitHub activity on magmalake: install the skills for Mojo, magmalake, mojoshelf and AWS, and give it the prompt that built gharchive.example.";
+  "Let a coding agent build a lake of GitHub activity on magmalake: install the skills for Mojo, magmalake, mojoshelf and AWS, and give it the prompt that built mojo-census.";
 
 const SKILLS = "https://github.com/magmalake/skills";
 
@@ -47,7 +47,7 @@ Mojo libraries have grown.
       <p class="eyebrow"><a href="/getting-started">Getting started</a></p>
       <h1 class="section-title">Let an agent build it</h1>
       <p class="lede">
-        A coding agent can write all of <a href={GHARCHIVE_REPO} rel="noopener">gharchive.example</a>
+        A coding agent can write all of <a href={GHARCHIVE_REPO} rel="noopener">mojo-census</a>
         if it knows current Mojo, the magmalake libraries and AWS. Each of those comes as a
         skill, and AWS also as an MCP server. The commands below are for Claude Code; any
         agent that reads
@@ -119,7 +119,7 @@ npx skills add aws/agent-toolkit-for-aws/skills`} />
       </p>
       <CodeBlock label="prompt" code={prompt} />
       <p>
-        The agent that wrote <a href={GHARCHIVE_REPO} rel="noopener">gharchive.example</a>
+        The agent that wrote <a href={GHARCHIVE_REPO} rel="noopener">mojo-census</a>
         from this prompt ran it locally on two hours of 2024-06-12: 476,227 events (154 MB of
         Parquet), 23 candidate repositories, 4 of them Mojo, and 3 histories read, with 372
         commits and 27 changes of tooling or version. It also kept a list of where the skills

@@ -1,10 +1,10 @@
 /**
- * Excerpts of gharchive.example for /getting-started/step-by-step, copied
+ * Excerpts of mojo-census for /getting-started/step-by-step, copied
  * verbatim from the repository (commit db1b20b); the line ranges are in each
  * comment. Regenerate them from the files rather than editing them here.
  */
 
-export const GHARCHIVE_REPO = "https://github.com/magmalake/gharchive.example";
+export const GHARCHIVE_REPO = "https://github.com/magmalake/mojo-census";
 
 /** bin/scheduler.mojo, lines 1-4 */
 export const SCHEDULER = "from orca.command import orca_command\n\ndef main() raises:\n    orca_command()";
@@ -24,6 +24,6 @@ export const CONSOLE_MAIN = "def main() raises:\n    var r = Router()\n    r.get
 /** bin/console.mojo, lines 159-177 */
 export const CONSOLE_VERSIONS = "def versions(req: Request) raises -> Response:\n    try:\n        var rows = versions_by_month()\n        var h = String(\n            \"<h1>Mojo versions over time</h1><p class=mute>Each month, how many\",\n            \" libraries moved to each Mojo version (from their lock file, or\",\n            \" their manifest when there's no lock), in Mojo's own order across\",\n            \" the renumbering: 24.x, 25.x, 0.25.x, 0.26.x, 1.x.</p>\",\n            \"<table><tr><th>Month</th><th>Version</th><th class=num>Libraries</th></tr>\",\n        )\n        for ref r in rows:\n            h.write(\n                \"<tr><td>\", r.month, \"</td><td>\", html_escape(r.version),\n                \"</td><td class=num>\", r.repos, \"</td></tr>\",\n            )\n        h.write(\"</table>\")\n        return _page(\"Mojo versions\", h^)\n    except e:\n        return internal_error(String(e))";
 
-/** gharchive.example deployed with `orca aws`: Orca's UI and the console. */
-export const ORCA_DEMO = "https://orca-demo.mlake.dev";
-export const LIBS = "https://libs.mlake.dev";
+/** mojo-census deployed with `orca aws`: Orca's UI and the console. */
+export const ORCA_DEMO = "https://orca.mlake.dev";
+export const LIBS = "https://census.mlake.dev";
