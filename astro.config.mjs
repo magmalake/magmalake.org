@@ -3,6 +3,9 @@ import { defineConfig } from "astro/config";
 import sitemap from "@astrojs/sitemap";
 import agentMarkdown from "./src/integrations/agent-markdown.mjs";
 
+/** A tin's API reference, /s/<tin>/api and its module pages. */
+const isApi = (path) => /^\/s\/[^/]+\/api(\/|$)/.test(path);
+
 // Static output: `npm run build` emits a plain `dist/` of HTML/CSS that is
 // uploaded verbatim by Cloudflare Workers static assets (see wrangler.jsonc).
 export default defineConfig({
@@ -25,20 +28,20 @@ export default defineConfig({
         "Every page below is the Markdown twin of a page on https://magmalake.dev: the same URL with .md appended (the home page is /index.md). /llms-full.txt has them all in one file.",
       ],
       titleSuffix: " — magmalake",
-      exclude: (path) => path === "/404" || path.startsWith("/admin"),
+      exclude: (path) => path === "/404" || path === "/search" || path.startsWith("/admin"),
       // A tin's API reference is long (flare's alone runs to megabytes) and
       // has its own twins; llms.txt lists it, llms-full.txt leaves it out.
-      excludeFromFull: (path) => /^\/s\/[^/]+\/api(\/|$)/.test(path),
+      excludeFromFull: isApi,
       sections: [
         { title: "Start here", match: (p) => p === "/" || p.startsWith("/getting-started") },
-        { title: "Orca", match: (p) => p.startsWith("/s/orca") },
-        { title: "Dista", match: (p) => p.startsWith("/s/dista") },
+        { title: "Orca", match: (p) => p.startsWith("/s/orca") && !isApi(p) },
+        { title: "Dista", match: (p) => p.startsWith("/s/dista") && !isApi(p) },
         {
           title: "Tins",
-          match: (p) => p === "/tins" || p === "/performance" || (p.startsWith("/s/") && !/\/api(\/|$)/.test(p)),
+          match: (p) => p === "/tins" || p === "/performance" || (p.startsWith("/s/") && !isApi(p)),
         },
         { title: "Blog", match: (p) => p.startsWith("/blog") },
-        { title: "Each tin's API reference", match: (p) => /^\/s\/[^/]+\/api(\/|$)/.test(p), optional: true },
+        { title: "Each tin's API reference", match: isApi, optional: true },
       ],
     }),
   ],

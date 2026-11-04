@@ -179,11 +179,13 @@ export default function agentMarkdown(options) {
         }
 
         // llms.txt: the H1, the summary as a blockquote, then a list of links
-        // per section. A page no section claims goes under "Other".
+        // per section.
         const claimed = new Set();
         const lines = [`# ${options.name}`, "", `> ${options.summary}`, ""];
         for (const p of options.intro ?? []) lines.push(p, "");
-        const sections = [...options.sections.filter((s) => !s.optional), { title: "Other", match: () => true }, ...options.sections.filter((s) => s.optional)];
+        // The proposal's "Optional" section is for what an agent may skip; a
+        // page no section claims still goes in, under "Other", last.
+        const sections = [...options.sections.filter((s) => !s.optional), ...options.sections.filter((s) => s.optional), { title: "Other", match: () => true }];
         for (const s of sections) {
           const mine = pages.filter((p) => !claimed.has(p.path) && s.match(p.path));
           if (mine.length === 0) continue;
