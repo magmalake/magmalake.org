@@ -1,15 +1,5 @@
 ---
-import CodeTabs from "./CodeTabs.astro";
-import { tins, statusOf } from "../data/tins";
-
-const tinCount = tins.filter((t) => t.tier !== "oracle" && statusOf(t) === "shelf").length;
-
-const highlights = [
-  { value: String(tinCount), label: "tins on mojoshelf" },
-  { value: "3.8 s", label: "1.4B rows in S3, 12 nodes, Dista" },
-  { value: "211M", label: "Parquet rows/s, one core" },
-  { value: "0", label: "JVM or Python in the path" },
-];
+/** The home page's hero: what magmalake is, in one line, and where to go. */
 ---
 
 <section class="hero">
@@ -23,14 +13,9 @@ const highlights = [
     </h1>
 
     <p class="hero__lede">
-      Everything a data platform needs, written in Mojo, layer by layer: orchestration
-      with Orca and distributed execution with Dista at the top, Iceberg tables and their catalogs, the file
-      formats beneath them, object storage and databases, and the primitives and utilities
-      everything shares. No Python or JVM in the path. Each tin is independently usable,
-      and each is checked against the reference implementation of what it speaks.
+      Data pipelines written in Mojo, from the scheduler down to the Parquet bytes, with no
+      Python or JVM in the path.
     </p>
-
-    <CodeTabs />
 
     <div class="hero__actions">
       <a class="btn btn--primary" href="/getting-started">Get started</a>
@@ -39,17 +24,6 @@ const highlights = [
       </a>
       <a class="btn" href="/tins">See the tins</a>
     </div>
-
-    <dl class="hero__stats">
-      {
-        highlights.map((h) => (
-          <div class="stat">
-            <dt class="stat__value">{h.value}</dt>
-            <dd class="stat__label">{h.label}</dd>
-          </div>
-        ))
-      }
-    </dl>
   </div>
 </section>
 
@@ -121,36 +95,9 @@ const highlights = [
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem;
-    margin-bottom: 3rem;
+    margin-bottom: 0;
   }
 
   /* .btn / .btn--primary live in src/styles/sections.css — shared with the
-     closing CTA on the home and status pages. */
-
-  .hero__stats {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 1rem;
-    margin: 0;
-    padding-top: 2rem;
-    border-top: 1px solid var(--rule);
-  }
-  .stat { min-width: 0; }
-  .stat__value {
-    font-family: var(--font-display);
-    font-size: clamp(1.5rem, 3vw, 2rem);
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    line-height: 1.1;
-  }
-  .stat__label {
-    margin: 0.3rem 0 0;
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-    line-height: 1.35;
-  }
-
-  @media (max-width: 720px) {
-    .hero__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem 1rem; }
-  }
+     closing CTA on the status page. */
 </style>

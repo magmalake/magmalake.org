@@ -1,0 +1,21 @@
+---
+/** Previous and next links between the /getting-started pages. */
+interface Link { href: string; label: string }
+interface Props { prev?: Link; next?: Link }
+const { prev, next } = Astro.props;
+---
+
+<nav class="gs-pager" aria-label="Getting started pages">
+  {prev && (
+    <a href={prev.href} rel="prev">
+      <span class="gs-pager__dir">← Previous</span>
+      <span class="gs-pager__label">{prev.label}</span>
+    </a>
+  )}
+  {next && (
+    <a class="gs-pager__next" href={next.href} rel="next">
+      <span class="gs-pager__dir">Next →</span>
+      <span class="gs-pager__label">{next.label}</span>
+    </a>
+  )}
+</nav>

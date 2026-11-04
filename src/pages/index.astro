@@ -1,187 +1,91 @@
 ---
 import Base from "../layouts/Base.astro";
 import Hero from "../components/Hero.astro";
-import StackDiagram from "../components/StackDiagram.astro";
-import TakeATinCta from "../components/TakeATinCta.astro";
-import { tins, tinsByTier, TIER_LABEL, TIERS, statusOf } from "../data/tins";
+import { headline, images } from "../data/dista";
 
 const description =
-  "Data infrastructure for Mojo: a native Apache Iceberg stack — Parquet, Avro, Thrift, codecs, Roaring bitmaps, object storage, SQL catalogs and threads — published as tins on mojoshelf and gated against the reference implementation of every format.";
+  "Data pipelines in Mojo: checked by the compiler, distributed with Dista, recorded in Postgres so they resume and retry, documented for coding agents, and built on a native Iceberg stack published as tins on mojoshelf.";
 
-const tinTiers = [...TIERS, "oracle" as const];
+const img = Object.fromEntries(images.rows.map((r) => [r.label, r]));
 ---
 
 <Base title="Data processing in Mojo" description={description} bare={false}>
   <Hero />
 
-  <!-- ============================ what this is ============================ -->
   <section class="section section--alt" id="what">
     <div class="wrap wrap--wide">
-      <p class="eyebrow">What this is</p>
-      <h2 class="section-title">From a table format to a platform</h2>
-
-      <div class="two-col">
-        <div class="prose">
+      <div class="home-points">
+        <div class="home-point">
+          <h2 class="home-point__title">Checked at compile time</h2>
           <p>
-            magmalake began when Mojo reached 1.0 as an exploration in building
-            a meaningfully large data library in it? — and I picked
-            <a href="https://iceberg.apache.org" rel="noopener">Apache Iceberg</a> as the
-            target. What came out is a stack rather than a demo.
-            Parquet, Avro, Thrift, Iceberg itself, Roaring bitmaps, Snappy and the hashes are
-            implemented in Mojo. A few very mature C libraries are linked rather
-            than reimplemented — <strong>libzstd</strong>, <strong>liblz4</strong> and
-            <strong>libbrotli</strong> for those three codecs, <strong>libcurl</strong> for
-            HTTP and TLS, and <strong>pthreads</strong> for the threads the language does not
-            yet provide. What is gone is the Python and JVM layer that every other route from
-            Mojo to Iceberg has to go through.
-          </p>
-          <p>
-            Then it grew upward. <a href="/s/orca">Orca</a> is the orchestration layer:
-            pipelines as DAGs in Mojo, checked by the compiler, partitioned by time or arbitrary keys
-            and run on cron schedules, with a scheduler that backfills and retries. It loads
-            every month of NYC taxi trips since 2011, 1.44 billion rows, four runs at a time.
-            <a href="/s/dista">Dista</a>, beneath it, runs Mojo functions distributed across a cluster.
-            On those taxi rows in S3 it
-            beats both Ray and a Rust implementation of the same queries.
+            An <a href="/s/orca">Orca</a> pipeline is a Mojo type. Its steps, their inputs and
+            outputs, its partitions and its schedule are compile-time parameters, so the
+            compiler checks every edge before anything runs, and each step declares the
+            Iceberg tables it reads and writes.
           </p>
         </div>
 
-        <div class="callout-stack">
-        <aside class="callout">
-          <h3 class="callout__title">Packaged on mojoshelf</h3>
+        <div class="home-point">
+          <h2 class="home-point__title">Scalable and distributed</h2>
           <p>
-            Magmalake leans on the packaging infrastructure defined by
-            <a href="https://mojoshelf.org" rel="noopener">mojoshelf.org</a> — a registry for
-            Mojo <em>tins</em> on top of pixi. Every tin here is published there and installable with one
-            command.
+            Steps hand their work to <a href="/s/dista">Dista</a>, which runs Mojo functions
+            across a cluster as tasks and actors, keeping each result on the worker that made
+            it. On AWS, <code>orca aws</code> gives each run workers of its own, scaling up
+            from none while tasks wait.
           </p>
-          <a class="callout__link" href="https://mojoshelf.org" rel="noopener">
-            mojoshelf.org
-            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true"
-                 stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 9 9 3M4.2 3H9v4.8" />
-            </svg>
-          </a>
-        </aside>
+        </div>
 
-        <aside class="callout" id="skills">
-          <h3 class="callout__title">Skills for coding agents</h3>
+        <div class="home-point">
+          <h2 class="home-point__title">Reliable</h2>
           <p>
-            What magmalake learned making its code fast is packaged as an agent skill, so an
-            agent writing a data pipeline in Mojo starts with it. Each rule carries the
-            measurement behind it.
+            Every run, attempt and log is recorded in Postgres. A failed step retries, a killed
+            run resumes at the steps that didn't succeed, and a retried commit is recognised
+            rather than written twice. Sensors start a pipeline when a table it reads changes,
+            and lineage traces each snapshot back to the runs and code that made it.
           </p>
-          <pre class="callout__code"><code>npx skills add magmalake/skills</code></pre>
-          <p class="callout__fine">
-            That installs it. In Claude Code you can instead run{" "}
-            <code>/plugin marketplace add magmalake/skills</code> and then{" "}
-            <code>/plugin install skills@magmalake</code>.
+        </div>
+
+        <div class="home-point">
+          <h2 class="home-point__title">Agent friendly</h2>
+          <p>
+            <a href="https://github.com/magmalake/skills" rel="noopener">magmalake's skills</a>
+            teach a coding agent Orca, Dista, a whole magmalake app and fast Mojo data code.
+            <a href="/getting-started">Getting started</a> has them, and the prompt from which
+            an agent built a lake of GitHub activity that now runs on AWS.
           </p>
-          <p class="callout__fine">
-            <a href="https://github.com/magmalake/skills/tree/main/mojo-data-performance" rel="noopener"><code>mojo-data-performance</code></a>
-            covers a pipeline's per-row loops and the readers, writers and codecs under
-            them, how to tell the time spent decoding from the time spent on your own work
-            without a second implementation to compare against, and how to take a
-            benchmark number that survives being checked.
+        </div>
+
+        <div class="home-point">
+          <h2 class="home-point__title">Fast, small, quick to build</h2>
+          <p>
+            On three nodes, eight queries over 1.4 billion taxi trips in S3 take
+            {headline.dista.toFixed(1)} s a pass on Dista, against {headline.rust.toFixed(1)} s
+            for Rust and {headline.ray.toFixed(1)} s for Ray. Dista's container image is
+            {" "}{img.Dista.gzip} MB compressed, against {img.Rust.gzip} MB for Rust and
+            {" "}{img.Ray.gzip} MB for Ray, and builds from cold in {img.Dista.build} s, against
+            {" "}{img.Rust.build} s for Rust; <a href="/s/dista/performance#images">Dista's
+            performance page</a> has the whole build. Underneath, Parquet, Iceberg and the codecs
+            are Mojo <a href="/tins">tins</a>, measured against pyarrow on
+            <a href="/performance">the performance page</a>, including where they lose.
           </p>
-        </aside>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- ============================== the stack ============================= -->
-  <section class="section" id="stack">
-    <div class="wrap wrap--wide">
-      <p class="eyebrow">The stack</p>
-      <h2 class="section-title">How they layer</h2>
-      <p class="lede" style="margin-bottom: 2.5rem;">
-        At the top, execution: Orca schedules pipelines, Dista runs Mojo functions across a
-        cluster, and restate makes a flow durable. Beneath it, Iceberg
-        tables and their catalogs; then the file formats a table is made of, and the
-        storage and databases it lives in; then the codecs, hashes and threads they all
-        share, and small utilities beside them. I kept every piece separate, so you can
-        take just the one you need.
-      </p>
-      <StackDiagram />
-    </div>
-  </section>
-
-  <!-- ============================ tins at a glance ========================= -->
-  <section class="section section--alt" id="tins">
-    <div class="wrap wrap--wide">
-      <p class="eyebrow">The tins</p>
-      <h2 class="section-title">Tins at a glance</h2>
-      <p class="lede">
-        {tins.filter((t) => t.tier !== "oracle" && statusOf(t) !== "planned").length} tins
-        today, each independently usable and checked against the reference implementation
-        of what it speaks, and more on the way. What each one is
-        and what proves it lives on <a href="/tins">the tins page</a>.
-      </p>
-
-      <div class="tin-glance">
-        {
-          tinTiers.map((tier) => (
-            <div class="tier">
-              <h3 class="tier__label">{TIER_LABEL[tier]}</h3>
-              <ul class="tin-glance__list">
-                {tinsByTier(tier).map((t) => (
-                  <li>
-                    <a href={t.site ?? "/tins"}>
-                      <span class="tin-glance__name">{t.name}</span>
-                      <span class="tin-glance__version">{t.version}</span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))
-        }
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================= take a tin ============================= -->
-  <section class="section">
-    <div class="wrap wrap--wide">
-      <TakeATinCta />
     </div>
   </section>
 </Base>
 
 <style>
-  .tin-glance__list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.6rem;
+  .home-points {
+    display: grid;
+    gap: 1.75rem;
+    max-width: var(--measure);
   }
-  .tin-glance__list a {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.4rem;
-    padding: 0.45rem 0.8rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    text-decoration: none;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  .home-point__title {
+    font-size: 1.2rem;
+    margin: 0 0 0.4rem;
   }
-  .tin-glance__list a:hover {
-    border-color: var(--border-strong);
-    box-shadow: var(--shadow);
-  }
-  .tin-glance__name {
-    font-family: var(--font-mono);
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-  .tin-glance__version {
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    color: var(--text-faint);
+  .home-point p {
+    color: var(--text-muted);
+    line-height: 1.65;
   }
 </style>

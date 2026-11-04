@@ -1,0 +1,158 @@
+---
+/**
+ * gharchive.example's pipelines and the tables they write, as inline SVG:
+ * no client JavaScript, the site's colour tokens (so light and dark both
+ * work), and a narrow viewBox so the text stays readable on a phone.
+ * Tables are lake-coloured boxes, pipelines ember labels on the arrows.
+ * The table names are the ones in the example's src/lake.mojo.
+ */
+import { LIBS, ORCA_DEMO } from "../data/gharchive";
+
+const host = (u: string) => u.replace(/^https:\/\//, "");
+---
+
+<figure class="pd">
+  <svg viewBox="0 0 460 560" role="img" aria-labelledby="pd-title pd-desc">
+    <title id="pd-title">The pipelines and the tables they write</title>
+    <desc id="pd-desc">
+      gharchive imports each day of data.gharchive.org into gharchive.events. mojo_repos, a
+      sensor on it, checks candidates with GitHub's API and writes mojo.repos and
+      mojo.checked. mojo_history, a sensor keyed by owner/name on mojo.repos, clones each
+      repository in a dista task and writes mojo.commits and mojo.migrations. The console
+      at {host(LIBS)} reads those tables, and Orca's UI at {host(ORCA_DEMO)} shows the
+      three pipelines.
+    </desc>
+    <defs>
+      <marker id="pd-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 10 5 0 10z" class="pd-head" />
+      </marker>
+    </defs>
+
+    <!-- source -->
+    <rect class="pd-src" x="10" y="10" width="400" height="48" rx="6" />
+    <text class="pd-name" x="26" y="31">data.gharchive.org</text>
+    <text class="pd-sub" x="26" y="48">an hourly .json.gz of GitHub's public events</text>
+
+    <!-- gharchive -->
+    <line class="pd-flow" x1="40" y1="58" x2="40" y2="126" marker-end="url(#pd-arrow)" />
+    <text class="pd-pipe" x="60" y="86">gharchive</text>
+    <text class="pd-note" x="60" y="104">daily at 03:00 UTC · a dista task per hour</text>
+
+    <rect class="pd-table" x="10" y="128" width="400" height="48" rx="6" />
+    <text class="pd-name" x="26" y="149">gharchive.events</text>
+    <text class="pd-sub" x="26" y="166">every event, partitioned by day</text>
+
+    <!-- mojo_repos -->
+    <line class="pd-flow" x1="40" y1="176" x2="40" y2="244" marker-end="url(#pd-arrow)" />
+    <text class="pd-pipe" x="60" y="204">mojo_repos</text>
+    <text class="pd-note" x="60" y="222">sensor · checks candidates with GitHub's API</text>
+
+    <rect class="pd-table" x="10" y="246" width="195" height="48" rx="6" />
+    <text class="pd-name" x="26" y="267">mojo.repos</text>
+    <text class="pd-sub" x="26" y="284">the Mojo repositories</text>
+    <rect class="pd-table" x="215" y="246" width="195" height="48" rx="6" />
+    <text class="pd-name" x="231" y="267">mojo.checked</text>
+    <text class="pd-sub" x="231" y="284">every answer, asked once</text>
+
+    <!-- mojo_history -->
+    <line class="pd-flow" x1="40" y1="294" x2="40" y2="380" marker-end="url(#pd-arrow)" />
+    <text class="pd-pipe" x="60" y="322">mojo_history</text>
+    <text class="pd-note" x="60" y="340">sensor · keyed by owner/name, 50 a run</text>
+    <text class="pd-note" x="60" y="358">a dista task clones each repository</text>
+
+    <rect class="pd-table" x="10" y="382" width="195" height="48" rx="6" />
+    <text class="pd-name" x="26" y="403">mojo.commits</text>
+    <text class="pd-sub" x="26" y="420">Mojo lines, tooling, version</text>
+    <rect class="pd-table" x="215" y="382" width="195" height="48" rx="6" />
+    <text class="pd-name" x="231" y="403">mojo.migrations</text>
+    <text class="pd-sub" x="231" y="420">each change of either</text>
+
+    <!-- the console reads the tables -->
+    <line class="pd-flow" x1="40" y1="430" x2="40" y2="482" marker-end="url(#pd-arrow)" />
+    <text class="pd-note" x="60" y="461">read by a flare app</text>
+    <text class="pd-sub" x="410" y="461" text-anchor="end">runs, logs, lineage</text>
+
+    <a href={LIBS} rel="noopener">
+      <rect class="pd-app" x="10" y="484" width="195" height="56" rx="6" />
+      <text class="pd-name" x="26" y="506">console</text>
+      <text class="pd-link" x="26" y="525">{host(LIBS)}</text>
+    </a>
+
+    <!-- Orca's UI shows all three pipelines -->
+    <path class="pd-watch" d="M410 82 H440 V512 H412" marker-end="url(#pd-arrow)" />
+    <line class="pd-watch" x1="410" y1="200" x2="440" y2="200" />
+    <line class="pd-watch" x1="410" y1="318" x2="440" y2="318" />
+    <a href={ORCA_DEMO} rel="noopener">
+      <rect class="pd-app" x="215" y="484" width="195" height="56" rx="6" />
+      <text class="pd-name" x="231" y="506">Orca's UI</text>
+      <text class="pd-link" x="231" y="525">{host(ORCA_DEMO)}</text>
+    </a>
+  </svg>
+</figure>
+
+<style>
+  .pd {
+    max-width: 34rem;
+    margin: 1.75rem 0 0.5rem;
+  }
+  .pd svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .pd-src {
+    fill: var(--surface-2);
+    stroke: var(--border-strong);
+    stroke-width: 1;
+  }
+  .pd-table {
+    fill: var(--lake-wash);
+    stroke: color-mix(in srgb, var(--lake) 45%, transparent);
+    stroke-width: 1;
+  }
+  .pd-app {
+    fill: var(--ember-wash);
+    stroke: color-mix(in srgb, var(--ember) 45%, transparent);
+    stroke-width: 1;
+  }
+  .pd a:hover .pd-app,
+  .pd a:focus-visible .pd-app {
+    stroke: var(--ember);
+  }
+  .pd-flow {
+    stroke: var(--text-faint);
+    stroke-width: 1.5;
+  }
+  .pd-head { fill: var(--text-faint); }
+  .pd-watch {
+    fill: none;
+    stroke: var(--text-faint);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+  }
+  .pd-name {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 600;
+    fill: var(--text);
+  }
+  .pd-sub,
+  .pd-note {
+    font-family: var(--font-body);
+    font-size: 12.5px;
+    fill: var(--text-muted);
+  }
+  .pd-note { font-size: 13.5px; }
+  .pd-pipe {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 600;
+    fill: var(--ember);
+  }
+  .pd-link {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    fill: var(--lake);
+    text-decoration: underline;
+  }
+</style>
