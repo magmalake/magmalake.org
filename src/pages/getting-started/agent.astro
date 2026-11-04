@@ -1,0 +1,139 @@
+---
+import "../../styles/getting-started.css";
+import Base from "../../layouts/Base.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import GettingStartedPager from "../../components/GettingStartedPager.astro";
+import { GHARCHIVE_REPO } from "../../data/gharchive";
+
+const description =
+  "Let a coding agent build a lake of GitHub activity on magmalake: install the skills for Mojo, magmalake, mojoshelf and AWS, and give it the prompt that built gharchive.example.";
+
+const SKILLS = "https://github.com/magmalake/skills";
+
+const prompt = `Build me a lake of GitHub activity with magmalake, and an app that shows how
+Mojo libraries have grown.
+
+- Make a new pixi project with orca (\`pixi shelf add orca-mojo\`). Use the
+  magmalake skills (orca, dista, magmalake-apps), mojoshelf's skills and
+  Modular's mojo-syntax.
+- gharchive: a daily pipeline that imports each day of the GitHub Archive
+  (data.gharchive.org, 24 hourly .json.gz files) into an Iceberg table
+  gharchive.events (id, type, created_at, repo, actor, the event's payload
+  as JSON), partitioned by day, from 2023-01-01, every day at 03:00 UTC for
+  the day before.
+- mojo_repos: a sensor on gharchive.events that finds Mojo repositories
+  (pushes touching .mojo or .🔥 files, and projects whose pixi.toml or
+  mojoproject.toml names a Mojo package) and keeps them in mojo.repos (when
+  GitHub says each was created, when it was first seen, how it was found,
+  stars, forks, license, default branch, description).
+- mojo_history: keyed by repository, 50 a run, started by new repositories:
+  clone each one in a dista task and read its history into mojo.commits
+  (lines of Mojo at each commit, which tooling the project used: none, then
+  magic, then pixi, and the Mojo version its lock file or manifest named)
+  and mojo.migrations (each change of tooling or Mojo version). Versions
+  sort in one order across Modular's renumbering (24.x, 25.x, 0.25.x,
+  0.26.x, 1.x); test that.
+- The console: a flare app over those tables: the libraries by size and
+  age, the Mojo versions they moved to over time, a page per repository.
+- Run it locally first on a few hours of the archive. Then deploy it to AWS
+  with \`orca aws\` (on-demand workers, autoscaling from 0), backfill one
+  month to see what it costs, then the rest, and serve the console on its
+  own hostname. The tables go in the stack's public bucket.`;
+---
+
+<Base title="Let an agent build it — Getting started" description={description}>
+  <section class="section section--flush">
+    <div class="wrap wrap--wide docs gs">
+      <p class="eyebrow"><a href="/getting-started">Getting started</a></p>
+      <h1 class="section-title">Let an agent build it</h1>
+      <p class="lede">
+        A coding agent can write all of <a href={GHARCHIVE_REPO} rel="noopener">gharchive.example</a>
+        if it knows current Mojo, the magmalake libraries and AWS. Each of those comes as a
+        skill, and AWS also as an MCP server. The commands below are for Claude Code; any
+        agent that reads
+        <a href="https://agentskills.io/specification" rel="noopener">Agent Skills</a> can
+        use the <code>npx skills</code> lines instead, which need
+        <a href="https://nodejs.org/en/download" rel="noopener">Node.js</a>.
+      </p>
+
+      <nav class="docs-toc" aria-label="On this page">
+        <a href="#skills">Install the skills</a>
+        <a href="#prompt">The prompt</a>
+      </nav>
+
+      <h2 id="skills">Install the skills</h2>
+      <p>
+        <strong>magmalake's skills</strong> cover
+        <a href={`${SKILLS}/tree/main/orca`} rel="noopener">orca</a>,
+        <a href={`${SKILLS}/tree/main/dista`} rel="noopener">dista</a>,
+        <a href={`${SKILLS}/tree/main/magmalake-apps`} rel="noopener">magmalake-apps</a>
+        (a whole project, its lake, a flare app and <code>orca aws</code>) and
+        <a href={`${SKILLS}/tree/main/mojo-data-performance`} rel="noopener">mojo-data-performance</a>
+        (a pipeline's per-row loops and the readers, writers and codecs under them, and how
+        to take a benchmark number that survives being checked). In Claude Code:
+      </p>
+      <CodeBlock label="Claude Code commands" code={`/plugin marketplace add magmalake/skills
+/plugin install skills@magmalake`} />
+      <p>In any other agent:</p>
+      <CodeBlock label="shell" code={`npx skills add magmalake/skills`} />
+      <p>
+        <strong>mojoshelf's skill</strong> tells the agent how to find tins and add them to a
+        project:
+      </p>
+      <CodeBlock label="shell" code={`npx skills add mojoshelf/mojoshelf --skill mojoshelf-consume`} />
+      <p>
+        <strong>Modular's <code>mojo-syntax</code></strong> keeps the agent writing the Mojo
+        of today rather than the Mojo it was trained on. It is part of
+        <a href="https://github.com/modular/skills" rel="noopener">modular/skills</a>; in
+        Claude Code, <code>mojo-skills@modular</code> installs the Mojo skills only:
+      </p>
+      <CodeBlock label="Claude Code commands" code={`/plugin marketplace add modular/skills
+/plugin install mojo-skills@modular`} />
+      <CodeBlock label="shell" code={`npx skills add modular/skills --skill mojo-syntax`} />
+      <p>
+        <strong>AWS</strong> publishes the
+        <a href="https://docs.aws.amazon.com/agent-toolkit/latest/userguide/quick-start.html" rel="noopener">Agent Toolkit for AWS</a>:
+        the AWS MCP Server, through which the agent reads AWS documentation and runs AWS
+        calls with your credentials, and a set of AWS skills. It needs
+        <a href="https://docs.astral.sh/uv/" rel="noopener">uv</a>, and the AWS CLI signed in
+        (<code>aws login</code>) for anything beyond reading documentation. In Claude Code
+        one plugin brings both:
+      </p>
+      <CodeBlock label="Claude Code commands" code={`/plugin install aws-core@claude-plugins-official
+/reload-plugins`} />
+      <p>
+        Elsewhere, add the server to the agent's MCP configuration and install the skills.
+        This is AWS's line for Claude Code with your own credentials; the
+        <a href="https://docs.aws.amazon.com/agent-toolkit/latest/userguide/getting-started-aws-mcp-server.html" rel="noopener">setup guide</a>
+        has the other agents', and the options for sign-in in the browser and for more than one
+        profile. Set <code>AWS_REGION</code> to your project's Region:
+      </p>
+      <CodeBlock label="shell" code={`claude mcp add-json aws-mcp '{"type":"stdio","command":"uvx","args":["mcp-proxy-for-aws-cli@latest","https://aws-mcp.us-east-1.api.aws/mcp","--metadata","AWS_REGION=us-east-2"],"env":{}}'
+npx skills add aws/agent-toolkit-for-aws/skills`} />
+
+      <h2 id="prompt">The prompt</h2>
+      <p>
+        Start the agent in an empty directory and give it this. It names the skills to use,
+        the three pipelines and their tables, the console, and the order to work in: locally
+        on a few hours of the archive first, then on AWS.
+      </p>
+      <CodeBlock label="prompt" code={prompt} />
+      <p>
+        The agent that wrote <a href={GHARCHIVE_REPO} rel="noopener">gharchive.example</a>
+        from this prompt ran it locally on two hours of 2024-06-12: 476,227 events (154 MB of
+        Parquet), 23 candidate repositories, 4 of them Mojo, and 3 histories read, with 372
+        commits and 27 changes of tooling or version. It also kept a list of where the skills
+        and libraries were wrong or silent,
+        <a href={`${GHARCHIVE_REPO}/blob/main/GAPS.md`} rel="noopener">GAPS.md</a>, and the
+        skills and libraries have since been corrected from it. Expect your agent to take its
+        own route to the same tables; <a href="/getting-started/step-by-step">Step by step</a>
+        walks through the route this one took.
+      </p>
+
+      <GettingStartedPager
+        prev={{ href: "/getting-started", label: "Getting started" }}
+        next={{ href: "/getting-started/step-by-step", label: "Step by step" }}
+      />
+    </div>
+  </section>
+</Base>

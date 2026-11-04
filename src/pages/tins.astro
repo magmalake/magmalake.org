@@ -1,6 +1,8 @@
 ---
 import Base from "../layouts/Base.astro";
 import TinCard from "../components/TinCard.astro";
+import StackDiagram from "../components/StackDiagram.astro";
+import CodeTabs from "../components/CodeTabs.astro";
 import { tinsByTier, TIER_LABEL, TIERS } from "../data/tins";
 
 const description =
@@ -31,6 +33,108 @@ const description =
           </div>
         ))
       }
+    </div>
+  </section>
+
+  <!-- ============================ what this is ============================ -->
+  <section class="section" id="what">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">What this is</p>
+      <h2 class="section-title">From a table format to a platform</h2>
+
+      <div class="two-col">
+        <div class="prose">
+          <p>
+            magmalake began when Mojo reached 1.0 as an exploration in building
+            a meaningfully large data library in it? — and I picked
+            <a href="https://iceberg.apache.org" rel="noopener">Apache Iceberg</a> as the
+            target. What came out is a stack rather than a demo.
+            Parquet, Avro, Thrift, Iceberg itself, Roaring bitmaps, Snappy and the hashes are
+            implemented in Mojo. A few very mature C libraries are linked rather
+            than reimplemented — <strong>libzstd</strong>, <strong>liblz4</strong> and
+            <strong>libbrotli</strong> for those three codecs, <strong>libcurl</strong> for
+            HTTP and TLS, and <strong>pthreads</strong> for the threads the language does not
+            yet provide. What is gone is the Python and JVM layer that every other route from
+            Mojo to Iceberg has to go through.
+          </p>
+          <p>
+            Then it grew upward. <a href="/s/orca">Orca</a> is the orchestration layer:
+            pipelines as DAGs in Mojo, checked by the compiler, partitioned by time or arbitrary keys
+            and run on cron schedules, with a scheduler that backfills and retries. It loads
+            every month of NYC taxi trips since 2011, 1.44 billion rows, four runs at a time.
+            <a href="/s/dista">Dista</a>, beneath it, runs Mojo functions distributed across a cluster.
+            On those taxi rows in S3 it
+            beats both Ray and a Rust implementation of the same queries.
+          </p>
+        </div>
+
+        <div class="callout-stack">
+        <aside class="callout">
+          <h3 class="callout__title">Packaged on mojoshelf</h3>
+          <p>
+            Magmalake leans on the packaging infrastructure defined by
+            <a href="https://mojoshelf.org" rel="noopener">mojoshelf.org</a> — a registry for
+            Mojo <em>tins</em> on top of pixi. Every tin here is published there and installable with one
+            command.
+          </p>
+          <a class="callout__link" href="https://mojoshelf.org" rel="noopener">
+            mojoshelf.org
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true"
+                 stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9 9 3M4.2 3H9v4.8" />
+            </svg>
+          </a>
+        </aside>
+
+        <aside class="callout" id="skills">
+          <h3 class="callout__title">Skills for coding agents</h3>
+          <p>
+            What magmalake learned making its code fast is packaged as an agent skill, so an
+            agent writing a data pipeline in Mojo starts with it. Each rule carries the
+            measurement behind it.
+          </p>
+          <pre class="callout__code"><code>npx skills add magmalake/skills</code></pre>
+          <p class="callout__fine">
+            That installs it. In Claude Code you can instead run{" "}
+            <code>/plugin marketplace add magmalake/skills</code> and then{" "}
+            <code>/plugin install skills@magmalake</code>.
+          </p>
+          <p class="callout__fine">
+            <a href="https://github.com/magmalake/skills/tree/main/mojo-data-performance" rel="noopener"><code>mojo-data-performance</code></a>
+            covers a pipeline's per-row loops and the readers, writers and codecs under
+            them, how to tell the time spent decoding from the time spent on your own work
+            without a second implementation to compare against, and how to take a
+            benchmark number that survives being checked.
+          </p>
+        </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== the stack ============================= -->
+  <section class="section section--alt" id="stack">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">The stack</p>
+      <h2 class="section-title">How they layer</h2>
+      <p class="lede" style="margin-bottom: 2.5rem;">
+        At the top, execution: Orca schedules pipelines, Dista runs Mojo functions across a
+        cluster, and restate makes a flow durable. Beneath it, Iceberg
+        tables and their catalogs; then the file formats a table is made of, and the
+        storage and databases it lives in; then the codecs, hashes and threads they all
+        share, and small utilities beside them. I kept every piece separate, so you can
+        take just the one you need.
+      </p>
+      <StackDiagram />
+    </div>
+  </section>
+
+  <!-- ========================== one example per layer ===================== -->
+  <section class="section" id="examples">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">In code</p>
+      <h2 class="section-title">One example per layer</h2>
+      <CodeTabs />
     </div>
   </section>
 </Base>
