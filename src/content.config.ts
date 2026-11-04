@@ -55,4 +55,19 @@ const blog = defineCollection({
   }),
 });
 
-export const collections = { blog };
+/**
+ * A tin's docs, one Markdown file per tin, named by its slug (iceberg.md for
+ * /s/iceberg). src/pages/s/[tin].astro renders the file in the page's Docs
+ * section; a tin without one links its README instead. The body is the doc:
+ * nothing in the frontmatter is needed, and the tin's facts (version, repo,
+ * install line) stay in src/data/tins.ts so they are written down once.
+ */
+const tindocs = defineCollection({
+  loader: glob({ base: "./src/content/tindocs", pattern: "*.md" }),
+  schema: z.object({
+    /** The version the docs were checked against, for whoever updates them. */
+    checked: z.string().optional(),
+  }),
+});
+
+export const collections = { blog, tindocs };
