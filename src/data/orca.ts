@@ -4,6 +4,13 @@
 // to this file.
 
 export const ORCA_REPO = "https://github.com/magmalake/orca.mojo";
+
+/** The section's pages, in its header and (after the first) its footer. */
+export const orcaLinks = [
+  { href: "/s/orca", label: "Overview" },
+  { href: "/s/orca/docs", label: "Docs" },
+  { href: "/s/orca/roadmap", label: "Roadmap" },
+];
 export const ORCA_PRS = `${ORCA_REPO}/pull`;
 export const DISTA_SECTION = "/s/dista";
 

@@ -33,12 +33,12 @@ const measured = tins.filter((t) => !t.site && perfFor(slugOf(t)).length > 0);
       <div class="panel perf-panel" id="by-tin">
         <h2 class="panel__title">Each tin's numbers</h2>
         <ul class="bench-links">
-          {measured.map((t) => <li><a href={`${pageOf(t)}#performance`}><code>{t.name}</code></a></li>)}
+          {measured.map((t) => <li><a href={`${pageOf(t)}/performance`}><code>{t.name}</code></a></li>)}
           <li><a href="/s/dista/performance"><code>Dista</code></a></li>
         </ul>
         <p class="panel__fine">
           Crossing a process boundary — Arrow Flight, the C Data Interface and shared memory —
-          is on the <a href="/s/memory-region#perf-boundary">memory-region</a> page.
+          is on the <a href="/s/memory-region/performance#perf-boundary">memory-region</a> page.
         </p>
       </div>
 

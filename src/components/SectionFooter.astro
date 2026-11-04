@@ -1,0 +1,52 @@
+---
+// The footer that goes with SectionNav: the way back to magmalake, the
+// section's pages after its first, its repository and its issues.
+import Logo from "./Logo.astro";
+
+export interface Props {
+  name: string;
+  links: { href: string; label: string }[];
+  repo: string;
+  fine?: string;
+}
+const { name, links, repo, fine = "Apache 2.0 · © 2026 Marius Seritan" } = Astro.props;
+---
+
+<footer class="sfoot">
+  <div class="wrap wrap--wide sfoot__inner">
+    <a class="sfoot__mark" href="/"><Logo size={18} /><span>A magmalake project</span></a>
+    <nav class="sfoot__links" aria-label={`${name} links`}>
+      {links.map((l) => <a href={l.href}>{l.label}</a>)}
+      <a href={repo} rel="noopener">GitHub</a>
+      <a href={`${repo}/issues`} rel="noopener">Issues</a>
+    </nav>
+    <p class="sfoot__fine">{fine}</p>
+  </div>
+</footer>
+
+<style>
+  .sfoot {
+    border-top: 1px solid var(--rule);
+    padding-block: 2rem;
+    margin-top: 2rem;
+    font-size: 0.8125rem;
+    color: var(--text-faint);
+  }
+  .sfoot__inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.5rem;
+  }
+  .sfoot__mark {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+  .sfoot__links { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; }
+  .sfoot__links a { color: var(--text-muted); text-decoration: none; }
+  .sfoot__links a:hover { color: var(--text); }
+  .sfoot__fine { margin: 0 0 0 auto; }
+</style>
