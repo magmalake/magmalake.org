@@ -33,7 +33,10 @@ export default defineConfig({
         { title: "Start here", match: (p) => p === "/" || p.startsWith("/getting-started") },
         { title: "Orca", match: (p) => p.startsWith("/s/orca") },
         { title: "Dista", match: (p) => p.startsWith("/s/dista") },
-        { title: "Tins", match: (p) => p === "/tins" || p === "/performance" || p.startsWith("/s/") },
+        {
+          title: "Tins",
+          match: (p) => p === "/tins" || p === "/performance" || (p.startsWith("/s/") && !/\/api(\/|$)/.test(p)),
+        },
         { title: "Blog", match: (p) => p.startsWith("/blog") },
         { title: "Each tin's API reference", match: (p) => /^\/s\/[^/]+\/api(\/|$)/.test(p), optional: true },
       ],
