@@ -1,6 +1,6 @@
 /**
  * Excerpts of gharchive.example for /getting-started/step-by-step, copied
- * verbatim from the repository (commit cb15c8a); the line ranges are in each
+ * verbatim from the repository (commit db1b20b); the line ranges are in each
  * comment. Regenerate them from the files rather than editing them here.
  */
 
