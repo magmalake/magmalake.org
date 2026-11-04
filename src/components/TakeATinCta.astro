@@ -1,12 +1,15 @@
 ---
 import { tins } from "../data/tins";
+
+// parquet and parquet-full share a repository.
+const repos = new Set(tins.map((t) => t.repo)).size;
 ---
 
 <div class="cta">
   <div>
     <h3 class="cta__title">Take a tin</h3>
     <p class="cta__text">
-      Each of the {tins.length} repositories is independently usable and independently
+      Each of the {repos} repositories is independently usable and independently
       installable. Start with whichever layer you need — you do not have to take the stack.
     </p>
   </div>
