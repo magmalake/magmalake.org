@@ -1,0 +1,78 @@
+---
+/**
+ * A tin's performance, /s/<tin>/performance: its rows from src/data/perf.ts,
+ * what profiling found, its notes and its benchmark history. Only tins with
+ * any of those get the page (hasPerformance in src/data/tinpages.ts).
+ */
+import TinPage from "../../../components/TinPage.astro";
+import PerfTable from "../../../components/PerfTable.astro";
+import { slugOf, type Tin } from "../../../data/tins";
+import { pagedTins, hasPerformance } from "../../../data/tinpages";
+import { perfFor, passesFor, MEASURED_ON } from "../../../data/perf";
+
+export function getStaticPaths() {
+  return pagedTins()
+    .filter(hasPerformance)
+    .map((t) => ({ params: { tin: slugOf(t) }, props: { tin: t } }));
+}
+
+interface Props {
+  tin: Tin;
+}
+const { tin } = Astro.props;
+const slug = slugOf(tin);
+const groups = perfFor(slug);
+const passes = passesFor(slug);
+const description = `How fast ${tin.name} is: measured numbers, what profiling found, and its benchmark history.`;
+---
+
+<TinPage tin={tin} title="performance" description={description}>
+  <section class="section section--flush" id="performance">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow"><a href="/tins">Tins</a> · <a href={`/s/${slug}`}>{tin.name}</a></p>
+      <h1 class="section-title">Performance</h1>
+      {
+        groups.length > 0 ? (
+          <>
+            <div class="tp__perf">{groups.map((g) => <PerfTable group={g} />)}</div>
+            <p class="panel__fine tp__measured">
+              {MEASURED_ON} <a href="/performance#method">How these were measured</a>.
+            </p>
+          </>
+        ) : (
+          <p class="lede">No hand-measured numbers for {tin.name} yet.</p>
+        )
+      }
+      {
+        passes.length > 0 && (
+          <div class="panel tp__panel">
+            <h3 class="panel__title">Found by profiling</h3>
+            {passes.map((p) => (
+              <p>
+                <strong>{p.found}.</strong> {p.fix}
+              </p>
+            ))}
+          </div>
+        )
+      }
+      {
+        tin.perfNotes?.map((n) => (
+          <div class="panel tp__panel">
+            <h3 class="panel__title">{n.title}</h3>
+            {n.body.map((b) => <p set:html={b} />)}
+          </div>
+        ))
+      }
+      {
+        tin.benchmarks && (
+          <p class="tp__plain tp__history">
+            Every merge also runs its benchmarks on a GitHub runner:{" "}
+            <a href={tin.benchmarks} rel="noopener">the benchmark history</a>. Read it for
+            trends; a shared runner is slower and noisier than the table.
+          </p>
+        )
+      }
+    </div>
+  </section>
+
+</TinPage>

@@ -4,6 +4,13 @@
 // is an edit to this file.
 
 export const DISTA_REPO = "https://github.com/magmalake/dista.mojo";
+
+/** The section's pages, in its header and (after the first) its footer. */
+export const distaLinks = [
+  { href: "/s/dista", label: "Overview" },
+  { href: "/s/dista/docs", label: "Docs" },
+  { href: "/s/dista/performance", label: "Performance" },
+];
 export const RESULTS = `${DISTA_REPO}/tree/main/bench/cloud/results`;
 
 export const setup = {

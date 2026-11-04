@@ -45,6 +45,13 @@ public/                 favicon, robots.txt
 worker/posthog-proxy.js first-party PostHog reverse proxy, served at /ph/* only
 ```
 
+Every tin gets its own small section at `/s/<tin>`, generated from `src/data/tins.ts`:
+an overview, `/docs` (its Markdown in `src/content/tindocs/<tin>.md`) and, when
+`src/data/perf.ts` or the tin has numbers or notes for it, `/performance`. Their header
+and footer are `SectionNav` and `SectionFooter`, the same ones Orca's and Dista's pages
+use, and the list of a tin's pages is `tinLinks` in `src/data/tinpages.ts`: add a page
+there and in `src/pages/s/[tin]/`, and every tin's header picks it up.
+
 Content lives in `src/data/*.ts`, so updating a version number or a benchmark is a one-line
 change in one file rather than a hunt through markup.
 
