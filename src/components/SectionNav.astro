@@ -12,8 +12,10 @@ export interface Props {
   home: string;
   links: { href: string; label: string }[];
   repo: string;
+  /** The tin its search is scoped to, at /search?tin=<slug>. */
+  tin?: string;
 }
-const { name, home, links, repo } = Astro.props;
+const { name, home, links, repo, tin } = Astro.props;
 const path = Astro.url.pathname.replace(/\/$/, "");
 ---
 
@@ -33,6 +35,17 @@ const path = Astro.url.pathname.replace(/\/$/, "");
         ))
       }
       <a class="snav__link snav__link--ext" href={repo} rel="noopener">GitHub ↗</a>
+      {
+        tin && (
+          <a class="snav__link snav__search" href={`/search?tin=${tin}`} aria-label={`Search ${name}`} title={`Search ${name}`}>
+            <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" fill="none"
+                 stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <circle cx="8.6" cy="8.6" r="5.4" />
+              <path d="m12.6 12.6 4.6 4.6" />
+            </svg>
+          </a>
+        )
+      }
     </nav>
   </div>
 </header>
@@ -97,6 +110,7 @@ const path = Astro.url.pathname.replace(/\/$/, "");
     padding-block: 0.35rem;
     border-bottom: 1.5px solid transparent;
   }
+  .snav__search { display: inline-flex; align-items: center; }
   .snav__link:hover { color: var(--text); border-bottom-color: var(--ember); }
   .snav__link[aria-current="page"] {
     color: var(--text);

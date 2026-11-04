@@ -22,7 +22,7 @@ const links = tinLinks(tin);
 ---
 
 <Base title={title ? `${tin.name} ${title}` : tin.name} description={description} chrome={false}>
-  <SectionNav name={tin.name} home={`/s/${slugOf(tin)}`} links={links} repo={tin.repo} />
+  <SectionNav name={tin.name} home={`/s/${slugOf(tin)}`} links={links} repo={tin.repo} tin={slugOf(tin)} />
   <slot />
   <SectionFooter name={tin.name} links={links.slice(1)} repo={tin.repo} fine={licenceOf(tin)} />
 </Base>

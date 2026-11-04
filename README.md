@@ -9,7 +9,7 @@ blocks in Mojo — live at [magmalake.org](https://magmalake.org). A static
 ```bash
 npm install
 npm run dev        # http://localhost:4321
-npm run build      # static output in dist/
+npm run build      # static output in dist/, plus the search index
 npm run preview    # serve dist/ locally
 ```
 
@@ -142,6 +142,26 @@ whose repository holds more than one package names the one to document with `api
 are `EXTRA` in the script: threads' compat module, and json_mlake's GPU parser, which needs
 MAX. A file with a top-level `main()` is a program, not API, and is left out, since
 `mojo doc` refuses a package that holds one.
+## Search
+
+`npm run build` runs `astro build` and then `pagefind --site dist`. [Pagefind](https://pagefind.app)
+writes a static index to `dist/pagefind/`, and Workers static assets serve it like any other
+file, so there's no server. `/search` is the search page: `?q=` is the query and `?tin=<slug>`
+scopes it to one tin. The magnifier in the main header leads there, and so does the one in
+each tin's header (and Orca's and Dista's), which is scoped to that tin.
+
+`src/layouts/Base.astro` handles indexing for every page, from `src/data/search.ts`:
+
+- only `<main>` is indexed (`data-pagefind-body`), so headers and footers are left out;
+- each page is filed under a `section` filter (Start here, Orca, Dista, Tins or Blog), and a
+  `/s/<tin>/...` page also under a `tin` filter;
+- 404 and /search are left out.
+
+A new page is searchable, and scoped, on its next build with nothing added. To keep
+something out of the index, such as the copy buttons, mark it `data-pagefind-ignore`. The
+results UI is a small inline script on `src/pages/search.astro` that calls Pagefind's JS API
+(`/pagefind/pagefind.js`), styled like the rest of the site. `npm run dev` has no index, so
+search only works after `npm run build`, under `npm run preview` or `wrangler dev`.
 
 ## Analytics
 
