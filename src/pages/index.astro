@@ -1,7 +1,14 @@
 ---
 import Base from "../layouts/Base.astro";
 import Hero from "../components/Hero.astro";
+import CodeTabs from "../components/CodeTabs.astro";
+import CodeBlock from "../components/CodeBlock.astro";
 import { headline, images } from "../data/dista";
+import { oneMachine, onAws } from "../data/home";
+
+/** `backticks` in src/data/home.ts become <code>. */
+const code = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/`([^`]+)`/g, "<code>$1</code>");
 
 const description =
   "Data pipelines in Mojo: checked by the compiler, distributed with Dista, recorded in Postgres so they resume and retry, documented for coding agents, and built on a native Iceberg stack published as tins on mojoshelf.";
@@ -72,6 +79,38 @@ const img = Object.fromEntries(images.rows.map((r) => [r.label, r]));
       </div>
     </div>
   </section>
+
+  <section class="section" id="examples">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">In code</p>
+      <h2 class="section-title">One example per layer</h2>
+      <CodeTabs />
+    </div>
+  </section>
+
+  <section class="section section--alt" id="scale">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">Where it runs</p>
+      <h2 class="section-title">One machine, then AWS</h2>
+      <div class="home-scale">
+        {
+          [oneMachine, onAws].map((side) => (
+            <div class="home-scale__side">
+              <h3 class="home-point__title">{side.title}</h3>
+              <ul class="home-scale__points">
+                {side.points.map((p) => <li set:html={code(p)} />)}
+              </ul>
+              <CodeBlock code={side.code} label="shell" />
+            </div>
+          ))
+        }
+      </div>
+      <p class="home-scale__more">
+        <a href="/getting-started/step-by-step#local">Getting started</a> walks through both
+        with a real project.
+      </p>
+    </div>
+  </section>
 </Base>
 
 <style>
@@ -88,4 +127,23 @@ const img = Object.fromEntries(images.rows.map((r) => [r.label, r]));
     color: var(--text-muted);
     line-height: 1.65;
   }
+  .home-scale {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2rem 2.5rem;
+  }
+  @media (max-width: 820px) {
+    .home-scale { grid-template-columns: minmax(0, 1fr); }
+  }
+  .home-scale__side { min-width: 0; display: flex; flex-direction: column; }
+  .home-scale__points {
+    margin: 0 0 1.25rem 1.1rem;
+    padding: 0;
+    color: var(--text-muted);
+    line-height: 1.65;
+    flex: 1;
+  }
+  .home-scale__points li { margin-bottom: 0.4rem; }
+  .home-scale__side :global(.codeblock) { margin: 0; }
+  .home-scale__more { margin: 1.75rem 0 0; color: var(--text-muted); }
 </style>

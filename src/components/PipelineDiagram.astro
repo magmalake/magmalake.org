@@ -1,6 +1,6 @@
 ---
 /**
- * gharchive.example's pipelines and the tables they write, as inline SVG:
+ * mojo-census's pipelines and the tables they write, as inline SVG:
  * no client JavaScript, the site's colour tokens (so light and dark both
  * work), and a narrow viewBox so the text stays readable on a phone.
  * Tables are lake-coloured boxes, pipelines ember labels on the arrows.
@@ -18,8 +18,8 @@ const host = (u: string) => u.replace(/^https:\/\//, "");
       gharchive imports each day of data.gharchive.org into gharchive.events. mojo_repos, a
       sensor on it, checks candidates with GitHub's API and writes mojo.repos and
       mojo.checked. mojo_history, a sensor keyed by owner/name on mojo.repos, clones each
-      repository in a dista task and writes mojo.commits and mojo.migrations. The console
-      at {host(LIBS)} reads those tables, and Orca's UI at {host(ORCA_DEMO)} shows the
+      repository in a dista task and writes mojo.commits and mojo.migrations. Mojo census, the console
+      at {host(LIBS)}, reads those tables, and Orca's UI at {host(ORCA_DEMO)} shows the
       three pipelines.
     </desc>
     <defs>

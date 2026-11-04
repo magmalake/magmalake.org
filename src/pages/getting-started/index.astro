@@ -16,7 +16,7 @@ const host = (u: string) => u.replace(/^https:\/\//, "");
       <p class="eyebrow">Getting started</p>
       <h1 class="section-title">A lake of GitHub activity</h1>
       <p class="lede">
-        The example is <a href={GHARCHIVE_REPO} rel="noopener">gharchive.example</a>: it
+        The example is <a href={GHARCHIVE_REPO} rel="noopener">mojo-census</a>: it
         imports every day of the <a href="https://www.gharchive.org/" rel="noopener">GH Archive</a>
         into an Iceberg table, finds the Mojo repositories in it, reads each one's git history,
         and serves a web console that shows how Mojo libraries have grown. Everything in it is
@@ -40,7 +40,7 @@ const host = (u: string) => u.replace(/^https:\/\//, "");
           </span>
         </a>
         <a class="gs-card" href={LIBS} rel="noopener">
-          <span class="gs-card__title">The console</span>
+          <span class="gs-card__title">Mojo census</span>
           <span class="gs-card__host">{host(LIBS)}</span>
           <span class="gs-card__text">
             How Mojo libraries grew: their size and age, the Mojo versions and tooling they
@@ -64,7 +64,7 @@ const host = (u: string) => u.replace(/^https:\/\//, "");
           <span class="gs-card__title">Let an agent build it</span>
           <span class="gs-card__text">
             Install the skills for Mojo, magmalake, mojoshelf and AWS, then give a coding agent
-            the prompt that built gharchive.example.
+            the prompt that built mojo-census.
           </span>
         </a>
         <a class="gs-card" href="/getting-started/step-by-step">
