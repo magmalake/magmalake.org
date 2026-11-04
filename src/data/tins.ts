@@ -213,7 +213,7 @@ export const tins: Tin[] = [
     version: "0.4.4",
     tier: "format",
     what:
-      "Pure-Mojo Apache Avro: schema parsing, the binary encoding, Object Container Files both ways, and schema resolution. The core has no dependencies at all — not even FFI.",
+      "Pure-Mojo Apache Avro: schema parsing, the binary encoding, Object Container Files both ways, and schema resolution. No FFI: its one dependency is deflate-mojo, for the deflate codec.",
     oracle: "fastavro, both directions, across all four codecs",
     bullets: [
       "Object Container Files, read and write, null / deflate / snappy / zstandard",
@@ -253,8 +253,8 @@ export const tins: Tin[] = [
       "An embedded SQL database: connections, prepared statements, typed columns and RAII transactions over libsqlite3. A fork of ehsanmok/sqlite, made dependency-free so it installs from the registry with no external git repos.",
     oracle: "round-tripped against the sqlite3 shell in both directions",
     bullets: [
-      "Every column type, with NULL distinct from empty",
-      "Prepared statements, named parameters, explicit transactions",
+      "INTEGER, REAL and TEXT columns, with NULL distinct from empty; BLOB columns aren't exposed",
+      "Prepared statements with positional parameters, explicit transactions",
       "libsqlite3 opened once per process, not per connection",
       "Backs the SQL catalog iceberg.mojo uses for PyIceberg parity",
     ],
@@ -398,7 +398,7 @@ export const tins: Tin[] = [
     tier: "primitive",
     what:
       "Snappy in pure Mojo — the raw block format and the CRC-32C-checksummed framing format. No FFI, no C dependency.",
-    oracle: "python-snappy, byte-exact",
+    oracle: "Spec edge cases and round trips, and a block python-snappy produced, decoded",
     bullets: [
       "Raw block format and sNaPpY framing",
       "CRC-32C verified per chunk",
@@ -449,7 +449,7 @@ export const tins: Tin[] = [
     tier: "primitive",
     what:
       "A region of bytes, on the heap or in a shared mapping, carved by a bump allocator that returns offsets rather than pointers, so whatever is built in it reads the same in any process that maps it.",
-    oracle: "A write-here, read-there round trip between processes",
+    oracle: "A write-here, read-there round trip between two mappings in one process",
     bullets: [
       "Heap and file-backed shared regions behind one bump allocator",
       "The consumer's mapping is read-only, with checked, origin-tracked views",
@@ -468,7 +468,7 @@ export const tins: Tin[] = [
     oracle:
       "Two end-to-end suites against a real restate-server booted per run, on macOS and Linux",
     bullets: [
-      "State, sleep, run and awakeables from a plain next() loop",
+      "State, sleep, run and awakeables from handle_* functions App.run finds by name",
       "app.serve(num_workers) runs that loop on N threads via threads-mojo's WorkerPool",
       "Self-calls need two or more workers: one worker has no second thread to run the callee",
       "Payloads are raw bytes — parse and serialize in your handler",
@@ -592,7 +592,7 @@ export const tins: Tin[] = [
       "A packaged build of flare by Ehsan M. Kermani — TCP, UDP, TLS, HTTP/1.1, HTTP/2, HTTP/3, QUIC, WebSocket and gRPC for Mojo — republished only because flare is not on a conda channel. Essentially all of the code is upstream's; it is imported as flare. Stars and issues belong upstream, at github.com/ehsanmok/flare.",
     oracle: "Upstream's gRPC, HTTP, TLS, net and crypto tests, run on the packaged build",
     bullets: [
-      "Six small source deltas, each worth sending upstream and each listed in its README",
+      "Seven small source deltas, each worth sending upstream and each listed in its README",
       "HTTPS and client certificates for k8s",
       "Archived the day flare is on a channel pixi can resolve",
     ],
