@@ -26,12 +26,16 @@ export default defineConfig({
       ],
       titleSuffix: " — magmalake",
       exclude: (path) => path === "/404" || path.startsWith("/admin"),
+      // A tin's API reference is long (flare's alone runs to megabytes) and
+      // has its own twins; llms.txt lists it, llms-full.txt leaves it out.
+      excludeFromFull: (path) => /^\/s\/[^/]+\/api(\/|$)/.test(path),
       sections: [
         { title: "Start here", match: (p) => p === "/" || p.startsWith("/getting-started") },
         { title: "Orca", match: (p) => p.startsWith("/s/orca") },
         { title: "Dista", match: (p) => p.startsWith("/s/dista") },
         { title: "Tins", match: (p) => p === "/tins" || p === "/performance" || p.startsWith("/s/") },
         { title: "Blog", match: (p) => p.startsWith("/blog") },
+        { title: "Each tin's API reference", match: (p) => /^\/s\/[^/]+\/api(\/|$)/.test(p), optional: true },
       ],
     }),
   ],
