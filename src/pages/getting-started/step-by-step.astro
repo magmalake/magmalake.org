@@ -2,6 +2,8 @@
 import "../../styles/getting-started.css";
 import Base from "../../layouts/Base.astro";
 import CodeBlock from "../../components/CodeBlock.astro";
+import CodeTabs from "../../components/CodeTabs.astro";
+import { installTabs, MOJOSHELF_INSTALL } from "../../data/install";
 import GettingStartedPager from "../../components/GettingStartedPager.astro";
 import {
   GHARCHIVE_REPO,
@@ -43,7 +45,8 @@ const SKILLS = "https://github.com/magmalake/skills";
       <h2 id="tools">Install pixi and mojoshelf</h2>
       <p>
         <a href="https://pixi.sh" rel="noopener">pixi</a> manages the project's environment,
-        the Mojo compiler included. mojoshelf's CLI adds <code>pixi shelf</code>, which finds
+        the Mojo compiler included. <a href={MOJOSHELF_INSTALL} rel="noopener">mojoshelf's
+        CLI</a> adds <code>pixi shelf</code>, which finds
         and adds tins:
       </p>
       <CodeBlock label="shell" code={`curl -fsSL https://pixi.sh/install.sh | sh
@@ -55,11 +58,11 @@ pixi global install --channel https://mojoshelf.org/channel mojoshelf`} />
         pixi-build) and the compiler before it adds Orca. The <code>linux-aarch64</code>
         platform is for the image that runs on AWS Graviton instances later:
       </p>
-      <CodeBlock label="shell" code={`pixi init lake -c https://conda.modular.com/max -c conda-forge && cd lake
+      <CodeTabs label="Install" copy tabs={installTabs("project", `pixi init lake -c https://conda.modular.com/max -c conda-forge && cd lake
 sed -i.bak 's/^\\[workspace\\]/[workspace]\\npreview = ["pixi-build"]/' pixi.toml
 pixi add "mojo-compiler==1.2.0"
 pixi workspace platform add linux-aarch64   # for images on AWS Graviton
-pixi shelf add orca-mojo                     # orca-mojo 0.3.2, with dista-mojo, iceberg-mojo, ...`} />
+pixi shelf add orca-mojo                     # orca-mojo 0.3.2, with dista-mojo, iceberg-mojo, ...`)} />
       <p>
         <code>pixi shelf add orca-mojo</code> brings orca-mojo 0.3.2 and the tins it needs. It
         takes a few minutes and prints every tin's build log as it goes; it hasn't hung.

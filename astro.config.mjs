@@ -2,6 +2,7 @@
 import { defineConfig } from "astro/config";
 import sitemap from "@astrojs/sitemap";
 import agentMarkdown from "./src/integrations/agent-markdown.mjs";
+import installTabs from "./src/integrations/install-tabs.mjs";
 
 /** A tin's API reference, /s/<tin>/api and its module pages. */
 const isApi = (path) => /^\/s\/[^/]+\/api(\/|$)/.test(path);
@@ -16,6 +17,8 @@ export default defineConfig({
   site: "https://magmalake.dev",
   output: "static",
   trailingSlash: "ignore",
+  // A tindoc's `pixi shelf add` block gets a plain-pixi tab beside it.
+  markdown: { remarkPlugins: [installTabs] },
   integrations: [
     sitemap(),
     // A Markdown twin of every page, /llms.txt and /llms-full.txt; see the

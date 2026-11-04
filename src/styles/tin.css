@@ -18,6 +18,9 @@
   .tp__facts { grid-template-columns: 1fr; }
 }
 .tp__fact .codeblock { margin: 0.35rem 0 0; }
+/* Two install tabs, the plain one with its prerequisites: a row of their own. */
+.tp__fact--tabs { grid-column: 1 / -1; }
+.tp__fact--tabs .codetabs { margin: 0.35rem 0 0; max-width: none; }
 .tp__label {
   display: block;
   font-family: var(--font-mono);
@@ -113,6 +116,15 @@
   line-height: 1.6;
   margin: 0 0 1.4rem;
 }
+/* An install block in tabs (src/integrations/install-tabs.mjs): the tab bar
+ * sits on its top-left corner, the note goes under it. */
+.tp__docs .codetabs { margin: 0 0 1.4rem; max-width: none; }
+.tp__docs .codetabs__panel pre {
+  border-radius: 0 var(--radius) var(--radius) var(--radius);
+  margin: 0;
+  padding-right: 4.75rem;
+}
+.tp__docs .codetabs__note { margin: 0.6rem 0 0; line-height: 1.5; }
 .tp__docs table {
   width: 100%;
   border-collapse: collapse;

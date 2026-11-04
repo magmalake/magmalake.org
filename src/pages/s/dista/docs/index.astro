@@ -3,6 +3,8 @@ import Base from "../../../../layouts/Base.astro";
 import DistaNav from "../../../../components/DistaNav.astro";
 import DistaFooter from "../../../../components/DistaFooter.astro";
 import { DISTA_REPO } from "../../../../data/dista";
+import CodeTabs from "../../../../components/CodeTabs.astro";
+import { installTabs, PREREQS, MOJOSHELF_INSTALL } from "../../../../data/install";
 
 const description =
   "How to use Dista: tasks and actors, passing results between them, shuffles, checkpoints, running locally and on Kubernetes, and watching a cluster.";
@@ -52,11 +54,11 @@ const env = [
 
       <h2 id="install">Install</h2>
       <p>
-        Dista isn't published as a package yet. A pixi project depends on it from source, at
-        a pinned commit, since a git dependency without a revision never updates:
+        Dista is the <a href={MOJOSHELF_INSTALL} rel="noopener">mojoshelf</a> tin
+        <code>dista-mojo</code>. A new project needs Modular's channel, pixi's build preview
+        and the compiler before it, and plain pixi can add it from its repository instead:
       </p>
-      <pre><code>{`[dependencies]
-dista-mojo = { git = "${DISTA_REPO}", rev = "<commit>" }`}</code></pre>
+      <CodeTabs label="Install" copy tabs={installTabs("install", [...PREREQS, "pixi shelf add dista-mojo"].join("\n"))} />
       <p>
         It targets Mojo 1.2 and tracks the nightly toolchain. Reading Parquet and Iceberg
         tables uses magmalake's <code>parquet-mojo</code> and <code>iceberg-mojo</code>

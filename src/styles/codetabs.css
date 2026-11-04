@@ -1,0 +1,82 @@
+/* Code tabs (src/components/CodeTabs.astro), global rather than scoped so that
+ * the install tabs src/integrations/install-tabs.mjs writes into tindocs
+ * Markdown get them too. */
+.codetabs {
+  max-width: 82ch;
+  margin-bottom: 2.25rem;
+}
+.codetabs__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: -1px;
+}
+.codetabs__tab {
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.codetabs__tab:hover { color: var(--text); }
+.codetabs__tab[aria-selected="true"] {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--ember);
+}
+.codetabs__panel pre {
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0 var(--radius) var(--radius) var(--radius);
+  padding: 1.1rem 1.25rem;
+  box-shadow: var(--shadow);
+  overflow-x: auto;
+}
+.codetabs__panel code { color: var(--text); }
+.codetabs__panel .k { color: var(--ember); }
+.codetabs__panel .s { color: var(--lake); }
+.codetabs__note {
+  margin: 0.75rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+  max-width: 76ch;
+}
+@media (max-width: 720px) {
+  .codetabs__panel pre { font-size: 0.9em; }
+}
+.codetabs__panel {
+  position: relative;
+}
+.codetabs__panel .codeblock__copy {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+}
+.codetabs__panel .codeblock__copy:hover,
+.codetabs__panel .codeblock__copy:focus-visible {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.codetabs__panel--copy pre {
+  padding-right: 4.75rem;
+}
+/* The tab's name, for the Markdown twin only: the tab bar is buttons, which
+ * the twin drops. */
+.codetabs__twin {
+  display: none;
+}

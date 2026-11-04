@@ -6,6 +6,7 @@
  */
 import TinPage from "../../../components/TinPage.astro";
 import CodeBlock from "../../../components/CodeBlock.astro";
+import CodeTabs from "../../../components/CodeTabs.astro";
 import UpstreamList from "../../../components/UpstreamList.astro";
 import {
   tins,
@@ -20,6 +21,7 @@ import {
 } from "../../../data/tins";
 import { pagedTins } from "../../../data/tinpages";
 import { upstreamFor } from "../../../data/upstream";
+import { installTabs, MOJOSHELF_INSTALL } from "../../../data/install";
 
 export function getStaticPaths() {
   return pagedTins().map((t) => ({ params: { tin: slugOf(t) }, props: { tin: t } }));
@@ -46,14 +48,17 @@ const description = `${tin.name}, a magmalake tin: ${first}.`;
       <p class="lede">{tin.what}</p>
 
       <div class="tp__facts">
-        <div class="tp__fact tp__fact--install">
+        <div class:list={["tp__fact", "tp__fact--install", status === "shelf" && "tp__fact--tabs"]}>
           <span class="tp__label">Install</span>
           {
             status === "shelf" ? (
-              <CodeBlock code={installOf(tin)} label="shell" />
+              <CodeTabs tabs={installTabs("install", installOf(tin))} label="Install" copy />
             ) : (
               <>
-                <p class="tp__plain">Not on mojoshelf yet: build it from its repository.</p>
+                <p class="tp__plain">
+                  Not on <a href={MOJOSHELF_INSTALL} rel="noopener">mojoshelf</a> yet: build it
+                  from its repository.
+                </p>
                 <CodeBlock code={`git clone ${tin.repo}`} label="shell" />
               </>
             )

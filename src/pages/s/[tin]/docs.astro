@@ -1,9 +1,11 @@
 ---
 /**
  * A tin's docs, /s/<tin>/docs: its Markdown from src/content/tindocs, or a
- * link to its README while it has none.
+ * link to its README while it has none. Its `pixi shelf add` block gets a
+ * plain-pixi tab from src/integrations/install-tabs.mjs.
  */
 import { getEntry, render } from "astro:content";
+import "../../../styles/codetabs.css";
 import TinPage from "../../../components/TinPage.astro";
 import { slugOf, readmeOf, type Tin } from "../../../data/tins";
 import { pagedTins } from "../../../data/tinpages";
@@ -49,3 +51,8 @@ const description = `How to use ${tin.name}, a magmalake tin.`;
   </section>
 
 </TinPage>
+
+<script>
+  // The install tabs src/integrations/install-tabs.mjs writes into the Markdown.
+  import "../../../scripts/codetabs";
+</script>

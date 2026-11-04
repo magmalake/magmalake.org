@@ -1,17 +1,36 @@
 ---
 /**
- * One short example per layer, in tabs, from src/data/examples.ts. Without
- * JavaScript the first tab shows and the others stay hidden. Keywords and
- * strings are coloured at build time, so the examples stay plain text there.
+ * Code in tabs. With no `tabs`, the home page's examples, one per layer, from
+ * src/data/examples.ts. With `tabs`, any set, such as a tin's install two
+ * ways (src/data/install.ts). Without JavaScript the first tab shows and the
+ * others stay hidden. In the Markdown twin every panel shows, each under its
+ * tab's name. Mojo keywords and strings are coloured at build time, so the
+ * examples stay plain text there.
  */
-import { examples as tabs } from "../data/examples";
+import "../styles/codetabs.css";
+import { examples } from "../data/examples";
+import type { Tab } from "../data/install";
+
+interface Props {
+  tabs?: Tab[];
+  /** What the tabs are, for screen readers. */
+  label?: string;
+  /** A Copy button on each panel. */
+  copy?: boolean;
+}
+const {
+  tabs = examples.map((e) => ({ ...e, mojo: true })),
+  label = "Code examples",
+  copy = false,
+} = Astro.props;
 
 const KEYWORDS = new Set([
   "from", "import", "def", "var", "comptime", "return", "for", "in", "raises", "mut",
 ]);
 
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 function highlight(code: string): string {
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return code.replace(/("[^"]*"|'[^']*'|[A-Za-z_]+|[^"'A-Za-z_]+)/g, (tok) => {
     if (tok.startsWith('"') || tok.startsWith("'")) return `<span class="s">${esc(tok)}</span>`;
     if (KEYWORDS.has(tok)) return `<span class="k">${tok}</span>`;
@@ -21,7 +40,7 @@ function highlight(code: string): string {
 ---
 
 <div class="codetabs" data-codetabs>
-  <div class="codetabs__bar" role="tablist" aria-label="Code examples">
+  <div class="codetabs__bar" role="tablist" aria-label={label}>
     {
       tabs.map((t, i) => (
         <button
@@ -41,94 +60,29 @@ function highlight(code: string): string {
   {
     tabs.map((t, i) => (
       <div
-        class="codetabs__panel"
+        class:list={["codetabs__panel", copy && "codetabs__panel--copy"]}
         role="tabpanel"
         id={`panel-${t.id}`}
         aria-labelledby={`tab-${t.id}`}
         hidden={i !== 0}
       >
-        <pre><code set:html={highlight(t.code)} /></pre>
-        <p class="codetabs__note">
-          {t.note} <a href={t.href}>More</a>
-        </p>
+        <p class="codetabs__twin">{t.label}:</p>
+        {copy && (
+          <button type="button" class="codeblock__copy" data-copy data-pagefind-ignore aria-label="Copy the code">
+            Copy
+          </button>
+        )}
+        <pre><code set:html={t.mojo ? highlight(t.code) : esc(t.code)} /></pre>
+        {(t.note || t.href) && (
+          <p class="codetabs__note">
+            <Fragment set:html={t.note ?? ""} /> {t.href && <a href={t.href}>More</a>}
+          </p>
+        )}
       </div>
     ))
   }
 </div>
 
 <script>
-  for (const root of document.querySelectorAll<HTMLElement>("[data-codetabs]")) {
-    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
-    const select = (tab: HTMLButtonElement) => {
-      for (const t of tabs) {
-        const on = t === tab;
-        t.setAttribute("aria-selected", String(on));
-        t.tabIndex = on ? 0 : -1;
-        const panel = document.getElementById(t.getAttribute("aria-controls")!);
-        if (panel) panel.hidden = !on;
-      }
-    };
-    tabs.forEach((tab, i) => {
-      tab.addEventListener("click", () => select(tab));
-      tab.addEventListener("keydown", (e) => {
-        const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-        if (!step) return;
-        const next = tabs[(i + step + tabs.length) % tabs.length];
-        select(next);
-        next.focus();
-      });
-    });
-  }
+  import "../scripts/codetabs";
 </script>
-
-<style>
-  .codetabs {
-    max-width: 82ch;
-    margin-bottom: 2.25rem;
-  }
-  .codetabs__bar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-    margin-bottom: -1px;
-  }
-  .codetabs__tab {
-    font: inherit;
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
-    padding: 0.45rem 0.9rem;
-    border: 1px solid transparent;
-    border-bottom: none;
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-    background: none;
-    color: var(--text-muted);
-    cursor: pointer;
-  }
-  .codetabs__tab:hover { color: var(--text); }
-  .codetabs__tab[aria-selected="true"] {
-    background: var(--surface);
-    border-color: var(--border);
-    color: var(--ember);
-  }
-  .codetabs__panel pre {
-    margin: 0;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 0 var(--radius) var(--radius) var(--radius);
-    padding: 1.1rem 1.25rem;
-    box-shadow: var(--shadow);
-    overflow-x: auto;
-  }
-  .codetabs__panel code { color: var(--text); }
-  .codetabs__panel :global(.k) { color: var(--ember); }
-  .codetabs__panel :global(.s) { color: var(--lake); }
-  .codetabs__note {
-    margin: 0.75rem 0 0;
-    font-size: 0.8125rem;
-    color: var(--text-faint);
-    max-width: 76ch;
-  }
-  @media (max-width: 720px) {
-    .codetabs__panel pre { font-size: 0.9em; }
-  }
-</style>

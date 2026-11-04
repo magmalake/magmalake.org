@@ -3,6 +3,8 @@ import Base from "../../../../layouts/Base.astro";
 import OrcaNav from "../../../../components/OrcaNav.astro";
 import OrcaFooter from "../../../../components/OrcaFooter.astro";
 import CodeBlock from "../../../../components/CodeBlock.astro";
+import CodeTabs from "../../../../components/CodeTabs.astro";
+import { installTabs, MOJOSHELF_INSTALL } from "../../../../data/install";
 import { ORCA_REPO, ORCA_PRS } from "../../../../data/orca";
 
 const description =
@@ -137,14 +139,15 @@ const exits = [
 
       <h2 id="build">Build it</h2>
       <p>
-        Orca is the mojoshelf tin <code>orca-mojo</code>. With pixi and mojoshelf's
-        <code>pixi shelf</code> installed, a new project adds it, and the tins it needs come
-        with it:
+        Orca is the <a href={MOJOSHELF_INSTALL} rel="noopener">mojoshelf</a> tin
+        <code>orca-mojo</code>. With pixi and mojoshelf's <code>pixi shelf</code> installed, a
+        new project adds it, and the tins it needs come with it. Plain pixi can add it from
+        its repository instead:
       </p>
-      <CodeBlock label="shell" code={`pixi init -c https://conda.modular.com/max-nightly -c conda-forge lake && cd lake
+      <CodeTabs label="Install" copy tabs={installTabs("install", `pixi init -c https://conda.modular.com/max-nightly -c conda-forge lake && cd lake
 sed -i.bak 's/^\\[workspace\\]/[workspace]\\npreview = ["pixi-build"]/' pixi.toml   # tins build with pixi-build
 pixi add "mojo-compiler==1.2.0"
-pixi shelf add orca-mojo`} />
+pixi shelf add orca-mojo`)} />
       <p>
         A pipeline is one Mojo file whose <code>main</code> hands it to
         <code>orca_main</code> (<a href="#steps">Steps</a> and
