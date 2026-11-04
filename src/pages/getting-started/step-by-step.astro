@@ -14,7 +14,7 @@ import {
 } from "../../data/gharchive";
 
 const description =
-  "Build a lake of GitHub activity on magmalake by hand: pixi and mojoshelf, a project with Orca in it, the pipelines and the flare console of gharchive.example, a local run, and a deploy to AWS with orca aws.";
+  "Build a lake of GitHub activity on magmalake by hand: pixi and mojoshelf, a project with Orca in it, the pipelines and the flare console of mojo-census, a local run, and a deploy to AWS with orca aws.";
 
 const SKILLS = "https://github.com/magmalake/skills";
 ---
@@ -25,12 +25,12 @@ const SKILLS = "https://github.com/magmalake/skills";
       <p class="eyebrow"><a href="/getting-started">Getting started</a></p>
       <h1 class="section-title">Step by step</h1>
       <p class="lede">
-        <a href={GHARCHIVE_REPO} rel="noopener">gharchive.example</a> by hand: the tools, a new
+        <a href={GHARCHIVE_REPO} rel="noopener">mojo-census</a> by hand: the tools, a new
         project with Orca in it, the code the agent wrote, excerpted from the repository, and
         how to run it here and on AWS. To run the example as it is instead, clone it, install
         the two tools below, and skip to <a href="#local">Run it locally</a>:
       </p>
-      <CodeBlock label="shell" code={`git clone ${GHARCHIVE_REPO} && cd gharchive.example`} />
+      <CodeBlock label="shell" code={`git clone ${GHARCHIVE_REPO} && cd mojo-census`} />
 
       <nav class="docs-toc" aria-label="On this page">
         <a href="#tools">Install pixi and mojoshelf</a>
@@ -63,7 +63,7 @@ pixi shelf add orca-mojo                     # orca-mojo 0.3.2, with dista-mojo,
       <p>
         <code>pixi shelf add orca-mojo</code> brings orca-mojo 0.3.2 and the tins it needs. It
         takes a few minutes and prints every tin's build log as it goes; it hasn't hung.
-        gharchive.example also adds <code>postgresql</code> and <code>git</code> from
+        mojo-census also adds <code>postgresql</code> and <code>git</code> from
         conda-forge (<code>pixi add postgresql git</code>), for the local database and for
         cloning repositories inside the image. Its layout is the one the magmalake-apps skill
         describes: programs in <code>bin/</code>, one file per pipeline in
@@ -235,7 +235,7 @@ aws secretsmanager create-secret --name orca/github-token --secret-string "$GITH
         <code>push</code> builds one image for everything: the five binaries
         (<code>orca</code>, <code>console</code>, <code>gharchive</code>,
         <code>mojo_repos</code> and <code>mojo_history</code>) and the shared libraries they
-        link, on <code>debian:bookworm-slim</code>. For gharchive.example it is 71.1 MB
+        link, on <code>debian:bookworm-slim</code>. For mojo-census it is 71.1 MB
         compressed in ECR and 294 MB unpacked.
       </p>
       <p>
@@ -250,7 +250,7 @@ aws secretsmanager create-secret --name orca/github-token --secret-string "$GITH
         <li>
           The image needs CA certificates where libcurl looks for them, which is under the
           build environment's prefix, not the system's. Until objectstore reads
-          <code>SSL_CERT_FILE</code>, copy gharchive.example's
+          <code>SSL_CERT_FILE</code>, copy mojo-census's
           <a href={`${GHARCHIVE_REPO}/blob/main/Dockerfile.orca`} rel="noopener"><code>Dockerfile.orca</code></a>
           into your project, and <code>push</code> builds it in place of orca's default. It
           is orca's default image plus one line,

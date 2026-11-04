@@ -6,7 +6,7 @@ import GettingStartedPager from "../../components/GettingStartedPager.astro";
 import { GHARCHIVE_REPO } from "../../data/gharchive";
 
 const description =
-  "Let a coding agent build a lake of GitHub activity on magmalake: install the skills for Mojo, magmalake, mojoshelf and AWS, and give it the prompt that built gharchive.example.";
+  "Let a coding agent build a lake of GitHub activity on magmalake: install the skills for Mojo, magmalake, mojoshelf and AWS, and give it the prompt that built mojo-census.";
 
 const SKILLS = "https://github.com/magmalake/skills";
 
@@ -47,7 +47,7 @@ Mojo libraries have grown.
       <p class="eyebrow"><a href="/getting-started">Getting started</a></p>
       <h1 class="section-title">Let an agent build it</h1>
       <p class="lede">
-        A coding agent can write all of <a href={GHARCHIVE_REPO} rel="noopener">gharchive.example</a>
+        A coding agent can write all of <a href={GHARCHIVE_REPO} rel="noopener">mojo-census</a>
         if it knows current Mojo, the magmalake libraries and AWS. Each of those comes as a
         skill, and AWS also as an MCP server. The commands below are for Claude Code; any
         agent that reads
@@ -63,33 +63,29 @@ Mojo libraries have grown.
 
       <h2 id="skills">Install the skills</h2>
       <p>
-        <strong>magmalake's skills</strong> cover
+        <strong>The Mojo skills</strong> come in one install. magmalake's
+        <code>magmalake</code> plugin holds
         <a href={`${SKILLS}/tree/main/orca`} rel="noopener">orca</a>,
         <a href={`${SKILLS}/tree/main/dista`} rel="noopener">dista</a>,
         <a href={`${SKILLS}/tree/main/magmalake-apps`} rel="noopener">magmalake-apps</a>
         (a whole project, its lake, a flare app and <code>orca aws</code>) and
         <a href={`${SKILLS}/tree/main/mojo-data-performance`} rel="noopener">mojo-data-performance</a>
         (a pipeline's per-row loops and the readers, writers and codecs under them, and how
-        to take a benchmark number that survives being checked). In Claude Code:
+        to take a benchmark number that survives being checked). It also brings two skills
+        written by others:
+        <a href="https://github.com/modular/skills" rel="noopener">Modular's</a>
+        <code>mojo-syntax</code>, which keeps the agent writing the Mojo of today rather than
+        the Mojo it was trained on, and
+        <a href="https://github.com/mojoshelf/mojoshelf" rel="noopener">mojoshelf's</a>
+        <code>mojoshelf-consume</code>, which tells it how to find tins and add them to a
+        project. In Claude Code 2.1.275 or later:
       </p>
+      <CodeBlock label="Claude Code command" code={`/plugin install magmalake --marketplace magmalake/skills`} />
+      <p>In an older Claude Code:</p>
       <CodeBlock label="Claude Code commands" code={`/plugin marketplace add magmalake/skills
-/plugin install skills@magmalake`} />
-      <p>In any other agent:</p>
+/plugin install magmalake@magmalake`} />
+      <p>In any other agent, such as Codex or Cursor, this installs all six:</p>
       <CodeBlock label="shell" code={`npx skills add magmalake/skills`} />
-      <p>
-        <strong>mojoshelf's skill</strong> tells the agent how to find tins and add them to a
-        project:
-      </p>
-      <CodeBlock label="shell" code={`npx skills add mojoshelf/mojoshelf --skill mojoshelf-consume`} />
-      <p>
-        <strong>Modular's <code>mojo-syntax</code></strong> keeps the agent writing the Mojo
-        of today rather than the Mojo it was trained on. It is part of
-        <a href="https://github.com/modular/skills" rel="noopener">modular/skills</a>; in
-        Claude Code, <code>mojo-skills@modular</code> installs the Mojo skills only:
-      </p>
-      <CodeBlock label="Claude Code commands" code={`/plugin marketplace add modular/skills
-/plugin install mojo-skills@modular`} />
-      <CodeBlock label="shell" code={`npx skills add modular/skills --skill mojo-syntax`} />
       <p>
         <strong>AWS</strong> publishes the
         <a href="https://docs.aws.amazon.com/agent-toolkit/latest/userguide/quick-start.html" rel="noopener">Agent Toolkit for AWS</a>:
@@ -119,7 +115,7 @@ npx skills add aws/agent-toolkit-for-aws/skills`} />
       </p>
       <CodeBlock label="prompt" code={prompt} />
       <p>
-        The agent that wrote <a href={GHARCHIVE_REPO} rel="noopener">gharchive.example</a>
+        The agent that wrote <a href={GHARCHIVE_REPO} rel="noopener">mojo-census</a>
         from this prompt ran it locally on two hours of 2024-06-12: 476,227 events (154 MB of
         Parquet), 23 candidate repositories, 4 of them Mojo, and 3 histories read, with 372
         commits and 27 changes of tooling or version. It also kept a list of where the skills
