@@ -232,6 +232,34 @@ aws secretsmanager create-secret --name orca/github-token --secret-string "$GITH
 ./build/orca aws register --workers 0..4 --secret GITHUB_TOKEN=orca/github-token mojo_repos
 ./build/orca aws app console`} />
       <p>
+        <code>push</code> builds one image for everything: the five binaries
+        (<code>orca</code>, <code>console</code>, <code>gharchive</code>,
+        <code>mojo_repos</code> and <code>mojo_history</code>) and the shared libraries they
+        link, on <code>debian:bookworm-slim</code>. For gharchive.example it is 71.1 MB
+        compressed in ECR and 294 MB unpacked.
+      </p>
+      <p>
+        Until orca's next release, two things can trip a first deploy:
+      </p>
+      <ul class="gs-list">
+        <li>
+          Right after the first <code>push</code>, the control instance is still starting its
+          containers. If <code>register</code> says <code>orca-refresh: command not found</code>
+          or <code>No such container: scheduler</code>, wait a minute and run it again.
+        </li>
+        <li>
+          The image needs CA certificates where libcurl looks for them, which is under the
+          build environment's prefix, not the system's. Until objectstore reads
+          <code>SSL_CERT_FILE</code>, copy gharchive.example's
+          <a href={`${GHARCHIVE_REPO}/blob/main/Dockerfile.orca`} rel="noopener"><code>Dockerfile.orca</code></a>
+          into your project, and <code>push</code> builds it in place of orca's default. It
+          is orca's default image plus one line,
+          <code>COPY --from=build /src/project/.pixi/envs/default/ssl /src/project/.pixi/envs/default/ssl</code>,
+          which keeps the build environment's certificate directory at the same path in the
+          final image, where libcurl (objectstore) and OpenSSL (flare) were compiled to look.
+        </li>
+      </ul>
+      <p>
         On AWS, <code>GHARCHIVE_HOURS</code> and <code>MOJO_HISTORY_MAX_KB</code> aren't set,
         so runs take all 24 hours of a day and every repository. Runs get the token as a
         variable, and every log Orca writes masks its value. After a code change, commit,
