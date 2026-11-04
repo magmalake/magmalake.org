@@ -35,6 +35,10 @@ export interface Tin {
   bullets: string[];
   /** Published benchmark history, for the tins that run one in CI. */
   benchmarks?: string;
+  /** The Mojo package its API reference documents, as a path in `repo`, when
+   * the repository holds more than one (scripts/api-docs.mjs finds it
+   * otherwise). */
+  api?: string;
   /** The README, when it isn't at the root of `repo`. */
   readme?: string;
   /** More on the correctness evidence, beyond the one-line oracle. */
@@ -170,6 +174,7 @@ export const tins: Tin[] = [
     pkg: "parquet-mojo",
     repo: "https://github.com/magmalake/parquet.mojo",
     benchmarks: "https://magmalake.github.io/parquet.mojo/benchmarks/",
+    api: "src/parquet",
     version: "0.11.7",
     tier: "format",
     what:
@@ -193,6 +198,7 @@ export const tins: Tin[] = [
     short: "parquet · plus ZSTD, BROTLI and LZ4",
     pkg: "parquet-full-mojo",
     repo: "https://github.com/magmalake/parquet.mojo",
+    api: "full/src/parquet_full",
     version: "0.1.8",
     tier: "format",
     what:
@@ -209,6 +215,7 @@ export const tins: Tin[] = [
     short: "object container files, both ways",
     pkg: "avro-mojo",
     repo: "https://github.com/magmalake/avro.mojo",
+    api: "src/avro",
     benchmarks: "https://magmalake.github.io/avro.mojo/benchmarks/",
     version: "0.4.4",
     tier: "format",

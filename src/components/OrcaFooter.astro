@@ -1,7 +1,11 @@
 ---
 // Orca's footer: SectionFooter with Orca's pages.
 import SectionFooter from "./SectionFooter.astro";
-import { ORCA_REPO, orcaLinks } from "../data/orca";
+import { ORCA_REPO } from "../data/orca";
+import { tinLinks } from "../data/tinpages";
+import { tins } from "../data/tins";
+
+const links = tinLinks(tins.find((t) => t.site === "/s/orca")!);
 ---
 
-<SectionFooter name="Orca" links={orcaLinks.slice(1)} repo={ORCA_REPO} />
+<SectionFooter name="Orca" links={links.slice(1)} repo={ORCA_REPO} />

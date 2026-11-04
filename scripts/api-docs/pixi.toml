@@ -1,0 +1,9 @@
+# The toolchain scripts/api-docs.mjs runs `mojo doc` with. Nothing else:
+# siblings come in as source through -I, so no tin is built or installed.
+[workspace]
+name = "magmalake-api-docs"
+channels = ["https://conda.modular.com/max", "conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[dependencies]
+mojo = "==1.2.0"

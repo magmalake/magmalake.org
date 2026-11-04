@@ -33,7 +33,9 @@ const slug = slugOf(tin);
 const status = statusOf(tin);
 const issues = upstreamFor(slug);
 const siblings = tins.filter((t) => t.tier === tin.tier && t !== tin);
-const description = `${tin.name}, a magmalake tin: ${tin.what.split(". ")[0].replace(/\.$/, "")}.`;
+// Its first sentence; an initial ("Ehsan M. Kermani") doesn't end one.
+const first = tin.what.split(/(?<=[a-z]{2}|\))\.\s/)[0].replace(/\.$/, "");
+const description = `${tin.name}, a magmalake tin: ${first}.`;
 ---
 
 <TinPage tin={tin} description={description}>

@@ -1,0 +1,254 @@
+{
+ "tin": "snappy",
+ "version": "0.1.4",
+ "rev": "b8172ed0a4ef13911cc225d46e26676a5b8f1ccd",
+ "package": "snappy",
+ "path": "src/snappy",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "Snappy — a pure-Mojo Snappy compressor/decompressor.",
+ "description": "Implements both the **raw block format** (varint length + literal/copy\nelements) and the **framing format** (`sNaPpY` stream identifier, chunked,\nCRC-32C-checksummed) from\nhttps://github.com/google/snappy/blob/main/format_description.txt and\nhttps://github.com/google/snappy/blob/main/framing_format.txt. No FFI, no\nC dependency.\n\n    from snappy import compress, decompress\n    var packed = compress(Span(data))\n    var back = decompress(Span(packed))\n\n    from snappy import compress_framed, decompress_framed\n    var stream = compress_framed(Span(data))   # sNaPpY-framed, CRC-checked\n    var back2 = decompress_framed(Span(stream))",
+ "modules": [
+  {
+   "path": "snappy",
+   "summary": "Snappy — a pure-Mojo Snappy compressor/decompressor.",
+   "description": "Implements both the **raw block format** (varint length + literal/copy\nelements) and the **framing format** (`sNaPpY` stream identifier, chunked,\nCRC-32C-checksummed) from\nhttps://github.com/google/snappy/blob/main/format_description.txt and\nhttps://github.com/google/snappy/blob/main/framing_format.txt. No FFI, no\nC dependency.\n\n    from snappy import compress, decompress\n    var packed = compress(Span(data))\n    var back = decompress(Span(packed))\n\n    from snappy import compress_framed, decompress_framed\n    var stream = compress_framed(Span(data))   # sNaPpY-framed, CRC-checked\n    var back2 = decompress_framed(Span(stream))"
+  },
+  {
+   "path": "snappy.crc32c",
+   "summary": "CRC-32C (Castagnoli, polynomial 0x1EDC6F41 / reflected 0x82F63B78), init/xorout 0xFFFFFFFF. Table-driven with a slice-by-8 fast path.",
+   "description": "This is the checksum the Snappy **framing format** masks and stores per\nchunk — not the same polynomial as plain CRC-32 (gzip/zlib/PNG use\n0xEDB88320; do not reuse hashes.mojo's `crc32` here).\n\n`crc32c(data, seed=0)` matches the well-known check value\n`crc32c(b\"123456789\") == 0xE3069283`. Passing a previous result as `seed`\nchains across buffers: `crc32c(b, seed=crc32c(a)) == crc32c(a + b)`.",
+   "structs": [
+    {
+     "name": "Crc32c",
+     "signature": "struct Crc32c",
+     "summary": "Incremental CRC-32C. `seed` is the previous crc32c result (0 to start).",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, seed: UInt32 = UInt32(0))"
+        }
+       ]
+      },
+      {
+       "name": "update",
+       "overloads": [
+        {
+         "signature": "def update(mut self, data: Span[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "finish",
+       "overloads": [
+        {
+         "signature": "def finish(self) -> UInt32"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "crc32c",
+     "overloads": [
+      {
+       "signature": "def crc32c(data: Span[UInt8], seed: UInt32 = UInt32(0)) -> UInt32"
+      }
+     ]
+    },
+    {
+     "name": "mask_crc32c",
+     "overloads": [
+      {
+       "signature": "def mask_crc32c(crc: UInt32) -> UInt32",
+       "summary": "Snappy framing-format masking: rotate right 15, then add a magic constant (mod 2**32). Never store or compare a raw crc32c in a frame — always mask on write, unmask on read."
+      }
+     ]
+    },
+    {
+     "name": "unmask_crc32c",
+     "overloads": [
+      {
+       "signature": "def unmask_crc32c(masked: UInt32) -> UInt32",
+       "summary": "Inverse of `mask_crc32c`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "snappy.framing",
+   "summary": "Snappy **framing format**: a `sNaPpY` stream identifier chunk followed by a sequence of length-prefixed chunks, each either compressed or uncompressed raw-format data guarded by a masked CRC-32C. See https://github.com/google/snappy/blob/main/framing_format.txt.",
+   "description": "Chunk layout: 1-byte type, 3-byte little-endian data length, then the\ndata. Compressed/uncompressed data chunks additionally carry a 4-byte\nlittle-endian masked CRC-32C of the *uncompressed* bytes as the first 4\nbytes of their data.",
+   "aliases": [
+    {
+     "name": "CHUNK_COMPRESSED",
+     "value": "UInt8(0)"
+    },
+    {
+     "name": "CHUNK_UNCOMPRESSED",
+     "value": "UInt8(1)"
+    },
+    {
+     "name": "CHUNK_PADDING",
+     "value": "UInt8(254)"
+    },
+    {
+     "name": "CHUNK_STREAM_IDENTIFIER",
+     "value": "UInt8(255)"
+    }
+   ],
+   "structs": [
+    {
+     "name": "FramedWriter",
+     "signature": "struct FramedWriter",
+     "summary": "Incremental framing-format encoder: feed arbitrary-sized buffers to `write`, splitting into <=64 KiB chunks internally; `finish` returns the complete encoded stream.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "write",
+       "overloads": [
+        {
+         "signature": "def write(mut self, data: Span[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "finish",
+       "overloads": [
+        {
+         "signature": "def finish(deinit self) -> List[UInt8]"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "FramedReader",
+     "signature": "struct FramedReader",
+     "summary": "Incremental framing-format decoder: `read_chunk` returns each data chunk's decompressed bytes in order (verifying its CRC-32C), or `None` once the stream is exhausted. Stream-identifier, padding, and skippable chunks are consumed transparently.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, data: Span[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "read_chunk",
+       "overloads": [
+        {
+         "signature": "def read_chunk(mut self) -> Optional[List[UInt8]]"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "compress_framed",
+     "overloads": [
+      {
+       "signature": "def compress_framed(data: Span[UInt8]) -> List[UInt8]",
+       "summary": "Compress `data` into a complete Snappy framing-format stream (stream identifier + one or more chunks, each <= 64 KiB uncompressed)."
+      }
+     ]
+    },
+    {
+     "name": "decompress_framed",
+     "overloads": [
+      {
+       "signature": "def decompress_framed(data: Span[UInt8]) -> List[UInt8]",
+       "summary": "Decompress a full Snappy framing-format stream, verifying every chunk's masked CRC-32C. Raises on a missing/misplaced stream identifier, an unsupported unskippable chunk type, or a checksum mismatch."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "snappy.raw",
+   "summary": "Snappy **raw block format**: a leading varint giving the uncompressed length, followed by a stream of literal / copy elements. See https://github.com/google/snappy/blob/main/format_description.txt.",
+   "description": "Compression is a single-pass greedy LZ77 matcher: a flat hash table maps\nthe multiplicative hash of each 4-byte window (same constant the C++\nreference uses, `0x1e35a7bd`) to the most recent position with that hash,\nand any 4-byte match found there is greedily extended and emitted as a\ncopy. This is the reference's \"fast\" strategy (no lazy matching, no hash\nchaining) — it trades some ratio for a simple, branch-light inner loop.",
+   "functions": [
+    {
+     "name": "max_compressed_length",
+     "overloads": [
+      {
+       "signature": "def max_compressed_length(n: Int) -> Int",
+       "summary": "Upper bound on the compressed size of an `n`-byte input — matches the C++ reference's `MaxCompressedLength(n) = 32 + n + n/6`."
+      }
+     ]
+    },
+    {
+     "name": "uncompressed_length",
+     "overloads": [
+      {
+       "signature": "def uncompressed_length(data: Span[UInt8]) -> Int",
+       "summary": "Decode the leading varint (the decompressed size) without decompressing the rest of `data`."
+      }
+     ]
+    },
+    {
+     "name": "compress",
+     "overloads": [
+      {
+       "signature": "def compress(data: Span[UInt8]) -> List[UInt8]",
+       "summary": "Compress `data` into a Snappy raw block."
+      }
+     ]
+    },
+    {
+     "name": "decompress_into",
+     "overloads": [
+      {
+       "signature": "def decompress_into[origin: MutOrigin, //](data: Span[UInt8], dst: Span[UInt8, origin]) -> Int",
+       "summary": "Decompress the raw Snappy block `data` into `dst`, which must be at least `uncompressed_length(data)` bytes. Returns the number of bytes written. Raises on any structural corruption.",
+       "description": "Literals and non-overlapping copies move 16 bytes at a time. Both are\nallowed to write past the end of the element they are copying, because\nthe write always lands inside the part of `dst` the block has already\nbeen checked to fit in; the bytes written past the element are\noverwritten by whatever comes next. Only the last few bytes of the output,\nwhere that slack runs out, take the byte-at-a-time path."
+      }
+     ]
+    },
+    {
+     "name": "decompress",
+     "overloads": [
+      {
+       "signature": "def decompress(data: Span[UInt8]) -> List[UInt8]",
+       "summary": "Decompress a Snappy raw block into a freshly allocated `List[UInt8]`."
+      }
+     ]
+    },
+    {
+     "name": "validate",
+     "overloads": [
+      {
+       "signature": "def validate(data: Span[UInt8]) -> Bool",
+       "summary": "Best-effort check: does `data` parse as a well-formed raw Snappy block?"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

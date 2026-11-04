@@ -1,0 +1,156 @@
+{
+ "tin": "zstd",
+ "version": "0.1.5",
+ "rev": "76190bb31012cd2d2f6712c4e1724a66474215db",
+ "package": "zstd",
+ "path": "src/zstd",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "`zstd` — Mojo bindings to libzstd (one-shot and streaming) via a thin C shim (libzstdmojo.so).",
+ "description": "Mirrors zlib.mojo's FFI pattern: a single-call C wrapper (shim/zstd_wrapper.c,\nbuilt to $CONDA_PREFIX/lib/libzstdmojo.so by the zstd-shim pixi package) is\nfound by `_dlopen.open_library` (with or without `CONDA_PREFIX`) and loaded through an `OwnedDLHandle`. The handle is opened **once per process**\nand never closed (`_LIB` below) — a `dlopen`/`dlclose` cycle costs hundreds of\nmicroseconds, so opening one per call made the binding's fixed cost dwarf the\ncompression it wrapped. Every FFI-calling worker takes the handle as a\nBORROWED `imm` parameter — Mojo destroys a value at its last syntactic use,\nand if a function both owned the handle *and* called `get_function` on it,\nthat call would be the last use, `dlclose`-ing the library before the obtained\nfunction pointer is actually invoked a few lines later. Splitting \"hold the\nhandle\" (`_lib()`) from \"use the handle\" (a `_do_*` worker that takes it by\n`imm` borrow) keeps it alive for the whole worker call, function-pointer\ninvocation included.\n\nzstd is Apache Iceberg's default Parquet codec, a Puffin blob codec, and an\nAvro codec — this binding targets that headline use as a magmalake leaf tin.",
+ "modules": [
+  {
+   "path": "zstd",
+   "summary": "`zstd` — Mojo bindings to libzstd (one-shot and streaming) via a thin C shim (libzstdmojo.so).",
+   "description": "Mirrors zlib.mojo's FFI pattern: a single-call C wrapper (shim/zstd_wrapper.c,\nbuilt to $CONDA_PREFIX/lib/libzstdmojo.so by the zstd-shim pixi package) is\nfound by `_dlopen.open_library` (with or without `CONDA_PREFIX`) and loaded through an `OwnedDLHandle`. The handle is opened **once per process**\nand never closed (`_LIB` below) — a `dlopen`/`dlclose` cycle costs hundreds of\nmicroseconds, so opening one per call made the binding's fixed cost dwarf the\ncompression it wrapped. Every FFI-calling worker takes the handle as a\nBORROWED `imm` parameter — Mojo destroys a value at its last syntactic use,\nand if a function both owned the handle *and* called `get_function` on it,\nthat call would be the last use, `dlclose`-ing the library before the obtained\nfunction pointer is actually invoked a few lines later. Splitting \"hold the\nhandle\" (`_lib()`) from \"use the handle\" (a `_do_*` worker that takes it by\n`imm` borrow) keeps it alive for the whole worker call, function-pointer\ninvocation included.\n\nzstd is Apache Iceberg's default Parquet codec, a Puffin blob codec, and an\nAvro codec — this binding targets that headline use as a magmalake leaf tin.",
+   "structs": [
+    {
+     "name": "Compressor",
+     "signature": "struct Compressor",
+     "summary": "A streaming zstd compressor over `ZSTD_CCtx` (the modern API's `ZSTD_CStream`). Feed chunks to `update()`; call `finish()` once at the end to flush the trailing block and frame epilogue.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, level: Int = Int(3))"
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "update",
+       "overloads": [
+        {
+         "signature": "def update(mut self, chunk: Span[UInt8]) -> List[UInt8]",
+         "summary": "Compresses `chunk`, returning whatever compressed bytes libzstd was ready to emit (may be less than a full block; may be empty)."
+        }
+       ]
+      },
+      {
+       "name": "finish",
+       "overloads": [
+        {
+         "signature": "def finish(mut self) -> List[UInt8]",
+         "summary": "Flushes the trailing block and frame epilogue (checksum, content size if pledged). Call exactly once, after the last `update()`."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Decompressor",
+     "signature": "struct Decompressor",
+     "summary": "A streaming zstd decompressor over `ZSTD_DCtx` (the modern API's `ZSTD_DStream`). Feed chunks to `update()` as they arrive; there's no separate flush step, so `finish()` is a no-op kept for API symmetry with `Compressor`.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "update",
+       "overloads": [
+        {
+         "signature": "def update(mut self, chunk: Span[UInt8]) -> List[UInt8]",
+         "summary": "Decompresses as much of `chunk` as libzstd will take in one pass, growing the output buffer until all of `chunk` is consumed."
+        }
+       ]
+      },
+      {
+       "name": "finish",
+       "overloads": [
+        {
+         "signature": "def finish(mut self) -> List[UInt8]",
+         "summary": "No-op — decompression has no trailing flush step. Kept so `Compressor`/`Decompressor` share the same update/finish shape."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "compress",
+     "overloads": [
+      {
+       "signature": "def compress(data: Span[UInt8], level: Int = Int(3)) -> List[UInt8]",
+       "summary": "Compresses `data` into a single zstd frame at `level` (1..22).",
+       "description": "Zero-length `data` is a real (if degenerate) case for zstd — it still\nproduces a valid, tiny frame that decompresses back to zero bytes."
+      }
+     ]
+    },
+    {
+     "name": "decompress",
+     "overloads": [
+      {
+       "signature": "def decompress(data: Span[UInt8]) -> List[UInt8]",
+       "summary": "Decompresses a single zstd frame.",
+       "description": "Uses `ZSTD_getFrameContentSize` to size the output in one shot when the\nframe carries it (true for anything `compress()` produced). Falls back\nto the streaming API — growing the output buffer as it goes — when the\nsize is unknown (e.g. a frame streamed with an unset pledged size). A\ngenuinely corrupt frame raises either way, with libzstd's error name."
+      }
+     ]
+    },
+    {
+     "name": "decompress_into",
+     "overloads": [
+      {
+       "signature": "def decompress_into(data: Span[UInt8], dst: Span[UInt8]) -> Int",
+       "summary": "Decompresses `data` straight into caller-owned `dst` — no growth, no extra allocation. For callers that already know the decompressed size (e.g. a Parquet page's declared uncompressed length). Returns the number of bytes written; raises (`zstd.decompress_into: Dst_Too_Small`, ...) if `dst` is too small or `data` is not a valid frame."
+      }
+     ]
+    },
+    {
+     "name": "is_zstd_frame",
+     "overloads": [
+      {
+       "signature": "def is_zstd_frame(data: Span[UInt8]) -> Bool",
+       "summary": "Whether `data` starts with the zstd frame magic number (0xFD2FB528, little-endian) — a quick, allocation-free format sniff."
+      }
+     ]
+    },
+    {
+     "name": "frame_content_size",
+     "overloads": [
+      {
+       "signature": "def frame_content_size(data: Span[UInt8]) -> Optional[Int]",
+       "summary": "The decompressed size recorded in a zstd frame header, or `None` if `data` isn't a zstd frame or the frame doesn't carry a content size (e.g. streamed with an unset pledged size)."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

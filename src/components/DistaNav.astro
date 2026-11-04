@@ -1,7 +1,11 @@
 ---
 // Dista's header: SectionNav with Dista's pages.
 import SectionNav from "./SectionNav.astro";
-import { DISTA_REPO, distaLinks } from "../data/dista";
+import { DISTA_REPO } from "../data/dista";
+import { tinLinks } from "../data/tinpages";
+import { tins } from "../data/tins";
+
+const links = tinLinks(tins.find((t) => t.site === "/s/dista")!);
 ---
 
-<SectionNav name="Dista" home="/s/dista" links={distaLinks} repo={DISTA_REPO} />
+<SectionNav name="Dista" home="/s/dista" links={links} repo={DISTA_REPO} />

@@ -1,0 +1,98 @@
+{
+ "tin": "deflate",
+ "version": "0.1.3",
+ "rev": "6639b18c58fad0e009f4224ec9f792cd919398b4",
+ "package": "deflate",
+ "path": "src/deflate",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "DEFLATE (RFC 1951) and gzip (RFC 1952) in pure Mojo — no FFI, no dependencies.",
+ "description": "`deflate` compresses, `inflate` decompresses, and `inflate_at` decompresses\none stream out of several laid back to back, reporting where it ended.\n`gunzip` decodes a `.gz` file (every member, CRC-32 and length checked),\n`gunzip_at` one member of it, and `gzip` writes one.\n\n```mojo\nfrom deflate import deflate, inflate\n\nvar packed = deflate(Span(data))    # List[UInt8], raw DEFLATE\nvar back = inflate(Span(packed))    # List[UInt8], == data\n```\n\n`inflate` and `deflate` streams are *raw*: no zlib (RFC 1950) header, no\ngzip wrapper, no trailing checksum. Avro's `deflate` block codec is raw and\nneeds nothing more; gzip files go through `gunzip`.",
+ "modules": [
+  {
+   "path": "deflate",
+   "summary": "DEFLATE (RFC 1951) and gzip (RFC 1952) in pure Mojo — no FFI, no dependencies.",
+   "description": "`deflate` compresses, `inflate` decompresses, and `inflate_at` decompresses\none stream out of several laid back to back, reporting where it ended.\n`gunzip` decodes a `.gz` file (every member, CRC-32 and length checked),\n`gunzip_at` one member of it, and `gzip` writes one.\n\n```mojo\nfrom deflate import deflate, inflate\n\nvar packed = deflate(Span(data))    # List[UInt8], raw DEFLATE\nvar back = inflate(Span(packed))    # List[UInt8], == data\n```\n\n`inflate` and `deflate` streams are *raw*: no zlib (RFC 1950) header, no\ngzip wrapper, no trailing checksum. Avro's `deflate` block codec is raw and\nneeds nothing more; gzip files go through `gunzip`."
+  },
+  {
+   "path": "deflate.gzip",
+   "summary": "gzip (RFC 1952) framing over the raw DEFLATE in `raw.mojo`.",
+   "description": "`gunzip` decodes a whole `.gz` file: every member of a concatenated stream,\neach one's header (all five flags: FTEXT, FHCRC, FEXTRA, FNAME, FCOMMENT)\nparsed and skipped, and each one's CRC-32 and ISIZE checked against what it\ndecoded to. `gunzip_at` decodes one member and reports where it ended, as\n`inflate_at` does for raw streams. `gzip` writes a single member.\n\nThe CRC-32 is the zlib/gzip one (reflected polynomial 0xEDB88320), slice-by-8\nas in hashes.mojo's `crc32`. It is repeated here rather than imported so the\ntin keeps no sibling dependency: a consumer still needs nothing but\n`-I deflate.mojo/src`.",
+   "functions": [
+    {
+     "name": "crc32_backend",
+     "overloads": [
+      {
+       "signature": "def crc32_backend() -> String",
+       "summary": "`armv8-crc` or `slice-by-8`: which CRC-32 this build uses."
+      }
+     ]
+    },
+    {
+     "name": "gunzip",
+     "overloads": [
+      {
+       "signature": "def gunzip(data: Span[UInt8]) -> List[UInt8]",
+       "summary": "Decompress a gzip file: all of its members, concatenated.",
+       "description": "Each member's CRC-32 and length are verified. Zero bytes after the last\nmember are padding (as gzip(1) and Python's `gzip` accept); anything else\nthere raises, as does an empty input."
+      }
+     ]
+    },
+    {
+     "name": "gunzip_at",
+     "overloads": [
+      {
+       "signature": "def gunzip_at(data: Span[UInt8], mut end: Int) -> List[UInt8]",
+       "summary": "Decompress the one gzip member at the start of `data`, verifying its CRC-32 and length, and set `end` to the offset just past its trailer.",
+       "description": "For walking a multi-member file one member at a time, so only one\nmember's output is held at once:\n\n```mojo\nvar pos = 0\nwhile pos < len(data):\n    var end = 0\n    var part = gunzip_at(Span(data)[pos:], end)\n    pos += end\n```"
+      }
+     ]
+    },
+    {
+     "name": "gzip",
+     "overloads": [
+      {
+       "signature": "def gzip(data: Span[UInt8], level: Int = Int(6)) -> List[UInt8]",
+       "summary": "Compress `data` into a single gzip member.",
+       "description": "`level` 0 writes stored (uncompressed) DEFLATE blocks; 1 to 9 all use\n`deflate`'s one fixed-Huffman strategy, so they produce the same bytes.\nThe header carries no name, comment or timestamp (MTIME 0, OS 255)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "deflate.raw",
+   "summary": "Raw DEFLATE (RFC 1951) — `inflate` and `deflate`, in pure Mojo.",
+   "description": "*Raw* DEFLATE is the compressed stream on its own: no zlib (RFC 1950) header,\nno gzip (RFC 1952) wrapper, no trailing checksum. A caller that needs one of\nthose framings parses it itself and hands the body here — Avro's `deflate`\nblock codec is raw already, and Parquet's `GZIP` codec is this plus a gzip\nheader and trailer.\n\nImplementing it rather than binding zlib keeps the tin free of FFI and of any\nsibling dependency, so a consumer needs nothing but `-I ../deflate.mojo/src`.\n\n`inflate` handles all three block types (stored, fixed-Huffman,\ndynamic-Huffman). `deflate` emits fixed-Huffman blocks from a single-slot\nhash-chain LZ77 matcher — the same \"fast\" strategy `snappy.mojo` uses —\nwhich keeps the encoder small.",
+   "functions": [
+    {
+     "name": "inflate",
+     "overloads": [
+      {
+       "signature": "def inflate(data: Span[UInt8]) -> List[UInt8]",
+       "summary": "Decompress a raw DEFLATE stream."
+      }
+     ]
+    },
+    {
+     "name": "inflate_at",
+     "overloads": [
+      {
+       "signature": "def inflate_at(data: Span[UInt8], mut end: Int) -> List[UInt8]",
+       "summary": "Decompress a DEFLATE stream, and report where it ended.",
+       "description": "`end` is set to the offset of the first byte *after* the stream, rounded\nup to a byte boundary. Callers with several streams back to back —\nconcatenated gzip members, for instance — need it to find the next one;\ncallers that do not can use `inflate`."
+      }
+     ]
+    },
+    {
+     "name": "deflate",
+     "overloads": [
+      {
+       "signature": "def deflate(data: Span[UInt8]) -> List[UInt8]",
+       "summary": "Compress to a raw DEFLATE stream (one fixed-Huffman block)."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,507 @@
+{
+ "tin": "restate",
+ "version": "0.4.1",
+ "rev": "e391b04b0de1f0c1f5f1b5ab736d43d171e4d1f8",
+ "package": "restate",
+ "path": "src/restate",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "`restate` — durable execution flows in Mojo, via Restate (restate.dev).",
+ "description": "The Rust shim (ffi/ -> librestatemojo.dylib) embeds the Restate Rust SDK: it\nowns the HTTP/2 endpoint, the event loop, and the journal. Mojo owns the\nbusiness logic, driven by a synchronous loop:\n\n    from restate import App\n\n    def main() raises:\n        var stats = Stats(0)\n        _ = App.run[Stats, __functions_in_module()](\"Counter\", stats)\n\nThat loop is single-threaded, and a handler that `call`s another handler served\nby the same process therefore deadlocks. `App.serve` is the concurrent form —\nthe same loop on N threads, via threads-mojo's `TypedPool`:\n\n    from restate import App, Invocation, OpaquePtr\n\n    def handle(app: App, inv: Invocation, worker: Int, ctx: OpaquePtr) raises:\n        app.complete(inv, \"ok\")\n\n    def main() raises:\n        var app = App(\"Counter\", [\"add\", \"get\"], object=True)\n        _ = app.serve[handle](num_workers=4)   # until app.stop()\n\nWith two or more workers one thread can wait for a call while another runs the\ncallee, so self-calls complete. See `HandlerFn` for the handler's obligations\nand `App.stop` for how a worker parked in `next()` is released.\n\nSemantics: on retry or resume, Restate re-invokes the handler and replays the\njournal — ctx operations (`sleep`, `call`, `get_state`, `run_*`, ...) return\ntheir journaled results instantly, so handler logic must be deterministic\nbetween them; wrap non-deterministic work in `run_enter`/`run_exit`. When\nRestate suspends an invocation (e.g. a long `sleep`), the pending operation\nraises a suspension error: abandon the invocation and keep serving — Restate\nre-delivers it later.\n\nPayloads are raw bytes on the wire; the String helpers below treat them as\nUTF-8 (use the `_bytes` variants for binary data).",
+ "modules": [
+  {
+   "path": "restate",
+   "summary": "`restate` — durable execution flows in Mojo, via Restate (restate.dev).",
+   "description": "The Rust shim (ffi/ -> librestatemojo.dylib) embeds the Restate Rust SDK: it\nowns the HTTP/2 endpoint, the event loop, and the journal. Mojo owns the\nbusiness logic, driven by a synchronous loop:\n\n    from restate import App\n\n    def main() raises:\n        var stats = Stats(0)\n        _ = App.run[Stats, __functions_in_module()](\"Counter\", stats)\n\nThat loop is single-threaded, and a handler that `call`s another handler served\nby the same process therefore deadlocks. `App.serve` is the concurrent form —\nthe same loop on N threads, via threads-mojo's `TypedPool`:\n\n    from restate import App, Invocation, OpaquePtr\n\n    def handle(app: App, inv: Invocation, worker: Int, ctx: OpaquePtr) raises:\n        app.complete(inv, \"ok\")\n\n    def main() raises:\n        var app = App(\"Counter\", [\"add\", \"get\"], object=True)\n        _ = app.serve[handle](num_workers=4)   # until app.stop()\n\nWith two or more workers one thread can wait for a call while another runs the\ncallee, so self-calls complete. See `HandlerFn` for the handler's obligations\nand `App.stop` for how a worker parked in `next()` is released.\n\nSemantics: on retry or resume, Restate re-invokes the handler and replays the\njournal — ctx operations (`sleep`, `call`, `get_state`, `run_*`, ...) return\ntheir journaled results instantly, so handler logic must be deterministic\nbetween them; wrap non-deterministic work in `run_enter`/`run_exit`. When\nRestate suspends an invocation (e.g. a long `sleep`), the pending operation\nraises a suspension error: abandon the invocation and keep serving — Restate\nre-delivers it later.\n\nPayloads are raw bytes on the wire; the String helpers below treat them as\nUTF-8 (use the `_bytes` variants for binary data).",
+   "aliases": [
+    {
+     "name": "STATUS_OK",
+     "value": "0"
+    },
+    {
+     "name": "STATUS_GONE",
+     "value": "1"
+    },
+    {
+     "name": "STATUS_TERMINAL",
+     "value": "2"
+    },
+    {
+     "name": "STATUS_ERROR",
+     "value": "3"
+    },
+    {
+     "name": "STATUS_EMPTY",
+     "value": "4"
+    },
+    {
+     "name": "STATUS_EXECUTE",
+     "value": "5"
+    },
+    {
+     "name": "SUSPENDED_MSG",
+     "value": "\"restate: invocation suspended\""
+    },
+    {
+     "name": "STOPPED_MSG",
+     "value": "\"restate: driver stopped\""
+    },
+    {
+     "name": "HandlerFn",
+     "value": "def(App, Invocation, Int, Pointer[UInt8, MutUntrackedOrigin]) raises thin -> None",
+     "summary": "What `App.serve` runs for each invocation: `(app, inv, worker, ctx)`.",
+     "description": "**Thin**, i.e. non-capturing — it is reached through a pthread start routine,\nwhich takes a C function pointer and one `void *`. Anything the handler needs\nbeyond the app and the invocation travels through `ctx`, exactly as in\n`threads.parallel_for`.\n\nIt *may* raise, unlike a raw thread body: `serve` wraps each call, so a raise\nis caught, the invocation is `abandon`ed (Restate re-delivers it), and the\nworker carries on. Suspension arrives this way too — `is_suspended(e)` — and is\nnot logged, because it is normal.\n\nA handler must finish its invocation: `complete`, `fail`, or raise. Returning\nwithout doing any of those leaks the invocation handle in the shim and leaves\nRestate waiting."
+    }
+   ],
+   "structs": [
+    {
+     "name": "Invocation",
+     "signature": "struct Invocation",
+     "summary": "One in-flight invocation: which handler was called, the virtual-object key (empty for plain services), and the request payload.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "handle",
+       "type": "Int"
+      },
+      {
+       "name": "handler",
+       "type": "String"
+      },
+      {
+       "name": "key",
+       "type": "String"
+      },
+      {
+       "name": "id",
+       "type": "String"
+      },
+      {
+       "name": "input",
+       "type": "List[UInt8]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "input_string",
+       "overloads": [
+        {
+         "signature": "def input_string(self) -> String"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "App",
+     "signature": "struct App",
+     "summary": "A Restate endpoint serving one service with byte/string handlers, driven by `next()`.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "lib",
+       "type": "OwnedDLHandle"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, service: String, handlers: List[String], object: Bool = True, workflow: Bool = False, host: String = \"0.0.0.0\", port: Int = Int(9080))",
+         "summary": "Start the endpoint (background thread in the shim). `object=True` registers a Virtual Object — keyed, with state and single-writer concurrency per key; `False` a plain (stateless) Service. `workflow=True` registers a Workflow: the handler named \"run\" is the workflow handler (runs once per key), the rest are shared and may use the promise operations to signal it."
+        }
+       ]
+      },
+      {
+       "name": "sleep_ms",
+       "overloads": [
+        {
+         "signature": "def sleep_ms(self, inv: Invocation, millis: Int)",
+         "summary": "Durable sleep. Journaled; long sleeps suspend the invocation."
+        }
+       ]
+      },
+      {
+       "name": "get_state_bytes",
+       "overloads": [
+        {
+         "signature": "def get_state_bytes(self, inv: Invocation, key: String) -> Optional[List[UInt8]]"
+        }
+       ]
+      },
+      {
+       "name": "get_state",
+       "overloads": [
+        {
+         "signature": "def get_state(self, inv: Invocation, key: String) -> Optional[String]"
+        }
+       ]
+      },
+      {
+       "name": "get_state_int",
+       "overloads": [
+        {
+         "signature": "def get_state_int(self, inv: Invocation, key: String, default: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "set_state_bytes",
+       "overloads": [
+        {
+         "signature": "def set_state_bytes(self, inv: Invocation, key: String, value: List[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "set_state",
+       "overloads": [
+        {
+         "signature": "def set_state(self, inv: Invocation, key: String, value: String)"
+        }
+       ]
+      },
+      {
+       "name": "set_state_int",
+       "overloads": [
+        {
+         "signature": "def set_state_int(self, inv: Invocation, key: String, value: Int)"
+        }
+       ]
+      },
+      {
+       "name": "clear_state",
+       "overloads": [
+        {
+         "signature": "def clear_state(self, inv: Invocation, key: String)"
+        }
+       ]
+      },
+      {
+       "name": "call",
+       "overloads": [
+        {
+         "signature": "def call(self, inv: Invocation, service: String, handler: String, payload: String, key: String = \"\") -> String",
+         "summary": "Durable request/response call to another handler. A non-empty `key` targets a virtual object; empty targets a plain service."
+        }
+       ]
+      },
+      {
+       "name": "send",
+       "overloads": [
+        {
+         "signature": "def send(self, inv: Invocation, service: String, handler: String, payload: String, key: String = \"\", delay_ms: Int = Int(0))",
+         "summary": "Durable one-way message (optionally delayed)."
+        }
+       ]
+      },
+      {
+       "name": "awakeable_create",
+       "overloads": [
+        {
+         "signature": "def awakeable_create(self, inv: Invocation) -> String",
+         "summary": "Create an awakeable — a durable promise resolvable from outside (another service, or the ingress HTTP API). Returns its id: hand it to the outside world (inside `run_enter`/`run_exit` or via `call`), then `awakeable_await` it."
+        }
+       ]
+      },
+      {
+       "name": "awakeable_await",
+       "overloads": [
+        {
+         "signature": "def awakeable_await(self, inv: Invocation, id: String) -> String",
+         "summary": "Await an awakeable created in this invocation; returns its resolved payload. Suspends if unresolved."
+        }
+       ]
+      },
+      {
+       "name": "awakeable_resolve",
+       "overloads": [
+        {
+         "signature": "def awakeable_resolve(self, inv: Invocation, id: String, value: String)",
+         "summary": "Resolve another invocation's awakeable with a payload."
+        }
+       ]
+      },
+      {
+       "name": "awakeable_reject",
+       "overloads": [
+        {
+         "signature": "def awakeable_reject(self, inv: Invocation, id: String, message: String)",
+         "summary": "Reject another invocation's awakeable with a terminal error."
+        }
+       ]
+      },
+      {
+       "name": "promise_await",
+       "overloads": [
+        {
+         "signature": "def promise_await(self, inv: Invocation, name: String) -> String",
+         "summary": "Await a named workflow promise (workflow services only)."
+        }
+       ]
+      },
+      {
+       "name": "promise_peek",
+       "overloads": [
+        {
+         "signature": "def promise_peek(self, inv: Invocation, name: String) -> Optional[String]",
+         "summary": "Peek a named workflow promise: its value, or None if unresolved."
+        }
+       ]
+      },
+      {
+       "name": "promise_resolve",
+       "overloads": [
+        {
+         "signature": "def promise_resolve(self, inv: Invocation, name: String, value: String)",
+         "summary": "Resolve a named workflow promise (from a shared handler)."
+        }
+       ]
+      },
+      {
+       "name": "promise_reject",
+       "overloads": [
+        {
+         "signature": "def promise_reject(self, inv: Invocation, name: String, message: String)",
+         "summary": "Reject a named workflow promise with a terminal error."
+        }
+       ]
+      },
+      {
+       "name": "cancel_invocation",
+       "overloads": [
+        {
+         "signature": "def cancel_invocation(self, inv: Invocation, invocation_id: String)",
+         "summary": "Cancel another invocation by id."
+        }
+       ]
+      },
+      {
+       "name": "run_enter",
+       "overloads": [
+        {
+         "signature": "def run_enter(self, inv: Invocation) -> Optional[String]",
+         "summary": "Enter a journaled side-effect block. Returns the journaled value on replay; None means: execute the side effect now, then close the block with `run_exit` (it succeeded) or `run_fail` (it did not).",
+         "description": "Exactly one of those must follow. Leaving the block open makes the\ninvocation unreplayable: every later attempt raises \"protocol error:\nexpected rst_run_exit\"."
+        }
+       ]
+      },
+      {
+       "name": "run_exit",
+       "overloads": [
+        {
+         "signature": "def run_exit(self, inv: Invocation, value: String) -> String",
+         "summary": "Journal the side-effect result produced after `run_enter` returned None. Returns the journaled value."
+        }
+       ]
+      },
+      {
+       "name": "run_enter_policy",
+       "overloads": [
+        {
+         "signature": "def run_enter_policy(self, inv: Invocation, initial_delay_ms: Int = Int(0), factor: Float64 = 0, max_delay_ms: Int = Int(0), max_attempts: Int = Int(0), max_duration_ms: Int = Int(0)) -> Optional[String]",
+         "summary": "`run_enter`, with a retry policy for this block's non-terminal failures.",
+         "description": "Plain `run_enter` leaves retries to Restate's server-side invoker\npolicy, which retries indefinitely. Set any of these to bound it; 0\nmeans \"leave that knob alone\", and `max_attempts` or `max_duration_ms`\nof 0 mean unbounded.\n\nWhen attempts or duration run out the SDK fails the block terminally,\nwhich arrives here the same way `run_fail(terminal=True)` does — as a\nraised error the handler can compensate for."
+        }
+       ]
+      },
+      {
+       "name": "step",
+       "overloads": [
+        {
+         "signature": "def step[F: def() raises -> String](self, inv: Invocation, f: F, initial_delay_ms: Int = Int(0), factor: Float64 = 0, max_delay_ms: Int = Int(0), max_attempts: Int = Int(0), max_duration_ms: Int = Int(0)) -> String",
+         "summary": "One journaled step: replay it, or run `f` and journal what it returned.",
+         "description": "def charge() raises {imm reservation_id} -> String:\n        return charge_card(reservation_id)\n\n    var charge_id = app.step(inv, charge)\n\n`f` is passed by value with an explicit capture list, which keeps\nwhat it captures alive until `step` returns. Its type is a parameter,\nso each closure still gets its own monomorphised `step`.\n\nThis is `run_enter` / `run_exit` / `run_fail` with the protocol\nhandled. It matters less for brevity than for the fact that a block\ncannot be left open: if `f` raises, the step is closed as a\nnon-terminal failure and Restate runs it again, which is what the\nhand-written form has to remember to do every time.\n\nThe retry arguments are `run_enter_policy`'s, and bound the retries of\n`f` itself. Passing none leaves them to Restate's invoker policy,\nwhich does not give up.\n\nA step that should fail *terminally* — a downstream that is not coming\nback, where the handler compensates and finishes — wants the explicit\nprotocol instead: `run_enter`, then `run_fail(terminal=True)`."
+        }
+       ]
+      },
+      {
+       "name": "run_fail",
+       "overloads": [
+        {
+         "signature": "def run_fail(self, inv: Invocation, message: String, terminal: Bool = True) -> Optional[String]",
+         "summary": "Abort the run block opened by `run_enter`, rather than closing it with `run_exit`.",
+         "description": "Every `run_enter` that returns None must be closed by exactly one of\n`run_exit` or `run_fail`. Leaving one open makes the invocation\nunreplayable: the next attempt raises \"protocol error: expected\nrst_run_exit\" and keeps doing so forever.\n\n`terminal=True` journals the failure. The step is recorded as failed,\nreplay reproduces the failure instead of executing again, and this\nraises so the handler can compensate and finish.\n\n`terminal=False` journals nothing and lets Restate re-run the block\nunder its own retry policy. The return value is then the next\nexecute slot: `None` means \"run the side effect again\", and a value\nmeans the journal answered in the meantime."
+        }
+       ]
+      },
+      {
+       "name": "complete",
+       "overloads": [
+        {
+         "signature": "def complete(self, inv: Invocation, output: String)",
+         "summary": "Finish the invocation successfully with `output`."
+        }
+       ]
+      },
+      {
+       "name": "fail",
+       "overloads": [
+        {
+         "signature": "def fail(self, inv: Invocation, message: String)",
+         "summary": "Finish the invocation with a terminal error (not retried)."
+        }
+       ]
+      },
+      {
+       "name": "abandon",
+       "overloads": [
+        {
+         "signature": "def abandon(self, inv: Invocation)",
+         "summary": "Drop an invocation without completing it (after suspension or an internal error). Restate retries/resumes it with journal replay."
+        }
+       ]
+      },
+      {
+       "name": "stop",
+       "overloads": [
+        {
+         "signature": "def stop(self)",
+         "summary": "Unblock every `next()` — in this thread or any other — so driver loops can end.",
+         "description": "Setting a flag in Mojo cannot reach a thread parked inside the shim's\nblocking receiver, so this goes through the shim (`rst_stop`), which\nsets a process-wide flag its receive loop rechecks. Idempotent, and\nsafe to call from inside a handler: that is how a service gives itself\na `shutdown` endpoint.\n\nThe endpoint itself keeps listening — this ends the Mojo driver, not\nthe HTTP server. There is no un-stop."
+        }
+       ]
+      },
+      {
+       "name": "is_stopping",
+       "overloads": [
+        {
+         "signature": "def is_stopping(self) -> Bool",
+         "summary": "Whether `stop()` has been called."
+        }
+       ]
+      },
+      {
+       "name": "run",
+       "overloads": [
+        {
+         "signature": "def run[T: AnyType, funcs: Tuple[funcs.Ts], /](service: String, ref state: T, object: Bool = True, workflow: Bool = False, host: String = \"0.0.0.0\", port: Int = Int(9080), num_workers: Int = Int(0)) -> Int",
+         "summary": "Discover the module's handlers, serve them, and block until stopped.",
+         "description": "The whole driver:\n\n    @fieldwise_init\n    struct Stats(Copyable, Movable):\n        var seen: Int64\n\n    def handle_add(app: App, inv: Invocation, w: Int, ctx: Ctx[Stats]) raises:\n        app.complete(inv, String(\"ok\"))\n\n    def main() raises:\n        var stats = Stats(0)\n        _ = App.run[Stats, __functions_in_module()](\"Counter\", stats)\n\nEvery `handle_*` in the calling module is registered under its name\nwithout the prefix and dispatched to by that name. There is no list to\nkeep in step with the handlers, because there is no list.\n\nPass `__functions_in_module()` for `funcs`. `state` is process-local\nand shared by every worker — see `Ctx`.\n\nReturns how many invocations completed without raising."
+        }
+       ]
+      },
+      {
+       "name": "serve_with",
+       "overloads": [
+        {
+         "signature": "def serve_with[T: AnyType, handler: def(Self, Invocation, Int, Ctx[T]) raises thin -> None](self, ref state: T, num_workers: Int = Int(0)) -> Int",
+         "summary": "`serve`, with the process-local state carried as a typed `Ctx[T]`.",
+         "description": "The same driver; the only difference is that the handler receives\n`Ctx[T]` instead of a raw `OpaquePtr`, so it can say `ctx[].field`\nrather than computing offsets. `state` must outlive the call, which it\ndoes: `serve` joins every worker before returning.\n\nPrefer this over `serve`. The untyped form remains for handlers whose\nstate is genuinely not a single struct."
+        }
+       ]
+      },
+      {
+       "name": "serve",
+       "overloads": [
+        {
+         "signature": "def serve[handler: def(Self, Invocation, Int, Pointer[UInt8, MutUntrackedOrigin]) raises thin -> None](self, num_workers: Int = Int(0), ctx: Pointer[UInt8, MutUntrackedOrigin] = opaque_ptr(Int(0))) -> Int",
+         "summary": "Run `handler` on `num_workers` threads until `stop()` is called.",
+         "description": "The concurrent counterpart to the `while True: app.next()` loop, and\nthe reason a handler may now `call` another handler served by this same\nprocess: with two or more workers, one thread waits for the callee\nwhile another picks it up. With one worker that is still a deadlock,\nexactly as before.\n\nBlocks until every worker has left its loop, then returns.",
+         "parameters": [
+          {
+           "name": "handler",
+           "doc": "The handler body — `def(App, Invocation, Int, OpaquePtr)\n    thin raises -> None`, receiving the app, the invocation, its\n    worker index, and `ctx`. Thin (non-capturing), because it is\n    reached through a thread start routine; see the module\n    docstring for the shape and the obligations."
+          }
+         ],
+         "args": [
+          {
+           "name": "num_workers",
+           "doc": "How many driver threads. `0` (the default) means\n    `num_cpus()`. **Use at least 2** if any handler calls back into\n    this process."
+          },
+          {
+           "name": "ctx",
+           "doc": "Process-local state shared by every handler invocation,\n    passed straight through. Must outlive the `serve` call — which\n    it does automatically, since `serve` joins before returning.\n    Defaults to a null pointer for handlers that need none."
+          }
+         ],
+         "raises": "Error: If the workers cannot be started or joined."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Unit",
+     "signature": "struct Unit",
+     "summary": "No process-local state.",
+     "description": "A service that keeps everything in Restate state still has to name a type\nfor `Ctx`. `Unit` is that type, and saying it out loud is worth more than\nit costs: it tells a reader the handlers share nothing across invocations.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ]
+    },
+    {
+     "name": "Ctx",
+     "signature": "struct Ctx[T: AnyType]",
+     "summary": "A typed view of the process-local state `serve` hands to each handler.",
+     "description": "Handlers must be thin, so state cannot be captured — it travels through a\npointer instead. `Ctx` is that pointer with its type still attached, so a\nhandler writes `ctx[].live` rather than reckoning byte offsets into an\nuntyped block.\n\n**It does not make the state safe to share.** Every worker thread gets the\nsame `T`, concurrently. Fields that more than one handler touches have to\nbe atomics, exactly as they would through a raw pointer.\n\nWhen Mojo can carry captures across a thread boundary this whole parameter\ndisappears from the signature and the state is simply captured; the body\nkeeps working with `ctx[].x` renamed to `x`.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__getitem__",
+       "overloads": [
+        {
+         "signature": "def __getitem__(self) -> ref[MutUntrackedOrigin] T"
+        }
+       ]
+      },
+      {
+       "name": "to",
+       "overloads": [
+        {
+         "signature": "def to(ref state: T) -> Self",
+         "summary": "A `Ctx` over `state`, the one erasure served mode still performs: `state` is an argument of `serve_with`, which joins every worker before it returns, so it outlives the workers by construction even though the pointer no longer carries the origin that would say so."
+        }
+       ]
+      },
+      {
+       "name": "from_opaque",
+       "overloads": [
+        {
+         "signature": "def from_opaque(ptr: Pointer[UInt8, MutUntrackedOrigin]) -> Self",
+         "summary": "Rebuild the typed view inside a worker, from what `serve` passed."
+        }
+       ]
+      },
+      {
+       "name": "opaque",
+       "overloads": [
+        {
+         "signature": "def opaque(self) -> OpaquePtr"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "is_suspended",
+     "overloads": [
+      {
+       "signature": "def is_suspended(e: Error) -> Bool",
+       "summary": "True if `e` is the suspension signal (abandon the invocation and keep serving)."
+      }
+     ]
+    },
+    {
+     "name": "is_stopped",
+     "overloads": [
+      {
+       "signature": "def is_stopped(e: Error) -> Bool",
+       "summary": "True if `e` means `stop()` was called: `next()` will not deliver anything more, so leave the loop."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,961 @@
+{
+ "tin": "lint",
+ "version": "0.1.4",
+ "rev": "5799cd56eca15ad142a9c8ba300ad45c5eca96f4",
+ "package": "mojolint",
+ "path": "src/mojolint",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "mojolint — pattern lints for the origin and thread-safety mistakes the Mojo compiler accepts. Text-only by default; with `--lsp`, the rules ask `mojo-lsp-server` for resolved types and name-resolved uses. A proof of concept; see the README.",
+ "description": "",
+ "modules": [
+  {
+   "path": "mojolint",
+   "summary": "mojolint — pattern lints for the origin and thread-safety mistakes the Mojo compiler accepts. Text-only by default; with `--lsp`, the rules ask `mojo-lsp-server` for resolved types and name-resolved uses. A proof of concept; see the README."
+  },
+  {
+   "path": "mojolint.facts",
+   "summary": "What the compiler knows and the text does not, fetched in one LSP batch.",
+   "description": "For every function: its resolved signature. For every `var` local: its\nresolved type and every name-resolved use. For every struct field: its\nresolved type. That is the whole of what the rules ask the compiler for, and\nit is enough to replace the three textual guesses in tier 1 — \"mentioned\nagain\" (references), \"spelled `MutUntrackedOrigin`\" (types, so aliases and\nhelpers count), and \"built as `var x = S(`\" (types again).\n\n`Facts()` with no arguments is the empty set; every lookup then comes back\nempty and the rules fall back to their textual form.",
+   "structs": [
+    {
+     "name": "Facts",
+     "signature": "struct Facts",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "available",
+       "type": "Bool"
+      },
+      {
+       "name": "errors",
+       "type": "Int",
+       "summary": "Parse errors the server reported: types may be missing when > 0."
+      },
+      {
+       "name": "local_types",
+       "type": "Dict[String, String]"
+      },
+      {
+       "name": "local_uses",
+       "type": "Dict[String, List[Pos]]",
+       "summary": "Every reference to a local, declaration first, sorted."
+      },
+      {
+       "name": "field_types",
+       "type": "Dict[String, String]"
+      },
+      {
+       "name": "signatures",
+       "type": "Dict[String, String]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "local_type",
+       "overloads": [
+        {
+         "signature": "def local_type(self, f: Func, name: String) -> String",
+         "summary": "The resolved type of local `name` in `f`; empty if unknown."
+        }
+       ]
+      },
+      {
+       "name": "last_use",
+       "overloads": [
+        {
+         "signature": "def last_use(self, f: Func, name: String) -> Optional[Pos]",
+         "summary": "The last reference to local `name` after its declaration."
+        }
+       ]
+      },
+      {
+       "name": "field_type",
+       "overloads": [
+        {
+         "signature": "def field_type(self, s: Struct, field: String) -> String"
+        }
+       ]
+      },
+      {
+       "name": "signature",
+       "overloads": [
+        {
+         "signature": "def signature(self, f: Func) -> String",
+         "summary": "`def f(...)` with every type resolved; empty if unknown."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "collect_facts",
+     "overloads": [
+      {
+       "signature": "def collect_facts(path: String, source: String, lines: List[Line], mod: Module, include: List[String]) -> Facts",
+       "summary": "Ask the server about every function, local and field in `mod`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "mojolint.json",
+   "summary": "A small JSON reader and writer — enough for JSON-RPC.",
+   "description": "Parsed documents are arenas: every value is a `JsonNode` in `JsonDoc.nodes`,\nchildren are indices, and the root is node 0. That keeps the type flat (no\nrecursive struct) and makes lookups cheap: `doc.get(node, \"key\")`,\n`doc.at(node, i)`, `doc.string(node)`, `doc.int(node)`. A missing key or a\ntype mismatch gives `-1` / an empty value rather than raising, so a chain of\nlookups over a reply that may not have the shape we hoped for reads straight.",
+   "aliases": [
+    {
+     "name": "NULL",
+     "value": "UInt8(0)"
+    },
+    {
+     "name": "BOOL",
+     "value": "UInt8(1)"
+    },
+    {
+     "name": "NUMBER",
+     "value": "UInt8(2)"
+    },
+    {
+     "name": "STRING",
+     "value": "UInt8(3)"
+    },
+    {
+     "name": "ARRAY",
+     "value": "UInt8(4)"
+    },
+    {
+     "name": "OBJECT",
+     "value": "UInt8(5)"
+    }
+   ],
+   "structs": [
+    {
+     "name": "JsonNode",
+     "signature": "struct JsonNode",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "kind",
+       "type": "UInt8"
+      },
+      {
+       "name": "text",
+       "type": "String",
+       "summary": "The decoded string, the number's spelling, or `true`/`false`."
+      },
+      {
+       "name": "keys",
+       "type": "List[String]",
+       "summary": "Object keys, parallel to `children`; empty for arrays."
+      },
+      {
+       "name": "children",
+       "type": "List[Int]",
+       "summary": "Indices of array items or object values, in document order."
+      }
+     ]
+    },
+    {
+     "name": "JsonDoc",
+     "signature": "struct JsonDoc",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "nodes",
+       "type": "List[JsonNode]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "kind",
+       "overloads": [
+        {
+         "signature": "def kind(self, node: Int) -> UInt8"
+        }
+       ]
+      },
+      {
+       "name": "get",
+       "overloads": [
+        {
+         "signature": "def get(self, node: Int, key: String) -> Int",
+         "summary": "The value of `key` in object `node`, or -1."
+        }
+       ]
+      },
+      {
+       "name": "at",
+       "overloads": [
+        {
+         "signature": "def at(self, node: Int, index: Int) -> Int",
+         "summary": "Item `index` of array `node`, or -1."
+        }
+       ]
+      },
+      {
+       "name": "count",
+       "overloads": [
+        {
+         "signature": "def count(self, node: Int) -> Int",
+         "summary": "Number of items in an array or members in an object; 0 otherwise."
+        }
+       ]
+      },
+      {
+       "name": "string",
+       "overloads": [
+        {
+         "signature": "def string(self, node: Int) -> String",
+         "summary": "The text of a string node; empty for anything else."
+        }
+       ]
+      },
+      {
+       "name": "int",
+       "overloads": [
+        {
+         "signature": "def int(self, node: Int, default: Int = Int(-1)) -> Int",
+         "summary": "The value of an integer number node, else `default`."
+        }
+       ]
+      },
+      {
+       "name": "is_null",
+       "overloads": [
+        {
+         "signature": "def is_null(self, node: Int) -> Bool"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "parse_json",
+     "overloads": [
+      {
+       "signature": "def parse_json(text: String) -> JsonDoc",
+       "summary": "Parse one JSON value; the root is node 0."
+      }
+     ]
+    },
+    {
+     "name": "json_quote",
+     "overloads": [
+      {
+       "signature": "def json_quote(text: String) -> String",
+       "summary": "`text` as a JSON string literal, quotes included."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "mojolint.lsp",
+   "summary": "A batch client for `mojo-lsp-server`.",
+   "description": "The server's `--mojo-test` mode reads `// -----`-delimited JSON-RPC messages\nfrom stdin, answers every request before it honours `shutdown`, and runs\nsingle-threaded — a design for scripted use. So the client is a batch: queue\n`initialize`, `didOpen`, any number of `hover`/`references` queries, then\n`shutdown`/`exit`; write the lot to a file; run the server once with stdin\nredirected; parse the `Content-Length`-framed replies and index them by id.\nNo pipes, no threads, one process per file, well under a second with `std`\nloaded.\n\nPositions are LSP positions: 0-based line, 0-based UTF-16 column. The linter\nworks in bytes and 1-based lines; `Pos` converts at the boundary and the\ncolumn difference only matters after a non-ASCII character on the same line.",
+   "structs": [
+    {
+     "name": "Pos",
+     "signature": "struct Pos",
+     "summary": "A 1-based line and 0-based byte column, as the linter counts.",
+     "traits": [
+      "Copyable",
+      "Equatable",
+      "ImplicitlyCopyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "line",
+       "type": "Int"
+      },
+      {
+       "name": "col",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__lt__",
+       "overloads": [
+        {
+         "signature": "def __lt__(self, other: Self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "__eq__",
+       "overloads": [
+        {
+         "signature": "def __eq__(self, other: Self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "LspBatch",
+     "signature": "struct LspBatch",
+     "summary": "The requests for one document, in order.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "uri",
+       "type": "String"
+      },
+      {
+       "name": "text",
+       "type": "String"
+      },
+      {
+       "name": "next_id",
+       "type": "Int"
+      },
+      {
+       "name": "body",
+       "type": "String",
+       "summary": "The delimited request stream, without the closing shutdown/exit."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, path: String, source: String)"
+        }
+       ]
+      },
+      {
+       "name": "hover",
+       "overloads": [
+        {
+         "signature": "def hover(mut self, at: Pos) -> Int",
+         "summary": "Queue a hover at `at`; returns the request id."
+        }
+       ]
+      },
+      {
+       "name": "references",
+       "overloads": [
+        {
+         "signature": "def references(mut self, at: Pos) -> Int",
+         "summary": "Queue a references query (declaration included) at `at`."
+        }
+       ]
+      },
+      {
+       "name": "run",
+       "overloads": [
+        {
+         "signature": "def run(self, include: List[String]) -> LspReplies",
+         "summary": "Run the server over the queued requests and collect its replies.",
+         "description": "The server is `mojo-lsp-server` on `PATH`, or `$MOJO_LSP_SERVER`."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "LspReplies",
+     "signature": "struct LspReplies",
+     "summary": "Every message the server sent, parsed, with requests indexed by id.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "docs",
+       "type": "List[JsonDoc]"
+      },
+      {
+       "name": "ids",
+       "type": "List[Int]",
+       "summary": "`ids[k]` is the id of `docs[k]`, or -1 for a notification."
+      },
+      {
+       "name": "errors",
+       "type": "Int",
+       "summary": "Diagnostics of severity 1 (error) the server published."
+      },
+      {
+       "name": "raw",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var stream: String)"
+        }
+       ]
+      },
+      {
+       "name": "hover_text",
+       "overloads": [
+        {
+         "signature": "def hover_text(self, id: Int) -> String",
+         "summary": "The first line of the hover's code block: `(variable) var t: T`, `(argument) p: T`, `(field) var cell: T`, `(function) def f(...)`. Empty when the server had nothing to say."
+        }
+       ]
+      },
+      {
+       "name": "positions",
+       "overloads": [
+        {
+         "signature": "def positions(self, id: Int) -> List[Pos]",
+         "summary": "The start of every location in a references reply, sorted."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "split_frames",
+     "overloads": [
+      {
+       "signature": "def split_frames(stream: String) -> List[String]",
+       "summary": "The bodies of the `Content-Length:`-framed messages in `stream`."
+      }
+     ]
+    },
+    {
+     "name": "hover_type",
+     "overloads": [
+      {
+       "signature": "def hover_type(text: String) -> String",
+       "summary": "The type in a hover line: everything after the first `: ` of `(variable) var t: Pointer[T, MutUntrackedOrigin]`; empty if none."
+      }
+     ]
+    },
+    {
+     "name": "hover_signature",
+     "overloads": [
+      {
+       "signature": "def hover_signature(text: String) -> String",
+       "summary": "The `def ...` of a `(function) def f(...)` hover line; empty if none."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "mojolint.rules",
+   "summary": "The rules. Each is one function over a file's logical lines and its recovered structure, returning `Finding`s. `RULES` is the table the CLI and the corpus harness read; add an entry and a branch in `run_rule` for L004.",
+   "structs": [
+    {
+     "name": "Finding",
+     "signature": "struct Finding",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "path",
+       "type": "String"
+      },
+      {
+       "name": "line",
+       "type": "Int"
+      },
+      {
+       "name": "col",
+       "type": "Int"
+      },
+      {
+       "name": "rule",
+       "type": "String"
+      },
+      {
+       "name": "message",
+       "type": "String"
+      }
+     ],
+     "functions": [
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Rule",
+     "signature": "struct Rule",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "id",
+       "type": "String"
+      },
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "summary",
+       "type": "String"
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "rules",
+     "overloads": [
+      {
+       "signature": "def rules() -> List[Rule]",
+       "summary": "Every rule, in the order they run."
+      }
+     ]
+    },
+    {
+     "name": "check_l001",
+     "overloads": [
+      {
+       "signature": "def check_l001(path: String, lines: List[Line], mod: Module, facts: Facts) -> List[Finding]",
+       "summary": "`Pointer(to=x)` erased to an untracked or opaque pointer, where either",
+       "description": "- the line is a `return`: the untracked pointer leaves the function while\n  `x` (a parameter or local) does not; or\n- `x` is a `var` local of this function and is never mentioned again:\n  Mojo destroys `x` at that last use, before anything reads the pointer.\n\nAn erased pointer passed as an argument to a call, from a parameter, is\nfine — a parameter is alive for the whole call, joins included — which is\nhow the library's own typed `parallel_for` looks, and why it is silent.\n\nWith facts, the second case is decided by the compiler: the last\nname-resolved use of `x`, and whether the line binds a value whose\nresolved type is an untracked pointer or a struct wrapping one — so\n`var ctx = Ctx.to(x)` is caught at the call, not inside the helper."
+      }
+     ]
+    },
+    {
+     "name": "check_l002",
+     "overloads": [
+      {
+       "signature": "def check_l002(path: String, lines: List[Line], mod: Module, facts: Facts) -> List[Finding]",
+       "summary": "A struct with `__deinit__`/`__del__` and an untracked pointer field, dereferenced as `local.field[]` from outside its methods.",
+       "description": "`local.field[]` copies the pointer out and, if that is `local`'s last\nuse, the destructor runs between the copy and the deref. A method borrows\nthe whole struct for the call; so does `OwnedPointer.__getitem__`.\n\nWith facts, the field's type is the resolved one, the owners are every\nlocal whose resolved type is the struct (however it was built), and the\nderef must sit on the owner's last use."
+      }
+     ]
+    },
+    {
+     "name": "check_l003",
+     "overloads": [
+      {
+       "signature": "def check_l003(path: String, lines: List[Line], mod: Module, facts: Facts) -> List[Finding]",
+       "summary": "A plain store to shared state inside a task-shaped function.",
+       "description": "Fires on `t.field = …` (typed shape) and `p[].field = …` (any shape). A\nsubscripted target such as `s.cells[i] = …` is taken to be a per-task\nslot and left alone; atomics never appear on the left of `=`."
+      }
+     ]
+    },
+    {
+     "name": "run_rule",
+     "overloads": [
+      {
+       "signature": "def run_rule(id: String, path: String, lines: List[Line], mod: Module, facts: Facts) -> List[Finding]"
+      }
+     ]
+    },
+    {
+     "name": "lint_source",
+     "overloads": [
+      {
+       "signature": "def lint_source(path: String, source: String) -> List[Finding]",
+       "summary": "Every finding for one file, sorted by line — text only, no compiler."
+      }
+     ]
+    },
+    {
+     "name": "lint_with_facts",
+     "overloads": [
+      {
+       "signature": "def lint_with_facts(path: String, source: String, facts: Facts) -> List[Finding]",
+       "summary": "Every finding for one file, sorted by line, using `facts` where the rules have a use for them (`collect_facts` fills them from the LSP)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "mojolint.structure",
+   "summary": "Functions, parameters, structs and fields, recovered from logical lines by indentation alone.",
+   "description": "A `def` header at indent *k* owns every following line with indent > *k*;\nthe same for `struct`. That is enough to know, for any line, which function\nit is in and what that function's parameters and `var` locals are called —\nthe whole vocabulary the rules use.",
+   "structs": [
+    {
+     "name": "Param",
+     "signature": "struct Param",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "conv",
+       "type": "String",
+       "summary": "`read`, `mut`, `ref`, `var`, `out` or `deinit` — `read` when unwritten."
+      },
+      {
+       "name": "type",
+       "type": "String",
+       "summary": "The declared type text, default value removed; empty if untyped."
+      }
+     ]
+    },
+    {
+     "name": "Func",
+     "signature": "struct Func",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "owner",
+       "type": "String",
+       "summary": "The enclosing struct's name, or empty for a free function."
+      },
+      {
+       "name": "params",
+       "type": "List[Param]"
+      },
+      {
+       "name": "header",
+       "type": "Int",
+       "summary": "Index of the header line in the `List[Line]`."
+      },
+      {
+       "name": "body_start",
+       "type": "Int"
+      },
+      {
+       "name": "body_end",
+       "type": "Int",
+       "summary": "Exclusive end of the body in the `List[Line]`."
+      }
+     ],
+     "functions": [
+      {
+       "name": "param",
+       "overloads": [
+        {
+         "signature": "def param(self, name: String) -> Optional[Param]"
+        }
+       ]
+      },
+      {
+       "name": "is_param",
+       "overloads": [
+        {
+         "signature": "def is_param(self, name: String) -> Bool"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Field",
+     "signature": "struct Field",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "type",
+       "type": "String"
+      }
+     ]
+    },
+    {
+     "name": "Struct",
+     "signature": "struct Struct",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "fields",
+       "type": "List[Field]"
+      },
+      {
+       "name": "has_deinit",
+       "type": "Bool",
+       "summary": "Defines `__deinit__` or `__del__`."
+      },
+      {
+       "name": "header",
+       "type": "Int"
+      },
+      {
+       "name": "body_end",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "field",
+       "overloads": [
+        {
+         "signature": "def field(self, name: String) -> Optional[Field]"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Module",
+     "signature": "struct Module",
+     "summary": "The functions and structs of one file.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "funcs",
+       "type": "List[Func]"
+      },
+      {
+       "name": "structs",
+       "type": "List[Struct]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "func_at",
+       "overloads": [
+        {
+         "signature": "def func_at(self, line_index: Int) -> Optional[Func]",
+         "summary": "The innermost function whose body contains `line_index`."
+        }
+       ]
+      },
+      {
+       "name": "struct_named",
+       "overloads": [
+        {
+         "signature": "def struct_named(self, name: String) -> Optional[Struct]"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "parse_params",
+     "overloads": [
+      {
+       "signature": "def parse_params(header: String) -> List[Param]",
+       "summary": "Parameters of a `def` header line, in order."
+      }
+     ]
+    },
+    {
+     "name": "parse_module",
+     "overloads": [
+      {
+       "signature": "def parse_module(lines: List[Line]) -> Module",
+       "summary": "Recover functions and structs from `lines`."
+      }
+     ]
+    },
+    {
+     "name": "locals_of",
+     "overloads": [
+      {
+       "signature": "def locals_of(lines: List[Line], f: Func) -> List[String]",
+       "summary": "Names declared with `var` in `f`'s body, in order of declaration."
+      }
+     ]
+    },
+    {
+     "name": "has_local",
+     "overloads": [
+      {
+       "signature": "def has_local(lines: List[Line], f: Func, name: String) -> Bool"
+      }
+     ]
+    },
+    {
+     "name": "used_after",
+     "overloads": [
+      {
+       "signature": "def used_after(lines: List[Line], f: Func, line_index: Int, name: String) -> Bool",
+       "summary": "Is `name` mentioned on any line of `f` after `line_index`?"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "mojolint.tokenize",
+   "summary": "Logical lines: Mojo source with comments removed, string contents blanked, and bracketed continuations joined.",
+   "description": "This is all the \"parsing\" `mojolint` does. A rule sees a `Line` — one\nstatement or header, its first physical line number, its indent, the code\ntext, and the identifier words in it — and matches on text. No AST, no\ntypes, no dataflow. That ceiling is deliberate; see the README.",
+   "structs": [
+    {
+     "name": "Line",
+     "signature": "struct Line",
+     "summary": "One logical line of code.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "lineno",
+       "type": "Int",
+       "summary": "1-based number of the first physical line."
+      },
+      {
+       "name": "indent",
+       "type": "Int",
+       "summary": "Leading spaces of the first physical line."
+      },
+      {
+       "name": "code",
+       "type": "String",
+       "summary": "The text, comments stripped, every string literal reduced to `\"\"`."
+      },
+      {
+       "name": "words",
+       "type": "List[String]",
+       "summary": "Identifier tokens of `code`, in order."
+      },
+      {
+       "name": "allow",
+       "type": "List[String]",
+       "summary": "Rule ids named in a `# lint: allow(...)` comment on or just above it."
+      },
+      {
+       "name": "starts",
+       "type": "List[Int]",
+       "summary": "Offset in `code` where each physical line begins; `starts[0]` is 0."
+      },
+      {
+       "name": "indents",
+       "type": "List[Int]",
+       "summary": "Leading spaces of each physical line, parallel to `starts`."
+      }
+     ],
+     "functions": [
+      {
+       "name": "locate",
+       "overloads": [
+        {
+         "signature": "def locate(self, at: Int) -> Tuple[Int, Int]",
+         "summary": "The 1-based physical line and 1-based column of offset `at` in `code`, so a finding on a bracketed continuation points into the physical line it sits on."
+        }
+       ]
+      },
+      {
+       "name": "has_word",
+       "overloads": [
+        {
+         "signature": "def has_word(self, word: String) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "allows",
+       "overloads": [
+        {
+         "signature": "def allows(self, rule: String) -> Bool"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "handed_whole",
+     "overloads": [
+      {
+       "signature": "def handed_whole(code: String, name: String) -> Bool",
+       "summary": "Does `code` pass the local `name` as a whole value somewhere?",
+       "description": "True when an occurrence of `name` is followed by `)` or `,` (an argument)\nor `.` (a method call on it). False when it is only read *through*: as\nthe base of `name[...]`, or not present at all. `Ctx.to(totals)` hands\n`totals`; `Int(cells[unsafe_offset=2])` merely reads a cell of `cells`."
+      }
+     ]
+    },
+    {
+     "name": "words_of",
+     "overloads": [
+      {
+       "signature": "def words_of(code: String) -> List[String]",
+       "summary": "The identifier tokens of `code`, in order.",
+       "description": "Numbers are skipped, so `1_000` never becomes a word; string contents are\nalready gone by the time this runs."
+      }
+     ]
+    },
+    {
+     "name": "logical_lines",
+     "overloads": [
+      {
+       "signature": "def logical_lines(source: String) -> List[Line]",
+       "summary": "Split `source` into logical lines.",
+       "description": "Comments are removed first, then string literals are blanked, then\nphysical lines are joined while brackets are open. Blank lines are\ndropped. A `# lint: allow(...)` comment on a line applies to that line;\non a line of its own it applies to the next code line."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

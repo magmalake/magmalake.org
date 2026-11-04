@@ -1,0 +1,693 @@
+{
+ "tin": "iceberg-rs",
+ "version": "0.1.3",
+ "rev": "096434e40a0d707b733ac3ead05121684007096b",
+ "package": "iceberg_rs",
+ "path": "src/iceberg_rs",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "`iceberg_rs` — Apache Iceberg for Mojo, over a Rust cdylib wrapping iceberg-rust.",
+ "description": "Mirrors lancedb.mojo's FFI pattern: one relocatable library\n(`ffi/src/*.rs` -> `$CONDA_PREFIX/lib/libicebergrsmojo.{dylib,so}`, built by the\n`iceberg-shim` pixi package) loaded through an `OwnedDLHandle`. The handle is\npassed as a BORROWED `read` param to every worker so Mojo's ASAP destruction\ncan't `dlclose` the library mid-call (the flare gotcha) — even though each struct\nalso owns a handle as a field, the borrow keeps it pinned across the C call.\n\nNothing but integers, raw buffers and UTF-8 bytes crosses FFI. Iceberg handles\n(catalog, table, scan, batch) are opaque `Int` pointers; results that don't fit\nin a register come back as heap C strings which `_take_string` copies out through\n`ib_string_len` / `ib_string_copy` and frees — so no Mojo code ever dereferences\na foreign pointer.\n\n    from iceberg_rs import Catalog\n\n    var cat = Catalog.sql(\"sqlite:/tmp/cat.db?mode=rwc\", \"file:///tmp/warehouse\")\n    cat.create_namespace(\"sales\")\n    var t = cat.create_table(\"sales\", \"orders\", SCHEMA_JSON, SPEC_JSON)\n\n    var b = t.builder()\n    b.int_col(\"id\", [Int64(1), Int64(2)])\n    b.str_col(\"region\", [\"eu\", \"us\"])\n    t.append(b.build())\n    var snapshot = t.commit()\n\n    var scan = t.scan(columns=\"id,region\", filter='[\"=\",\"region\",\"eu\"]')\n    for batch in scan.batches():\n        print(batch.int_col(\"id\"))",
+ "modules": [
+  {
+   "path": "iceberg_rs",
+   "summary": "`iceberg_rs` — Apache Iceberg for Mojo, over a Rust cdylib wrapping iceberg-rust.",
+   "description": "Mirrors lancedb.mojo's FFI pattern: one relocatable library\n(`ffi/src/*.rs` -> `$CONDA_PREFIX/lib/libicebergrsmojo.{dylib,so}`, built by the\n`iceberg-shim` pixi package) loaded through an `OwnedDLHandle`. The handle is\npassed as a BORROWED `read` param to every worker so Mojo's ASAP destruction\ncan't `dlclose` the library mid-call (the flare gotcha) — even though each struct\nalso owns a handle as a field, the borrow keeps it pinned across the C call.\n\nNothing but integers, raw buffers and UTF-8 bytes crosses FFI. Iceberg handles\n(catalog, table, scan, batch) are opaque `Int` pointers; results that don't fit\nin a register come back as heap C strings which `_take_string` copies out through\n`ib_string_len` / `ib_string_copy` and frees — so no Mojo code ever dereferences\na foreign pointer.\n\n    from iceberg_rs import Catalog\n\n    var cat = Catalog.sql(\"sqlite:/tmp/cat.db?mode=rwc\", \"file:///tmp/warehouse\")\n    cat.create_namespace(\"sales\")\n    var t = cat.create_table(\"sales\", \"orders\", SCHEMA_JSON, SPEC_JSON)\n\n    var b = t.builder()\n    b.int_col(\"id\", [Int64(1), Int64(2)])\n    b.str_col(\"region\", [\"eu\", \"us\"])\n    t.append(b.build())\n    var snapshot = t.commit()\n\n    var scan = t.scan(columns=\"id,region\", filter='[\"=\",\"region\",\"eu\"]')\n    for batch in scan.batches():\n        print(batch.int_col(\"id\"))",
+   "structs": [
+    {
+     "name": "Batch",
+     "signature": "struct Batch",
+     "summary": "One Arrow record batch owned by the Rust side.",
+     "description": "Columns are copied out on demand and cast on the way: `int_col` reads any\ninteger, date, time, timestamp or boolean column as `Int64` (timestamps in\nmicroseconds since the epoch, dates in days), `float_col` reads any numeric\ncolumn as `Float64`, `str_col` reads any column as UTF-8.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "lib",
+       "type": "OwnedDLHandle"
+      },
+      {
+       "name": "ptr",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var lib: OwnedDLHandle, ptr: Int)"
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "num_rows",
+       "overloads": [
+        {
+         "signature": "def num_rows(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "num_columns",
+       "overloads": [
+        {
+         "signature": "def num_columns(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "schema_json",
+       "overloads": [
+        {
+         "signature": "def schema_json(self) -> String",
+         "summary": "JSON array of `{\"name\", \"type\", \"nullable\"}` for the batch's columns."
+        }
+       ]
+      },
+      {
+       "name": "int_col",
+       "overloads": [
+        {
+         "signature": "def int_col(self, name: String) -> List[Int64]",
+         "summary": "Column `name` as `Int64`. Nulls read back as 0 — use `validity` to tell them apart."
+        }
+       ]
+      },
+      {
+       "name": "float_col",
+       "overloads": [
+        {
+         "signature": "def float_col(self, name: String) -> List[Float64]",
+         "summary": "Column `name` as `Float64`. Nulls read back as 0.0."
+        }
+       ]
+      },
+      {
+       "name": "bool_col",
+       "overloads": [
+        {
+         "signature": "def bool_col(self, name: String) -> List[Bool]",
+         "summary": "Column `name` as `Bool`. Nulls read back as False."
+        }
+       ]
+      },
+      {
+       "name": "str_col",
+       "overloads": [
+        {
+         "signature": "def str_col(self, name: String) -> List[String]",
+         "summary": "Column `name` as UTF-8 strings. Nulls read back as empty strings."
+        }
+       ]
+      },
+      {
+       "name": "validity",
+       "overloads": [
+        {
+         "signature": "def validity(self, name: String) -> List[Bool]",
+         "summary": "One flag per row of column `name`: True when the value is present."
+        }
+       ]
+      },
+      {
+       "name": "export_c_data",
+       "overloads": [
+        {
+         "signature": "def export_c_data(self) -> ArrowCData",
+         "summary": "Export this batch through the Arrow C Data Interface as a struct array (one child per column) — the shape marrow's `c_data.mojo` imports."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ArrowCData",
+     "signature": "struct ArrowCData",
+     "summary": "Storage for one Arrow C Data Interface struct pair.",
+     "description": "The two structs live in `Int64`-backed Mojo buffers (guaranteed 8-byte\naligned, sized from the shim's own `sizeof`), so a consumer such as marrow can\nread them straight from `array_ptr()` / `schema_ptr()`. Releasing is automatic:\nthe destructor calls the structs' `release` callbacks through `ib_arrow_release`.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "lib",
+       "type": "OwnedDLHandle"
+      },
+      {
+       "name": "array_buf",
+       "type": "List[Int64]"
+      },
+      {
+       "name": "schema_buf",
+       "type": "List[Int64]"
+      },
+      {
+       "name": "live",
+       "type": "Bool"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var lib: OwnedDLHandle, sizer: OwnedDLHandle)"
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "array_ptr",
+       "overloads": [
+        {
+         "signature": "def array_ptr(self) -> Int",
+         "summary": "Address of the `ArrowArray` struct."
+        }
+       ]
+      },
+      {
+       "name": "schema_ptr",
+       "overloads": [
+        {
+         "signature": "def schema_ptr(self) -> Int",
+         "summary": "Address of the `ArrowSchema` struct."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Scan",
+     "signature": "struct Scan",
+     "summary": "A planned table scan. Pull batches with `next()` until it returns an empty `Optional`, or inspect the plan with `plan_files()` without reading any data.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "lib",
+       "type": "OwnedDLHandle"
+      },
+      {
+       "name": "ptr",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var lib: OwnedDLHandle, ptr: Int)"
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "plan_files",
+       "overloads": [
+        {
+         "signature": "def plan_files(self) -> String",
+         "summary": "JSON array of the file scan tasks: data file path, format, record count, byte range, and any delete files that apply to each."
+        }
+       ]
+      },
+      {
+       "name": "next",
+       "overloads": [
+        {
+         "signature": "def next(mut self) -> Optional[Batch]",
+         "summary": "The next record batch, or `None` at the end of the stream."
+        }
+       ]
+      },
+      {
+       "name": "next_c_data",
+       "overloads": [
+        {
+         "signature": "def next_c_data(mut self) -> Optional[ArrowCData]",
+         "summary": "The next record batch straight through the Arrow C Data Interface, skipping the opaque handle entirely."
+        }
+       ]
+      },
+      {
+       "name": "batches",
+       "overloads": [
+        {
+         "signature": "def batches(mut self) -> List[Batch]",
+         "summary": "Drain the scan into a list of batches. Convenient for the small results a parity check produces; stream with `next()` for large tables."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "BatchBuilder",
+     "signature": "struct BatchBuilder",
+     "summary": "Builds one record batch column by column against a table's schema.",
+     "description": "Each `*_col` call names a column of the table; the values are cast to the\ncolumn's declared type on the Rust side, so `int_col` feeds `int`, `long`,\n`date` (days) and `timestamp` (microseconds) columns alike. Columns you leave\nout must be optional in the schema; they are filled with nulls.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "lib",
+       "type": "OwnedDLHandle"
+      },
+      {
+       "name": "ptr",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var lib: OwnedDLHandle, ptr: Int)"
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "int_col",
+       "overloads": [
+        {
+         "signature": "def int_col(mut self, name: String, values: List[Int64])"
+        },
+        {
+         "signature": "def int_col(mut self, name: String, values: List[Int64], valid: List[Bool])"
+        }
+       ]
+      },
+      {
+       "name": "float_col",
+       "overloads": [
+        {
+         "signature": "def float_col(mut self, name: String, values: List[Float64])"
+        },
+        {
+         "signature": "def float_col(mut self, name: String, values: List[Float64], valid: List[Bool])"
+        }
+       ]
+      },
+      {
+       "name": "bool_col",
+       "overloads": [
+        {
+         "signature": "def bool_col(mut self, name: String, values: List[Bool])"
+        },
+        {
+         "signature": "def bool_col(mut self, name: String, values: List[Bool], valid: List[Bool])"
+        }
+       ]
+      },
+      {
+       "name": "str_col",
+       "overloads": [
+        {
+         "signature": "def str_col(mut self, name: String, values: List[String])"
+        },
+        {
+         "signature": "def str_col(mut self, name: String, values: List[String], valid: List[Bool])"
+        }
+       ]
+      },
+      {
+       "name": "build",
+       "overloads": [
+        {
+         "signature": "def build(self) -> Batch",
+         "summary": "Assemble the staged columns into a `Batch`."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Table",
+     "signature": "struct Table",
+     "summary": "A loaded Iceberg table: metadata, scans, and append/commit.",
+     "description": "iceberg-rust 0.10 is append-only. `append` writes Parquet data files right\naway and stages them; `commit` turns everything staged into exactly one new\nsnapshot and returns its id.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "lib",
+       "type": "OwnedDLHandle"
+      },
+      {
+       "name": "ptr",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var lib: OwnedDLHandle, ptr: Int)"
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "refresh",
+       "overloads": [
+        {
+         "signature": "def refresh(mut self)",
+         "summary": "Re-load from the catalog, picking up snapshots committed elsewhere."
+        }
+       ]
+      },
+      {
+       "name": "metadata_json",
+       "overloads": [
+        {
+         "signature": "def metadata_json(self) -> String",
+         "summary": "The table's full current `metadata.json` text."
+        }
+       ]
+      },
+      {
+       "name": "schema_json",
+       "overloads": [
+        {
+         "signature": "def schema_json(self) -> String",
+         "summary": "The current schema in Iceberg metadata JSON form."
+        }
+       ]
+      },
+      {
+       "name": "partition_spec_json",
+       "overloads": [
+        {
+         "signature": "def partition_spec_json(self) -> String",
+         "summary": "The default partition spec as JSON."
+        }
+       ]
+      },
+      {
+       "name": "snapshots_json",
+       "overloads": [
+        {
+         "signature": "def snapshots_json(self) -> String",
+         "summary": "JSON array of the table's snapshots, oldest first."
+        }
+       ]
+      },
+      {
+       "name": "location",
+       "overloads": [
+        {
+         "signature": "def location(self) -> String",
+         "summary": "The table's base location."
+        }
+       ]
+      },
+      {
+       "name": "current_snapshot_id",
+       "overloads": [
+        {
+         "signature": "def current_snapshot_id(self) -> Int64",
+         "summary": "The current snapshot id, or 0 when the table has no snapshot yet."
+        }
+       ]
+      },
+      {
+       "name": "builder",
+       "overloads": [
+        {
+         "signature": "def builder(self) -> BatchBuilder",
+         "summary": "A `BatchBuilder` bound to this table's schema."
+        }
+       ]
+      },
+      {
+       "name": "append",
+       "overloads": [
+        {
+         "signature": "def append(mut self, batch: Batch)",
+         "summary": "Stage `batch` for append: writes its Parquet data file(s) now and remembers them until `commit`."
+        }
+       ]
+      },
+      {
+       "name": "append_c_data",
+       "overloads": [
+        {
+         "signature": "def append_c_data(mut self, mut data: ArrowCData)",
+         "summary": "Stage an Arrow C Data Interface struct pair for append. Consumes the pair — `data` is inert afterwards."
+        }
+       ]
+      },
+      {
+       "name": "pending_files",
+       "overloads": [
+        {
+         "signature": "def pending_files(self) -> Int",
+         "summary": "Data files staged but not yet committed."
+        }
+       ]
+      },
+      {
+       "name": "commit",
+       "overloads": [
+        {
+         "signature": "def commit(mut self) -> Int64",
+         "summary": "Commit every staged append as one new snapshot; returns its id. With nothing staged this is a no-op returning the current snapshot id."
+        }
+       ]
+      },
+      {
+       "name": "rollback",
+       "overloads": [
+        {
+         "signature": "def rollback(mut self)",
+         "summary": "Drop every staged (uncommitted) append."
+        }
+       ]
+      },
+      {
+       "name": "scan",
+       "overloads": [
+        {
+         "signature": "def scan(self) -> Scan",
+         "summary": "Scan every column of the current snapshot."
+        },
+        {
+         "signature": "def scan(self, columns: String) -> Scan",
+         "summary": "Scan a comma-separated column projection of the current snapshot."
+        },
+        {
+         "signature": "def scan(self, columns: String, filter: String) -> Scan",
+         "summary": "Scan a projection of the current snapshot under a filter (see the filter DSL in the README)."
+        },
+        {
+         "signature": "def scan(self, columns: String, snapshot_id: Int64, filter: String) -> Scan",
+         "summary": "Scan `columns` (empty for all) of `snapshot_id` (0 for current) under `filter` (empty for none)."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Catalog",
+     "signature": "struct Catalog",
+     "summary": "An Iceberg catalog: REST, or SQL over sqlite/postgres/mysql.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "lib",
+       "type": "OwnedDLHandle"
+      },
+      {
+       "name": "ptr",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var lib: OwnedDLHandle, ptr: Int)"
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "sql",
+       "overloads": [
+        {
+         "signature": "def sql(uri: String, warehouse: String) -> Self",
+         "summary": "A SQL catalog. `uri` is an sqlx connection string (`sqlite:/abs/path/catalog.db?mode=rwc`, `postgres://…`, `mysql://…`) and `warehouse` is the data root (`file:///…`, `s3://…`). The sqlite flavour needs no infrastructure at all — it is what the test-suite uses."
+        }
+       ]
+      },
+      {
+       "name": "rest",
+       "overloads": [
+        {
+         "signature": "def rest(uri: String) -> Self",
+         "summary": "A REST catalog with no warehouse hint and no extra properties."
+        },
+        {
+         "signature": "def rest(uri: String, warehouse: String, props_json: String) -> Self",
+         "summary": "A REST catalog. `props_json` is a JSON object of extra properties passed to the REST client — OAuth2 (`credential`, `oauth2-server-uri`, `scope`, `token`) and `header.*` entries go here. See `examples/rest_polaris.md`."
+        }
+       ]
+      },
+      {
+       "name": "list_namespaces",
+       "overloads": [
+        {
+         "signature": "def list_namespaces(self) -> String",
+         "summary": "JSON array of top-level namespaces, each a dotted string."
+        },
+        {
+         "signature": "def list_namespaces(self, parent: String) -> String",
+         "summary": "JSON array of the namespaces under `parent` (empty for top level)."
+        }
+       ]
+      },
+      {
+       "name": "create_namespace",
+       "overloads": [
+        {
+         "signature": "def create_namespace(mut self, ns: String)"
+        },
+        {
+         "signature": "def create_namespace(mut self, ns: String, props_json: String)"
+        }
+       ]
+      },
+      {
+       "name": "namespace_exists",
+       "overloads": [
+        {
+         "signature": "def namespace_exists(self, ns: String) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "drop_namespace",
+       "overloads": [
+        {
+         "signature": "def drop_namespace(mut self, ns: String)"
+        }
+       ]
+      },
+      {
+       "name": "list_tables",
+       "overloads": [
+        {
+         "signature": "def list_tables(self, ns: String) -> String",
+         "summary": "JSON array of the table names in `ns`."
+        }
+       ]
+      },
+      {
+       "name": "table_exists",
+       "overloads": [
+        {
+         "signature": "def table_exists(self, ns: String, name: String) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "load_table",
+       "overloads": [
+        {
+         "signature": "def load_table(self, ns: String, name: String) -> Table"
+        }
+       ]
+      },
+      {
+       "name": "drop_table",
+       "overloads": [
+        {
+         "signature": "def drop_table(mut self, ns: String, name: String)"
+        }
+       ]
+      },
+      {
+       "name": "create_table",
+       "overloads": [
+        {
+         "signature": "def create_table(mut self, ns: String, name: String, schema_json: String) -> Table",
+         "summary": "Create an unpartitioned table. `schema_json` is Iceberg's metadata JSON schema form."
+        },
+        {
+         "signature": "def create_table(mut self, ns: String, name: String, schema_json: String, partition_spec_json: String) -> Table",
+         "summary": "Create a table with a partition spec (unbound partition spec JSON)."
+        },
+        {
+         "signature": "def create_table(mut self, ns: String, name: String, schema_json: String, partition_spec_json: String, props_json: String) -> Table"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "version",
+     "overloads": [
+      {
+       "signature": "def version() -> String",
+       "summary": "The version of the `iceberg` Rust crate the shim was built against."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
