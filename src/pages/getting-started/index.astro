@@ -25,7 +25,11 @@ const host = (u: string) => u.replace(/^https:\/\//, "");
       </p>
 
       <h2 id="live">See it running</h2>
-      <p>The example runs on AWS, deployed with <code>orca aws</code>. Both sites are public to read.</p>
+      <p>
+        The example runs on AWS, deployed with <code>orca aws</code> as one image of 71.1 MB
+        compressed, which holds the scheduler, the three pipelines and the console. Both
+        sites are public to read.
+      </p>
       <div class="gs-cards">
         <a class="gs-card" href={ORCA_DEMO} rel="noopener">
           <span class="gs-card__title">Orca's UI</span>
