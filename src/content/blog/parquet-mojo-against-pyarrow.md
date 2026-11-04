@@ -90,9 +90,9 @@ Every row above comes from a run that satisfied all of these.
   caches and allocators for each other, and worker ladders contend with each
   other if run together.
 
-The full table, including the Iceberg, Avro, codec and object-storage rows and
-the two repos whose benchmarks are not on that harness yet, is on
-[the performance page](/performance).
+The rest of the numbers, including the Iceberg, Avro, codec and object-storage
+rows and the two repos whose benchmarks are not on that harness yet, are on each
+tin's own page, linked from [the performance page](/performance).
 
 ## The skill
 
