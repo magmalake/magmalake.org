@@ -3,6 +3,7 @@
  * One page per tin, from src/data/tins.ts, perf.ts and upstream.ts. Orca and
  * Dista have sections of their own (`site`), so they are left out here.
  */
+import { getEntry, render } from "astro:content";
 import Base from "../../layouts/Base.astro";
 import CodeBlock from "../../components/CodeBlock.astro";
 import PerfTable from "../../components/PerfTable.astro";
@@ -35,6 +36,8 @@ const groups = perfFor(slug);
 const passes = passesFor(slug);
 const issues = upstreamFor(slug);
 const siblings = tins.filter((t) => t.tier === tin.tier && t !== tin);
+const doc = await getEntry("tindocs", slug);
+const Docs = doc ? (await render(doc)).Content : null;
 const description = `${tin.name}, a magmalake tin: ${tin.what.split(". ")[0].replace(/\.$/, "")}.`;
 ---
 
@@ -168,11 +171,24 @@ const description = `${tin.name}, a magmalake tin: ${tin.what.split(". ")[0].rep
   <section class="section section--alt tp__section" id="docs">
     <div class="wrap wrap--wide">
       <p class="eyebrow">Docs</p>
-      <p class="lede">
-        Docs for {tin.name} are not written yet. Until they are, the README on GitHub is the
-        reference: what it covers, how to use it and how its tests run.
-      </p>
-      <a class="btn" href={readmeOf(tin)} rel="noopener">Read the README</a>
+      {
+        Docs ? (
+          <div class="tp__docs">
+            <Docs />
+            <p class="tp__docs-more">
+              The full reference is <a href={readmeOf(tin)} rel="noopener">the README on GitHub</a>.
+            </p>
+          </div>
+        ) : (
+          <>
+            <p class="lede">
+              Docs for {tin.name} are not written yet. Until they are, the README on GitHub is
+              the reference: what it covers, how to use it and how its tests run.
+            </p>
+            <a class="btn" href={readmeOf(tin)} rel="noopener">Read the README</a>
+          </>
+        )
+      }
     </div>
   </section>
 
@@ -274,4 +290,54 @@ const description = `${tin.name}, a magmalake tin: ${tin.what.split(". ")[0].rep
   .tp__siblings a { font-family: var(--font-mono); font-weight: 600; text-decoration: none; }
   .tp__siblings a:hover { text-decoration: underline; }
   .tp__siblings span { display: block; font-size: 0.8125rem; color: var(--text-muted); }
+  /* The Docs section: Markdown from src/content/tindocs, set like a blog
+     post's body so code fences and tables look the same across the site. */
+  .tp__docs { max-width: 46rem; }
+  .tp__docs :global(h2) {
+    font-size: 1.3rem;
+    letter-spacing: -0.015em;
+    margin: 2.5rem 0 0.85rem;
+  }
+  .tp__docs :global(h2:first-child) { margin-top: 0.5rem; }
+  .tp__docs :global(h3) {
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    margin: 1.8rem 0 0.7rem;
+  }
+  .tp__docs :global(p) { margin: 0 0 1.15rem; line-height: 1.7; }
+  .tp__docs :global(ul),
+  .tp__docs :global(ol) { margin: 0 0 1.15rem 1.1rem; line-height: 1.7; }
+  .tp__docs :global(li) { margin-bottom: 0.3rem; }
+  .tp__docs :global(pre) {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    margin: 0 0 1.4rem;
+  }
+  .tp__docs :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin: 0 0 1.4rem;
+    display: block;
+    overflow-x: auto;
+  }
+  .tp__docs :global(th),
+  .tp__docs :global(td) {
+    text-align: left;
+    padding: 0.5rem 0.7rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .tp__docs :global(th) {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .tp__docs-more { color: var(--text-muted); font-size: 0.9375rem; }
 </style>
