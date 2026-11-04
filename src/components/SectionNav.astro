@@ -1,0 +1,109 @@
+---
+// The header of a section of the site with pages of its own: Orca, Dista
+// and every tin's /s/<tin> pages. In place of magmalake's header (those
+// pages pass `chrome={false}` to Base): the magmalake mark and name, which
+// lead back to the home page, a bar, the section's name, its pages and its
+// repository.
+import Logo from "./Logo.astro";
+
+export interface Props {
+  name: string;
+  /** The section's first page, which its name links to. */
+  home: string;
+  links: { href: string; label: string }[];
+  repo: string;
+}
+const { name, home, links, repo } = Astro.props;
+const path = Astro.url.pathname.replace(/\/$/, "");
+---
+
+<header class="snav">
+  <div class="wrap wrap--wide snav__inner">
+    <div class="snav__brand">
+      <a class="snav__mark" href="/"><Logo size={22} /><span class="snav__site">magmalake</span></a>
+      <span class="snav__bar" aria-hidden="true">|</span>
+      <a class="snav__name" href={home}>{name}</a>
+    </div>
+    <nav class="snav__links" aria-label={name}>
+      {
+        links.map((l) => (
+          <a class="snav__link" href={l.href} aria-current={path === l.href ? "page" : undefined}>
+            {l.label}
+          </a>
+        ))
+      }
+      <a class="snav__link snav__link--ext" href={repo} rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .snav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    border-bottom: 1px solid var(--rule);
+  }
+  .snav__inner {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    min-height: 4rem;
+    flex-wrap: wrap;
+  }
+  .snav__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .snav__mark {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.9375rem;
+  }
+  .snav__mark:hover { color: var(--text); }
+  .snav__bar {
+    color: var(--border-strong);
+    font-size: 1.25rem;
+    line-height: 1;
+  }
+  .snav__name {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.125rem;
+    letter-spacing: -0.025em;
+    color: var(--text);
+    text-decoration: none;
+  }
+  .snav__links {
+    display: flex;
+    align-items: center;
+    gap: 1.35rem;
+    margin-left: auto;
+    font-size: 0.875rem;
+  }
+  .snav__link {
+    color: var(--text-muted);
+    text-decoration: none;
+    white-space: nowrap;
+    padding-block: 0.35rem;
+    border-bottom: 1.5px solid transparent;
+  }
+  .snav__link:hover { color: var(--text); border-bottom-color: var(--ember); }
+  .snav__link[aria-current="page"] {
+    color: var(--text);
+    border-bottom-color: var(--ember);
+  }
+  @media (max-width: 640px) {
+    .snav__inner { padding-block: 0.6rem; gap: 0.5rem 1rem; }
+    .snav__links { margin-left: 0; gap: 0.5rem 1rem; flex-wrap: wrap; }
+  }
+</style>

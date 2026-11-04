@@ -1,0 +1,121 @@
+---
+/**
+ * A tin's overview, /s/<tin>: what it is, how to install it, what it does
+ * and what proves it. From src/data/tins.ts and upstream.ts; its docs and
+ * performance have pages of their own beside this one.
+ */
+import TinPage from "../../../components/TinPage.astro";
+import CodeBlock from "../../../components/CodeBlock.astro";
+import UpstreamList from "../../../components/UpstreamList.astro";
+import {
+  tins,
+  TIER_LABEL,
+  STATUS_LABEL,
+  statusOf,
+  slugOf,
+  pageOf,
+  readmeOf,
+  installOf,
+  type Tin,
+} from "../../../data/tins";
+import { pagedTins } from "../../../data/tinpages";
+import { upstreamFor } from "../../../data/upstream";
+
+export function getStaticPaths() {
+  return pagedTins().map((t) => ({ params: { tin: slugOf(t) }, props: { tin: t } }));
+}
+
+interface Props {
+  tin: Tin;
+}
+const { tin } = Astro.props;
+const slug = slugOf(tin);
+const status = statusOf(tin);
+const issues = upstreamFor(slug);
+const siblings = tins.filter((t) => t.tier === tin.tier && t !== tin);
+const description = `${tin.name}, a magmalake tin: ${tin.what.split(". ")[0].replace(/\.$/, "")}.`;
+---
+
+<TinPage tin={tin} description={description}>
+  <section class="section section--alt section--flush">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow"><a href="/tins">Tins</a> · {TIER_LABEL[tin.tier]}</p>
+      <h1 class="section-title tp__name">{tin.name}</h1>
+      <p class="lede">{tin.what}</p>
+
+      <div class="tp__facts">
+        <div class="tp__fact tp__fact--install">
+          <span class="tp__label">Install</span>
+          {
+            status === "shelf" ? (
+              <CodeBlock code={installOf(tin)} label="shell" />
+            ) : (
+              <>
+                <p class="tp__plain">Not on mojoshelf yet: build it from its repository.</p>
+                <CodeBlock code={`git clone ${tin.repo}`} label="shell" />
+              </>
+            )
+          }
+        </div>
+        <div class="tp__fact">
+          <span class="tp__label">Version</span>
+          <p class="tp__plain">
+            <code>{tin.version}</code>
+            {status === "shelf" ? " on mojoshelf" : `, ${STATUS_LABEL[status]}`}
+          </p>
+        </div>
+        <div class="tp__fact">
+          <span class="tp__label">Source</span>
+          <p class="tp__plain tp__links">
+            <a href={tin.repo} rel="noopener">GitHub</a>
+            <a href={readmeOf(tin)} rel="noopener">README</a>
+            {tin.benchmarks && <a href={tin.benchmarks} rel="noopener">Benchmark history</a>}
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section tp__section" id="what">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">What it does</p>
+      <div class:list={["status-grid", "tp__grid", !tin.notYet && "tp__grid--one"]}>
+        <div class="status-col status-col--yes">
+          <h2 class="status-col__head">Works today</h2>
+          <ul>{tin.bullets.map((b) => <li>{b}</li>)}</ul>
+        </div>
+        {
+          tin.notYet && (
+            <div class="status-col status-col--no">
+              <h2 class="status-col__head">Not yet</h2>
+              <ul>{tin.notYet.map((n) => <li>{n}</li>)}</ul>
+              {tin.notYetNote && <p class="status-col__fine" set:html={tin.notYetNote} />}
+            </div>
+          )
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--alt tp__section" id="correctness">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">Correctness</p>
+      <div class="tp__oracle">
+        <span class="tp__oracle-label">Checked against</span>
+        <span class="tp__oracle-value">{tin.oracle}</span>
+      </div>
+      {tin.evidence && <div class="prose tp__prose">{tin.evidence.map((e) => <p>{e}</p>)}</div>}
+      {issues.length > 0 && <UpstreamList issues={issues} />}
+    </div>
+  </section>
+
+  <section class="section tp__section" id="siblings">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">Also in {TIER_LABEL[tin.tier]}</p>
+      <ul class="tp__siblings">
+        {siblings.map((t) => <li><a href={pageOf(t)}>{t.name}</a> <span>{t.short}</span></li>)}
+        <li><a href="/tins">Every tin</a></li>
+      </ul>
+    </div>
+  </section>
+</TinPage>

@@ -13,8 +13,8 @@ const linksOf = (r: Row) =>
   (r.tins ?? []).flatMap((name) => {
     const t = tins.find((x) => x.name.toLowerCase() === name);
     if (!t) return [];
-    // Dista keeps its numbers on a page of their own.
-    const href = t.site === "/s/dista" ? "/s/dista/performance" : `${pageOf(t)}#performance`;
+    // Every tin with numbers has a performance page, Dista included.
+    const href = `${pageOf(t)}/performance`;
     return [{ href, label: t.name }];
   });
 ---

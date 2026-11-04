@@ -1,0 +1,28 @@
+---
+/**
+ * The frame of every /s/<tin> page: magmalake's header and footer give way
+ * to the tin's own (SectionNav, SectionFooter), with links to the tin's
+ * pages from src/data/tinpages.ts. The page's content is the slot.
+ */
+import "../styles/tin.css";
+import Base from "../layouts/Base.astro";
+import SectionNav from "./SectionNav.astro";
+import SectionFooter from "./SectionFooter.astro";
+import { slugOf, type Tin } from "../data/tins";
+import { tinLinks, licenceOf } from "../data/tinpages";
+
+interface Props {
+  tin: Tin;
+  /** The page's own title, after the tin's name; none for the overview. */
+  title?: string;
+  description: string;
+}
+const { tin, title, description } = Astro.props;
+const links = tinLinks(tin);
+---
+
+<Base title={title ? `${tin.name} ${title}` : tin.name} description={description} chrome={false}>
+  <SectionNav name={tin.name} home={`/s/${slugOf(tin)}`} links={links} repo={tin.repo} />
+  <slot />
+  <SectionFooter name={tin.name} links={links.slice(1)} repo={tin.repo} fine={licenceOf(tin)} />
+</Base>

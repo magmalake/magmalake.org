@@ -1,0 +1,51 @@
+---
+/**
+ * A tin's docs, /s/<tin>/docs: its Markdown from src/content/tindocs, or a
+ * link to its README while it has none.
+ */
+import { getEntry, render } from "astro:content";
+import TinPage from "../../../components/TinPage.astro";
+import { slugOf, readmeOf, type Tin } from "../../../data/tins";
+import { pagedTins } from "../../../data/tinpages";
+
+export function getStaticPaths() {
+  return pagedTins().map((t) => ({ params: { tin: slugOf(t) }, props: { tin: t } }));
+}
+
+interface Props {
+  tin: Tin;
+}
+const { tin } = Astro.props;
+const slug = slugOf(tin);
+const doc = await getEntry("tindocs", slug);
+const Docs = doc ? (await render(doc)).Content : null;
+const description = `How to use ${tin.name}, a magmalake tin.`;
+---
+
+<TinPage tin={tin} title="docs" description={description}>
+  <section class="section section--flush" id="docs">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow"><a href="/tins">Tins</a> · <a href={`/s/${slug}`}>{tin.name}</a></p>
+      <h1 class="section-title">Docs</h1>
+      {
+        Docs ? (
+          <div class="tp__docs">
+            <Docs />
+            <p class="tp__docs-more">
+              The full reference is <a href={readmeOf(tin)} rel="noopener">the README on GitHub</a>.
+            </p>
+          </div>
+        ) : (
+          <>
+            <p class="lede">
+              Docs for {tin.name} are not written yet. Until they are, the README on GitHub is
+              the reference: what it covers, how to use it and how its tests run.
+            </p>
+            <a class="btn" href={readmeOf(tin)} rel="noopener">Read the README</a>
+          </>
+        )
+      }
+    </div>
+  </section>
+
+</TinPage>
