@@ -23,7 +23,7 @@ const beside = BESIDE.map(band);
         {i > 0 && <div class="joins" aria-hidden="true"><i /><i /><i /></div>}
         <div class:list={["stack__band", band.tier === "execution" && "stack__band--top"]}>
           <span class="stack__tier">{band.label}</span>
-          <div class:list={["stack__row", band.tins.length === 1 && "stack__row--1"]}>
+          <div class:list={["stack__row", band.tins.length === 1 && "stack__row--1"]} data-md="list">
             {band.tins.map((t) => {
               const status = statusOf(t);
               return (
@@ -56,7 +56,7 @@ const beside = BESIDE.map(band);
       beside.map((band) => (
         <div class="stack__band">
           <span class="stack__tier">{band.label}</span>
-          <div class="stack__row">
+          <div class="stack__row" data-md="list">
             {band.tins.map((t) => (
               <a class="box box--beside" href={pageOf(t)}>
                 <span class="box__name">
