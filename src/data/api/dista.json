@@ -1,0 +1,3360 @@
+{
+ "tin": "Dista",
+ "version": "0.2.1",
+ "rev": "9e4839937d82f36893285301bf9ce4338dcb14ec",
+ "package": "dista",
+ "path": "src/dista",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "dista: distributed tasks for Mojo.",
+ "description": "Declare a remote function as a task, start a runtime with it registered, and\ncall it:\n\n```mojo\nfrom dista import Runtime, Task\n\ndef square(x: Int) -> Int:\n    return x * x\n\ncomptime Square = Task[Int, Int, square]\n\ndef main() raises:\n    var rt = Runtime[Square](workers=4)\n    var r = rt.remote[Square](7)\n    print(rt.get(r))  # 49\n```\n\nAn actor keeps state between calls on a worker of its own:\n\n```mojo\ncomptime CounterActor = Actor[Counter, Int, new_counter]\ncomptime Add = Method[CounterActor, Int, Int, add]\n\nvar rt = Runtime[CounterActor, Add](workers=2)\nvar c = rt.create[CounterActor](0)\nvar total = rt.call[Add](c, 5)  # an ObjectRef[Int]\nrt.kill(c)\n```\n\nSee DESIGN.md for how it works.",
+ "modules": [
+  {
+   "path": "dista",
+   "summary": "dista: distributed tasks for Mojo.",
+   "description": "Declare a remote function as a task, start a runtime with it registered, and\ncall it:\n\n```mojo\nfrom dista import Runtime, Task\n\ndef square(x: Int) -> Int:\n    return x * x\n\ncomptime Square = Task[Int, Int, square]\n\ndef main() raises:\n    var rt = Runtime[Square](workers=4)\n    var r = rt.remote[Square](7)\n    print(rt.get(r))  # 49\n```\n\nAn actor keeps state between calls on a worker of its own:\n\n```mojo\ncomptime CounterActor = Actor[Counter, Int, new_counter]\ncomptime Add = Method[CounterActor, Int, Int, add]\n\nvar rt = Runtime[CounterActor, Add](workers=2)\nvar c = rt.create[CounterActor](0)\nvar total = rt.call[Add](c, 5)  # an ObjectRef[Int]\nrt.kill(c)\n```\n\nSee DESIGN.md for how it works."
+  },
+  {
+   "path": "dista.checkpoint",
+   "summary": "Where actor checkpoints live: objects under `DISTA_CHECKPOINT_URI`.",
+   "description": "The URI is a local directory, a `file://` one, or anything objectstore\nwrites to, such as `s3://bucket/prefix`. A local directory only outlives the\nworker that wrote it if the node that restarts the actor sees it too, so a\ncluster needs a shared volume or object storage.\n\nEach checkpoint is its own object, named for its actor and the number of\ncalls it covers, `<uri>/<actor ID in hex>/<calls>`, so a new one never\noverwrites the one the head would restore from. The worker hosting the\nactor deletes the ones before that one, those its predecessor left\nincluded. A head that restarts restores each actor from its newest.\n\nA checkpoint's bytes are, for each caller whose calls it includes, that\ncaller's number and the newest call's object ID, then the actor's state:\ncount u64, that many pairs of u64s, the state through the codec. Calls\nresent after a head restart that it already includes aren't run again.",
+   "functions": [
+    {
+     "name": "checkpoint_uri",
+     "overloads": [
+      {
+       "signature": "def checkpoint_uri() -> String",
+       "summary": "`DISTA_CHECKPOINT_URI`, without a trailing slash; raises if unset."
+      }
+     ]
+    },
+    {
+     "name": "checkpoint_location",
+     "overloads": [
+      {
+       "signature": "def checkpoint_location(actor: UInt64, calls: Int) -> String",
+       "summary": "Where actor `actor`'s checkpoint after `calls` calls lives."
+      }
+     ]
+    },
+    {
+     "name": "newest_checkpoint",
+     "overloads": [
+      {
+       "signature": "def newest_checkpoint(actor: UInt64) -> Int",
+       "summary": "The calls covered by actor `actor`'s newest checkpoint, or -1."
+      }
+     ]
+    },
+    {
+     "name": "list_checkpoints",
+     "overloads": [
+      {
+       "signature": "def list_checkpoints(actor: UInt64) -> List[Int]",
+       "summary": "The calls covered by each checkpoint actor `actor` has, in any order."
+      }
+     ]
+    },
+    {
+     "name": "write_checkpoint",
+     "overloads": [
+      {
+       "signature": "def write_checkpoint(location: String, data: Span[UInt8])",
+       "summary": "Writes a whole checkpoint, never part of one: after a head restart the newest is restored without anyone having said it was finished. An object store's put is whole already; a local file is written under a temporary name and renamed into place."
+      }
+     ]
+    },
+    {
+     "name": "read_checkpoint",
+     "overloads": [
+      {
+       "signature": "def read_checkpoint(location: String) -> List[UInt8]"
+      }
+     ]
+    },
+    {
+     "name": "delete_checkpoint",
+     "overloads": [
+      {
+       "signature": "def delete_checkpoint(location: String)",
+       "summary": "Deletes a checkpoint nothing will restore from; a failure only leaves it behind."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.client",
+   "summary": "The driver's side of the protocol: submitting tasks, calling actors and getting results back from the head.",
+   "description": "`Runtime` is the program's entry point: it starts the process in its role\nand checks that what it's given is registered. `Client` is the part that\ntalks to the head, without the registry, so it can also run inside a\nworker: a `CtxTask` gets one, and can call actors or submit tasks from\nthere. A worker's client connects with `ROLE_CLIENT`, which the head treats\nas a driver, except that it doesn't keep a local-mode head alive.\n\nA client checks only what it can know: that it didn't kill an actor it\ncalls. Whether the task, actor or method exists is the binary's: every\nprocess runs the same registry, and the head refuses a peer that doesn't.",
+   "aliases": [
+    {
+     "name": "MAX_DRIVER_SPANS",
+     "value": "1000000",
+     "summary": "Driver spans kept until `timeline` writes them; later ones are dropped."
+    }
+   ],
+   "structs": [
+    {
+     "name": "ObjectRef",
+     "signature": "struct ObjectRef[T: AnyType]",
+     "summary": "A handle to a task's result, which may not exist yet.",
+     "traits": [
+      "Copyable",
+      "ImplicitlyCopyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "id",
+       "type": "UInt64"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, id: UInt64)"
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "ActorHandle",
+     "signature": "struct ActorHandle[T: ActorLike]",
+     "summary": "A handle to an actor of type `T`, from `Runtime.create`.",
+     "traits": [
+      "Copyable",
+      "ImplicitlyCopyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "id",
+       "type": "UInt64"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, id: UInt64)"
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "TaskSpan",
+     "signature": "struct TaskSpan",
+     "summary": "One finished task, from `Runtime.spans`: wall-clock nanoseconds.",
+     "description": "The first four are the head's, the last three the worker's. On a\ncluster the two clocks agree only as well as NTP keeps them.",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "object_id",
+       "type": "UInt64"
+      },
+      {
+       "name": "task",
+       "type": "String",
+       "summary": "The task's registered name."
+      },
+      {
+       "name": "worker",
+       "type": "String",
+       "summary": "The worker's `ip:port`, or \"\" if it never ran (an input failed)."
+      },
+      {
+       "name": "submitted",
+       "type": "UInt64"
+      },
+      {
+       "name": "queued",
+       "type": "UInt64",
+       "summary": "When its inputs existed and it joined the queue."
+      },
+      {
+       "name": "dispatched",
+       "type": "UInt64"
+      },
+      {
+       "name": "settled",
+       "type": "UInt64"
+      },
+      {
+       "name": "arrived",
+       "type": "UInt64",
+       "summary": "On the worker: when the task reached it, before any input fetches."
+      },
+      {
+       "name": "started",
+       "type": "UInt64"
+      },
+      {
+       "name": "ended",
+       "type": "UInt64",
+       "summary": "When it finished, its result stored."
+      },
+      {
+       "name": "task_id",
+       "type": "UInt64",
+       "summary": "The task's wire ID."
+      }
+     ]
+    },
+    {
+     "name": "HeadStats",
+     "signature": "struct HeadStats",
+     "summary": "What the head holds, from `Runtime.stats`.",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "objects",
+       "type": "Int",
+       "summary": "Objects with a live reference: unreleased, or an input still pending."
+      },
+      {
+       "name": "results",
+       "type": "Int",
+       "summary": "Small results kept at the head."
+      },
+      {
+       "name": "errors",
+       "type": "Int"
+      },
+      {
+       "name": "located",
+       "type": "Int",
+       "summary": "Results the head knows live on a worker."
+      },
+      {
+       "name": "pending",
+       "type": "Int",
+       "summary": "Tasks queued or waiting on inputs."
+      }
+     ]
+    },
+    {
+     "name": "Observer",
+     "signature": "struct Observer",
+     "summary": "A connection to the head that only looks, and can stop it: what `dista status`, `timeline` and `stop` use. It owns no objects and needs no registry.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, addr: String)",
+         "summary": "Connects to the head at `addr`, `host:port`, once: an observer reports a head that isn't there rather than wait for one."
+        }
+       ]
+      },
+      {
+       "name": "status",
+       "overloads": [
+        {
+         "signature": "def status(mut self) -> String",
+         "summary": "The head's workers, drivers and actors, as text."
+        }
+       ]
+      },
+      {
+       "name": "status_json",
+       "overloads": [
+        {
+         "signature": "def status_json(mut self) -> String",
+         "summary": "The head's demand and its workers, as one JSON object: tasks ready, waiting for inputs and running, actors waiting for a worker, and each worker's address, node, tasks in flight, seconds idle, bytes held, actor and whether it's draining."
+        }
+       ]
+      },
+      {
+       "name": "drain",
+       "overloads": [
+        {
+         "signature": "def drain(mut self, worker: String)",
+         "summary": "Drains the worker whose object server is at `worker`, `ip:port`, as SIGTERM would: it takes no new work, what it holds moves, and it exits once it's done. Raises if the head won't."
+        }
+       ]
+      },
+      {
+       "name": "spans",
+       "overloads": [
+        {
+         "signature": "def spans(mut self) -> List[TaskSpan]",
+         "summary": "Every driver's finished tasks the head still holds."
+        }
+       ]
+      },
+      {
+       "name": "stop",
+       "overloads": [
+        {
+         "signature": "def stop(mut self)",
+         "summary": "Shuts the head down, and its workers with it."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Client",
+     "signature": "struct Client",
+     "summary": "A connection to the head, as a driver: see the module docstring.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var head: Stream, head_addr: String, registry_hash: UInt64, role: UInt8 = UInt8(1))",
+         "summary": "Says hello to the head on `head` and becomes a driver.",
+         "args": [
+          {
+           "name": "head",
+           "doc": "A connection to the head."
+          },
+          {
+           "name": "head_addr",
+           "doc": "Where to reconnect if the head restarts, or \"\"."
+          },
+          {
+           "name": "registry_hash",
+           "doc": "The registry every peer must share."
+          },
+          {
+           "name": "role",
+           "doc": "`ROLE_DRIVER`, or `ROLE_CLIENT` for one inside a worker."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "close",
+       "overloads": [
+        {
+         "signature": "def close(mut self)",
+         "summary": "Hangs up on the head: everything this client held is released."
+        }
+       ]
+      },
+      {
+       "name": "take_driver_spans",
+       "overloads": [
+        {
+         "signature": "def take_driver_spans(mut self) -> List[_DriverSpan]",
+         "summary": "The driver's own spans recorded with `span`, handed over once."
+        }
+       ]
+      },
+      {
+       "name": "remote",
+       "overloads": [
+        {
+         "signature": "def remote[T: TaskLike](mut self, arg: T.A) -> ObjectRef[T.R]",
+         "summary": "Submits task `T` on `arg` and returns a handle to its result."
+        },
+        {
+         "signature": "def remote[T: Task2Like](mut self, a: T.A, b: T.B) -> ObjectRef[T.R]",
+         "summary": "Submits task `T`, a `Task2`, on `a` and `b`."
+        },
+        {
+         "signature": "def remote[T: Task3Like](mut self, a: T.A, b: T.B, c: T.C) -> ObjectRef[T.R]",
+         "summary": "Submits task `T`, a `Task3`, on `a`, `b` and `c`."
+        },
+        {
+         "signature": "def remote[T: TaskLike](mut self, arg: ObjectRef[T.A]) -> ObjectRef[T.R]",
+         "summary": "Submits task `T` to run on another task's result, once it exists."
+        },
+        {
+         "signature": "def remote[X: AnyType, //, T: TaskLike](mut self, args: List[ObjectRef[X]]) -> ObjectRef[T.R]",
+         "summary": "Submits task `T`, which takes a `Seq[X]`, to run on these results.",
+         "description": "The task runs once every result exists, and receives them in order."
+        },
+        {
+         "signature": "def remote[X: AnyType, //, T: TaskLike](mut self, arg: T.A, args: List[ObjectRef[X]]) -> ObjectRef[T.R]",
+         "summary": "Submits task `T`, a `TaskWith`, on `arg` and these results: it runs once every result exists, and receives them in order as a `Seq`."
+        }
+       ]
+      },
+      {
+       "name": "remote_many",
+       "overloads": [
+        {
+         "signature": "def remote_many[T: ManyLike](mut self, arg: T.A, n: Int) -> List[ObjectRef[T.Part]]",
+         "summary": "Submits task `T`, a `TaskMany`, on `arg`, for `n` results: each is an object of its own, the `n` values of the `Seq` it returns."
+        },
+        {
+         "signature": "def remote_many[T: ManyLike](mut self, arg: ObjectRef[T.A], n: Int) -> List[ObjectRef[T.Part]]",
+         "summary": "Submits task `T`, a `TaskMany`, to run on another task's result once it exists, for `n` results."
+        },
+        {
+         "signature": "def remote_many[X: AnyType, //, T: ManyLike](mut self, args: List[ObjectRef[X]], n: Int) -> List[ObjectRef[T.Part]]",
+         "summary": "Submits task `T`, a `TaskMany` taking a `Seq[X]`, to run on these results once they all exist, for `n` results: a shuffle's second stage, partitioning what the first made."
+        }
+       ]
+      },
+      {
+       "name": "create",
+       "overloads": [
+        {
+         "signature": "def create[T: ActorLike](mut self, arg: T.A, checkpoint_every: Int = Int(0)) -> ActorHandle[T]",
+         "summary": "Starts actor `T` on a worker of its own, built from `arg`.",
+         "description": "It returns at once; calls made before the actor is up wait for it.\nIf the constructor raises, every call fails with its error. With\n`checkpoint_every` set, its state is checkpointed after every that\nmany calls."
+        }
+       ]
+      },
+      {
+       "name": "call",
+       "overloads": [
+        {
+         "signature": "def call[M: MethodLike](mut self, actor: ActorHandle[M.Act], arg: M.A) -> ObjectRef[M.R]",
+         "summary": "Calls method `M` on `actor` with `arg`, after every earlier call."
+        }
+       ]
+      },
+      {
+       "name": "checkpoint",
+       "overloads": [
+        {
+         "signature": "def checkpoint[T: ActorLike](mut self, actor: ActorHandle[T]) -> ObjectRef[Int]",
+         "summary": "Checkpoints `actor` after the calls made to it so far. The result is the number of calls the checkpoint covers, once it's written."
+        }
+       ]
+      },
+      {
+       "name": "kill",
+       "overloads": [
+        {
+         "signature": "def kill[T: ActorLike](mut self, actor: ActorHandle[T])",
+         "summary": "Destroys `actor` once its earlier calls have run, and frees its worker. Their results stay until released."
+        }
+       ]
+      },
+      {
+       "name": "ready",
+       "overloads": [
+        {
+         "signature": "def ready[R: AnyType](mut self, r: ObjectRef[R]) -> Bool",
+         "summary": "Returns whether `r`'s task has finished, without waiting for it."
+        }
+       ]
+      },
+      {
+       "name": "get",
+       "overloads": [
+        {
+         "signature": "def get[R: Movable](mut self, r: ObjectRef[R]) -> R",
+         "summary": "Waits for `r`'s task and returns its result, or raises its error."
+        }
+       ]
+      },
+      {
+       "name": "release",
+       "overloads": [
+        {
+         "signature": "def release[R: AnyType](mut self, r: ObjectRef[R])",
+         "summary": "Says this driver is done with `r`.",
+         "description": "The result is freed, here, at the head and on its worker, once no\nsubmitted task still needs it; a task already given `r` as input\nstill gets it. Releasing before the task has finished is fine: the\nresult is dropped when it arrives. `get(r)` raises from now on, and a\ntask submitted on `r` afterwards fails."
+        },
+        {
+         "signature": "def release[R: AnyType](mut self, refs: List[ObjectRef[R]])",
+         "summary": "Releases every ref in `refs`."
+        }
+       ]
+      },
+      {
+       "name": "stats",
+       "overloads": [
+        {
+         "signature": "def stats(mut self) -> HeadStats",
+         "summary": "Asks the head what it holds. Frames that arrive first are kept."
+        }
+       ]
+      },
+      {
+       "name": "spans",
+       "overloads": [
+        {
+         "signature": "def spans(mut self) -> List[TaskSpan]",
+         "summary": "Every task this driver submitted that has finished, with its timeline, since the last call. A head restart loses the spans it held and those of tasks running then."
+        }
+       ]
+      },
+      {
+       "name": "clock",
+       "overloads": [
+        {
+         "signature": "def clock() -> UInt64",
+         "summary": "Wall-clock nanoseconds, the clock the timeline uses: the start to give `span`."
+        }
+       ]
+      },
+      {
+       "name": "span",
+       "overloads": [
+        {
+         "signature": "def span(mut self, name: String, start: UInt64, end: UInt64 = UInt64(0))",
+         "summary": "Records a stretch of this driver's own work for the timeline, from `start` (from `clock`) to `end`, or to now. `timeline` draws these as the driver's track, above the workers."
+        }
+       ]
+      },
+      {
+       "name": "bytes_fetched",
+       "overloads": [
+        {
+         "signature": "def bytes_fetched(self) -> Int",
+         "summary": "How many result bytes this driver has fetched over sockets."
+        }
+       ]
+      },
+      {
+       "name": "location",
+       "overloads": [
+        {
+         "signature": "def location[R: AnyType](mut self, r: ObjectRef[R]) -> String",
+         "summary": "Where `r`'s result lives: a worker's `ip:port`, then its node-store file if it has one; \"\" if it came back with the reply. Waits for the task to finish."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "TaskContext",
+     "signature": "struct TaskContext",
+     "summary": "What a worker hands a `CtxTask`: a client of its own to the head, opened the first time a task asks for it.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, connect_to: String, resume_at: String, registry_hash: UInt64)",
+         "summary": "`connect_to` is the head's `host:port`; `resume_at` the same in a cluster, or \"\" in local mode, where the head doesn't come back."
+        }
+       ]
+      },
+      {
+       "name": "client",
+       "overloads": [
+        {
+         "signature": "def client(mut self) -> ref[self._client._value] Client"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "CtxTask",
+     "signature": "struct CtxTask[A_: Deinitable & Movable, R_: Deinitable & Movable, f: def(mut Client, A_) raises thin -> R_]",
+     "summary": "A remote function that also gets a `Client`: from inside the task it can call actors, whose handles it was given, and submit tasks.",
+     "description": "```mojo\ndef bump(mut c: Client, h: ActorHandle[CounterActor]) raises -> Int:\n    var r = c.call[Add](h, 1)\n    var n = c.get(r)\n    c.release(r)\n    return n\n\ncomptime Bump = CtxTask[ActorHandle[CounterActor], Int, bump]\n```\n\nA call from a task blocks that task until the answer comes; an actor\ncalling back into the worker that's waiting on it would deadlock, and\ntasks never run on an actor's worker, so a task can't.",
+     "traits": [
+      "CtxTaskLike",
+      "Movable",
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "A",
+       "value": "A_"
+      },
+      {
+       "name": "R",
+       "value": "R_"
+      }
+     ],
+     "functions": [
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name() -> StaticString"
+        }
+       ]
+      },
+      {
+       "name": "id",
+       "overloads": [
+        {
+         "signature": "def id() -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "run",
+       "overloads": [
+        {
+         "signature": "def run(args: Span[UInt8], mut out: List[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "run_ctx",
+       "overloads": [
+        {
+         "signature": "def run_ctx(args: Span[UInt8], mut out: List[UInt8], mut ctx: TaskContext)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "CtxMethod",
+     "signature": "struct CtxMethod[Act_: ActorLike, A_: Deinitable & Movable, R_: Deinitable & Movable, f: def(mut Act_.S, mut Client, A_) raises thin -> R_]",
+     "summary": "A method of `Act_` that also gets a `Client`, so an actor can call another actor, or submit tasks.",
+     "description": "The call blocks this actor until the answer comes. An actor that calls\none which, before answering, calls it back waits on itself: a cycle of\nactor calls deadlocks, as it would with one thread per actor anywhere.",
+     "traits": [
+      "CtxMethodLike",
+      "MethodLike",
+      "Movable",
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "A",
+       "value": "A_"
+      },
+      {
+       "name": "R",
+       "value": "R_"
+      },
+      {
+       "name": "Act",
+       "value": "Act_"
+      }
+     ],
+     "functions": [
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name() -> StaticString"
+        }
+       ]
+      },
+      {
+       "name": "id",
+       "overloads": [
+        {
+         "signature": "def id() -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "owner",
+       "overloads": [
+        {
+         "signature": "def owner() -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "call",
+       "overloads": [
+        {
+         "signature": "def call(state: Pointer[NoneType, MutUntrackedOrigin], args: Span[UInt8], mut out: List[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "call_ctx",
+       "overloads": [
+        {
+         "signature": "def call_ctx(state: Pointer[NoneType, MutUntrackedOrigin], args: Span[UInt8], mut out: List[UInt8], mut ctx: TaskContext)"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "traits": [
+    {
+     "name": "CtxTaskLike",
+     "summary": "A task that runs with a `Client`, to call actors or submit tasks.",
+     "traits": [
+      "TaskLike"
+     ],
+     "functions": [
+      {
+       "name": "run_ctx",
+       "overloads": [
+        {
+         "signature": "def run_ctx(args: Span[UInt8], mut out: List[UInt8], mut ctx: TaskContext)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "CtxMethodLike",
+     "summary": "A method that runs with a `Client`, to call other actors.",
+     "traits": [
+      "MethodLike",
+      "TaskLike"
+     ],
+     "functions": [
+      {
+       "name": "call_ctx",
+       "overloads": [
+        {
+         "signature": "def call_ctx(state: Pointer[NoneType, MutUntrackedOrigin], args: Span[UInt8], mut out: List[UInt8], mut ctx: TaskContext)"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "parse_timeline",
+     "overloads": [
+      {
+       "signature": "def parse_timeline(payload: Span[UInt8]) -> List[TaskSpan]",
+       "summary": "A timeline frame's spans, unnamed."
+      }
+     ]
+    },
+    {
+     "name": "write_trace",
+     "overloads": [
+      {
+       "signature": "def write_trace(path: String, spans: List[TaskSpan], mine: List[_DriverSpan] = List()) -> Int",
+       "summary": "Writes finished tasks, and a driver's own spans, to `path` in Chrome's trace format, for Perfetto (ui.perfetto.dev) or chrome://tracing, and returns how many tasks it holds.",
+       "description": "Each worker is a process with two tracks: its tasks running, and its\ntasks waiting for their inputs. The driver's spans are a process above\nthem. Times are microseconds from the first submission or driver span;\neach run's arguments carry the head's waits too. A task without a name\nis named by its wire ID."
+      }
+     ]
+    },
+    {
+     "name": "parse_host_port",
+     "overloads": [
+      {
+       "signature": "def parse_host_port(addr: String) -> Tuple[String, Int]",
+       "summary": "Splits `host:port`."
+      }
+     ]
+    },
+    {
+     "name": "connect_head",
+     "overloads": [
+      {
+       "signature": "def connect_head(addr: String) -> Stream",
+       "summary": "Connects to the head at `host:port`, retrying while it isn't up yet.",
+       "description": "In a cluster, processes start in any order: a worker's pod can come up\nbefore the head's, or before its name resolves. This keeps trying for\n`DISTA_CONNECT_TIMEOUT` seconds (default 60), then raises the last error.\n\nThe wait between tries starts at 10 ms and doubles to 250 ms: a head that\nrestarts is usually back within a fraction of a second, and a flat 250 ms\nadded that much to every recovery."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.codec",
+   "summary": "Turning task arguments and results into bytes and back.",
+   "description": "`encode` and `decode` work on any type, chosen at compile time:\n\n- built-in scalars, `Bool` and `String` have fixed encodings (little-endian\n  fixed width; `String` is an 8-byte length then its UTF-8 bytes);\n- arrow-mlake's `RecordBatch` is an 8-byte length then one Arrow IPC stream\n  holding the schema and the batch, so columnar data crosses processes in\n  Arrow's own format;\n- a type that conforms to `Codec` encodes itself;\n- any other struct is encoded field by field, in declaration order, by\n  reflection.\n\nBuilt-ins are recognised by `reflect[T].name()`, because `Int` or `String`\ncan't adopt a dista trait. `List` and other generic containers aren't\nsupported: reflection can't recover their element type. Wrap them in a type\nthat implements `Codec`, or send columnar data as Arrow.\n\nBoth ends are the same binary, so there's no versioning or schema.",
+   "traits": [
+    {
+     "name": "Codec",
+     "summary": "A type that writes and reads its own bytes.",
+     "functions": [
+      {
+       "name": "encode",
+       "overloads": [
+        {
+         "signature": "def encode(self, mut out: List[UInt8])",
+         "summary": "Appends this value's bytes to `out`."
+        }
+       ]
+      },
+      {
+       "name": "decode",
+       "overloads": [
+        {
+         "signature": "def decode(buf: Span[UInt8], mut pos: Int) -> Self",
+         "summary": "Reads a value starting at `buf[pos]` and advances `pos` past it."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "put_scalar",
+     "overloads": [
+      {
+       "signature": "def put_scalar[dt: DType](mut out: List[UInt8], v: Scalar[dt])",
+       "summary": "Appends `v` as its little-endian bytes."
+      }
+     ]
+    },
+    {
+     "name": "get_scalar",
+     "overloads": [
+      {
+       "signature": "def get_scalar[dt: DType](buf: Span[UInt8], mut pos: Int) -> Scalar[dt]",
+       "summary": "Reads a little-endian scalar at `buf[pos]` and advances `pos`."
+      }
+     ]
+    },
+    {
+     "name": "encode",
+     "overloads": [
+      {
+       "signature": "def encode[T: AnyType](ref value: T, mut out: List[UInt8])",
+       "summary": "Appends the bytes of `value` to `out`."
+      }
+     ]
+    },
+    {
+     "name": "decode",
+     "overloads": [
+      {
+       "signature": "def decode[T: Movable](buf: Span[UInt8], mut pos: Int) -> T",
+       "summary": "Reads a `T` starting at `buf[pos]` and advances `pos` past it."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.conn",
+   "summary": "A non-blocking framed connection, for the head's event loop.",
+   "description": "The head talks to every driver and worker at once, so it must never block on\none of them. A `Conn` reads and writes with `MSG_DONTWAIT`, so no call\nblocks. It reads whatever has arrived into an input buffer and\nhands out complete frames, and queues outgoing frames in an output buffer\nthat `flush` drains as the socket accepts it. The event loop polls for\nwritability only while something is queued.",
+   "structs": [
+    {
+     "name": "Conn",
+     "signature": "struct Conn",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "stream",
+       "type": "Stream"
+      },
+      {
+       "name": "closed",
+       "type": "Bool",
+       "summary": "The peer hung up, or the connection failed."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var stream: Stream)"
+        }
+       ]
+      },
+      {
+       "name": "fd",
+       "overloads": [
+        {
+         "signature": "def fd(self) -> c_int"
+        }
+       ]
+      },
+      {
+       "name": "read_available",
+       "overloads": [
+        {
+         "signature": "def read_available(mut self, limit: Int = Int(0))",
+         "summary": "Reads what's waiting on the socket into the input buffer: all of it, or with `limit`, about that many bytes, leaving the rest in the socket, where `poll` still reports it."
+        }
+       ]
+      },
+      {
+       "name": "next_frame",
+       "overloads": [
+        {
+         "signature": "def next_frame(mut self) -> Optional[Frame]",
+         "summary": "The next complete frame in the input buffer, if there is one."
+        }
+       ]
+      },
+      {
+       "name": "send",
+       "overloads": [
+        {
+         "signature": "def send(mut self, kind: UInt8, object_id: UInt64, task_id: UInt64, payload: Span[UInt8])",
+         "summary": "Queues a frame and sends as much as the socket takes now."
+        }
+       ]
+      },
+      {
+       "name": "flush",
+       "overloads": [
+        {
+         "signature": "def flush(mut self)",
+         "summary": "Sends queued output until the socket would block."
+        }
+       ]
+      },
+      {
+       "name": "wants_write",
+       "overloads": [
+        {
+         "signature": "def wants_write(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "unsent",
+       "overloads": [
+        {
+         "signature": "def unsent(self) -> Int",
+         "summary": "Bytes queued to send that the peer hasn't taken yet."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.frame",
+   "summary": "Length-prefixed messages between drivers, the head and workers.",
+   "description": "Every frame is a 4-byte little-endian length, then that many bytes:\n\n| offset | field |\n|---|---|\n| 0 | kind (below) |\n| 1 | object ID, u64 |\n| 9 | task ID, u64 (0 unless the kind uses it) |\n| 17 | payload |\n\n| kind | sent by | payload |\n|---|---|---|\n| 1 task | driver to head, head to worker | the encoded argument |\n| 2 result | worker to head, head to driver | the encoded result |\n| 3 error | worker to head, head to driver | a UTF-8 message |\n| 4 hello | driver, worker or observer to head | role byte (`ROLE_*`), the registry hash u64 (an observer's is ignored); a worker adds its object server's address |\n| 5 welcome | head to driver | the driver's number, u64 |\n| 6 task-after | driver to head | flags byte (`GATHER`, `WITH_VALUE`), count u64, then that many object IDs; with `WITH_VALUE`, a length u64 and the encoded value |\n| 7 stored | worker to head | the result's size, u64: it stayed on the worker |\n| 8 located | head to driver | the address of the worker holding the result |\n| 9 fetch | driver or worker to a worker | none: send that object back as a result frame |\n| 10 task-inputs | head to worker | flags byte, count u64, then per input a tag byte, its object ID, then for tag 0 a length u64 and the bytes, or for tag 1 its location; with `WITH_VALUE`, a length u64 and the value |\n| 11 release | driver to head | none: the driver is done with this object |\n| 12 free | head to worker | none: delete this object |\n| 13 stats | driver to head, head to driver | none; the reply is five u64 counts (see `HeadStats`) |\n| 14 holding | worker to head, on rejoining | count u64, then per object its ID u64 and its location |\n| 15 claim | driver to head, on resuming | none: this driver still holds this object, which lives on a worker |\n| 16 resumed | driver to head | none: this driver has restored, claimed or resubmitted everything |\n| 17 span | worker to head, before the result | three u64 wall-clock nanoseconds: when the task arrived, started and ended |\n| 18 timeline | driver to head, head to driver | none; the reply is a count u64, then per finished task its object ID, task ID, the four head stamps (submitted, queued, dispatched, settled), the three worker stamps, and the worker's address |\n| 19 actor-create | driver to head, head to worker | from the driver, `checkpoint_every` u64 first; then the encoded constructor argument. The object ID names the actor, the task ID its type |\n| 20 actor-call | driver to head, head to worker | the actor's ID u64, then the encoded argument; the task ID is the method's |\n| 21 actor-kill | driver to head, head to worker | none: destroy the actor the object ID names |\n| 22 checkpoint | driver to head, head to worker | from the driver, the actor's ID u64, and the object ID is the checkpoint's own; from the head, the calls covered by the checkpoint it would restore from, i64 (-1 for none), the object ID names the actor and the task ID is the number of calls the new one covers |\n| 23 checkpointed | worker to head | none if the checkpoint is written, else why not; the object and task IDs are the checkpoint frame's |\n| 24 actor-restore | head to worker | the number of calls the checkpoint covers, u64; the object ID names the actor, the task ID its type |\n| 25 covered | head to driver | the newest of this driver's calls to the actor a checkpoint now includes, u64; the object ID names the actor |\n| 26 status | observer to head, head to observer | none; the reply is the head's state as UTF-8 text |\n| 27 stop | observer to head, head to worker | none: shut down; a worker exits instead of rejoining |\n| 28 task-many | driver to head, head to worker | the number of results u64, then the encoded argument; the results are this object ID and the ones after it |\n| 29 drain | worker to head | none: the worker was told to stop; it takes no more work, and leaves once the head says stop |\n| 30 adopt | head to worker | a draining worker's location of the object: fetch it and keep it |\n| 31 adopted | worker to head | 1 and the object's new location, or 0 and why not |\n\nAn observer (`dista status`, `timeline`, `stop`) says hello without a\nregistry and owns no objects. Its timeline frame gets every driver's\nfinished tasks, and leaves them for the drivers too.\n\nAfter a head restart, a driver's hello carries its old number as a u64 after\nthe registry hash, so its object IDs stay valid. It then sends, in order of\nsubmission, each object it still needs: a small result or error back as a\nresult or error frame, a result on a worker as claim, and an unfinished task\nas the task or task-after frame it first sent; then resumed. A rejoining\nworker sends holding.\n\nAn actor lives on one worker, which runs nothing else while it hosts it. The\nworker answers actor-create with an empty result, or the constructor's\nerror, and each call like a task: a result, stored or error frame for the\ncall's object ID. Calls run in the order the driver sent them. A checkpoint\nruns between calls too: the worker writes the actor's state to\n`DISTA_CHECKPOINT_URI` and answers checkpointed. Actor-restore builds an\nactor from its checkpoint instead of its constructor, and is answered like\nactor-create.\n\nActors survive a head restart through their checkpoints. Every caller keeps\nits calls to an actor until covered says a checkpoint includes them. A\nresuming driver sends each live actor's actor-create again, in order with\neverything else, then every call it still keeps: those answered too, after\ntheir answers, since the actor's state hasn't seen them. The new head\nrestores the actor from its newest checkpoint; a call that checkpoint\nalready includes isn't run again. A rejoining worker destroys the actor it\nhosted: its state may hold calls no caller would resend.\n\nA task-after frame queues a task whose argument is built from other results:\nthe single result as is, or with gather set, a `Seq` of all of them; with\n`WITH_VALUE` set, after an encoded value (a `TaskWith`). With `MANY` set it's\na `TaskMany`, whose results, the object ID and the ones after it, number the\nu64 that follows the flags byte; the task-inputs frame carries it on.\n\nA task-many frame runs a `TaskMany`: its worker answers each of its results\nwith its own result, stored or error frame, as if each were a task. When\nsome of those results live on workers, the head sends the task as\ntask-inputs, and the worker fetches them before it runs the task. An address\nis 12 bytes: the IPv4 address, then the port as a u64.\n\nThe head counts references to every object: its driver's, until a release,\nand one per submitted task that takes it as input, until that task settles.\nAt zero it forgets the object, and sends free to the worker holding it.",
+   "aliases": [
+    {
+     "name": "KIND_TASK",
+     "value": "UInt8(1)"
+    },
+    {
+     "name": "KIND_RESULT",
+     "value": "UInt8(2)"
+    },
+    {
+     "name": "KIND_ERROR",
+     "value": "UInt8(3)"
+    },
+    {
+     "name": "KIND_HELLO",
+     "value": "UInt8(4)"
+    },
+    {
+     "name": "KIND_WELCOME",
+     "value": "UInt8(5)"
+    },
+    {
+     "name": "KIND_TASK_AFTER",
+     "value": "UInt8(6)"
+    },
+    {
+     "name": "KIND_STORED",
+     "value": "UInt8(7)"
+    },
+    {
+     "name": "KIND_LOCATED",
+     "value": "UInt8(8)"
+    },
+    {
+     "name": "KIND_FETCH",
+     "value": "UInt8(9)"
+    },
+    {
+     "name": "KIND_TASK_INPUTS",
+     "value": "UInt8(10)"
+    },
+    {
+     "name": "KIND_RELEASE",
+     "value": "UInt8(11)"
+    },
+    {
+     "name": "KIND_FREE",
+     "value": "UInt8(12)"
+    },
+    {
+     "name": "KIND_STATS",
+     "value": "UInt8(13)"
+    },
+    {
+     "name": "KIND_HOLDING",
+     "value": "UInt8(14)"
+    },
+    {
+     "name": "KIND_CLAIM",
+     "value": "UInt8(15)"
+    },
+    {
+     "name": "KIND_RESUMED",
+     "value": "UInt8(16)"
+    },
+    {
+     "name": "KIND_SPAN",
+     "value": "UInt8(17)"
+    },
+    {
+     "name": "KIND_TIMELINE",
+     "value": "UInt8(18)"
+    },
+    {
+     "name": "KIND_ACTOR_CREATE",
+     "value": "UInt8(19)"
+    },
+    {
+     "name": "KIND_ACTOR_CALL",
+     "value": "UInt8(20)"
+    },
+    {
+     "name": "KIND_ACTOR_KILL",
+     "value": "UInt8(21)"
+    },
+    {
+     "name": "KIND_CHECKPOINT",
+     "value": "UInt8(22)"
+    },
+    {
+     "name": "KIND_CHECKPOINTED",
+     "value": "UInt8(23)"
+    },
+    {
+     "name": "KIND_ACTOR_RESTORE",
+     "value": "UInt8(24)"
+    },
+    {
+     "name": "KIND_COVERED",
+     "value": "UInt8(25)"
+    },
+    {
+     "name": "KIND_STATUS",
+     "value": "UInt8(26)"
+    },
+    {
+     "name": "KIND_STOP",
+     "value": "UInt8(27)"
+    },
+    {
+     "name": "KIND_TASK_MANY",
+     "value": "UInt8(28)"
+    },
+    {
+     "name": "KIND_DRAIN",
+     "value": "UInt8(29)",
+     "summary": "Worker to head: it was told to stop (SIGTERM), so send it no more work and move what it holds; the head says `KIND_STOP` once it may go."
+    },
+    {
+     "name": "KIND_ADOPT",
+     "value": "UInt8(30)",
+     "summary": "Head to worker: fetch object `object_id` from the location in the payload, a draining worker's, and keep it as its own."
+    },
+    {
+     "name": "KIND_ADOPTED",
+     "value": "UInt8(31)",
+     "summary": "Worker to head: 1 and the object's new location, or 0 and why it couldn't take it."
+    },
+    {
+     "name": "GATHER",
+     "value": "UInt8(1)",
+     "summary": "Task-after and task-inputs flag: the inputs gather into a `Seq`."
+    },
+    {
+     "name": "WITH_VALUE",
+     "value": "UInt8(2)",
+     "summary": "Task-after and task-inputs flag: an encoded value goes before them."
+    },
+    {
+     "name": "MANY",
+     "value": "UInt8(4)",
+     "summary": "Task-after and task-inputs flag: the task is a `TaskMany`, and the number of its results, a u64, follows the flags byte."
+    },
+    {
+     "name": "ADDR_SIZE",
+     "value": "12"
+    },
+    {
+     "name": "ROLE_DRIVER",
+     "value": "UInt8(1)"
+    },
+    {
+     "name": "ROLE_WORKER",
+     "value": "UInt8(2)"
+    },
+    {
+     "name": "ROLE_CLIENT",
+     "value": "UInt8(3)"
+    },
+    {
+     "name": "ROLE_OBSERVER",
+     "value": "UInt8(4)",
+     "summary": "A driver inside a worker, for a task that calls actors: the head treats it as a driver, except that it doesn't keep a local-mode head alive."
+    },
+    {
+     "name": "HEADER",
+     "value": "17"
+    },
+    {
+     "name": "MAX_FRAME",
+     "value": "1073741824"
+    }
+   ],
+   "structs": [
+    {
+     "name": "Frame",
+     "signature": "struct Frame",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "kind",
+       "type": "UInt8"
+      },
+      {
+       "name": "object_id",
+       "type": "UInt64"
+      },
+      {
+       "name": "task_id",
+       "type": "UInt64"
+      },
+      {
+       "name": "payload",
+       "type": "List[UInt8]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, kind: UInt8, object_id: UInt64, task_id: UInt64, var payload: List[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "take_payload",
+       "overloads": [
+        {
+         "signature": "def take_payload(deinit self) -> List[UInt8]",
+         "summary": "Consumes the frame and returns its payload without copying it."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "message",
+     "overloads": [
+      {
+       "signature": "def message(payload: Span[UInt8]) -> String",
+       "summary": "An error frame's text. It comes from another process, so bytes that aren't UTF-8 become replacement characters instead of a broken String."
+      }
+     ]
+    },
+    {
+     "name": "append_frame",
+     "overloads": [
+      {
+       "signature": "def append_frame(mut out: List[UInt8], kind: UInt8, object_id: UInt64, task_id: UInt64, payload: Span[UInt8])",
+       "summary": "Appends one whole frame to `out`."
+      }
+     ]
+    },
+    {
+     "name": "write_frame",
+     "overloads": [
+      {
+       "signature": "def write_frame(s: Stream, kind: UInt8, object_id: UInt64, task_id: UInt64, payload: Span[UInt8])"
+      }
+     ]
+    },
+    {
+     "name": "frame_length",
+     "overloads": [
+      {
+       "signature": "def frame_length(head: Span[UInt8]) -> Int",
+       "summary": "The body length a 4-byte frame prefix announces, checked."
+      }
+     ]
+    },
+    {
+     "name": "parse_body",
+     "overloads": [
+      {
+       "signature": "def parse_body(body: Span[UInt8]) -> Frame",
+       "summary": "A frame from its body: everything after the length prefix."
+      }
+     ]
+    },
+    {
+     "name": "read_frame",
+     "overloads": [
+      {
+       "signature": "def read_frame(s: Stream) -> Optional[Frame]",
+       "summary": "Reads the next frame, or returns `None` if the peer closed cleanly."
+      }
+     ]
+    },
+    {
+     "name": "encode_addr",
+     "overloads": [
+      {
+       "signature": "def encode_addr(ip: Array[UInt8, Int(4)], port: Int) -> List[UInt8]",
+       "summary": "An address as frames carry it: the IPv4 address, then the port, u64."
+      }
+     ]
+    },
+    {
+     "name": "decode_addr",
+     "overloads": [
+      {
+       "signature": "def decode_addr(buf: Span[UInt8], mut pos: Int) -> Tuple[Array[UInt8, Int(4)], Int]",
+       "summary": "Reads an address written by `encode_addr` and advances `pos`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.head",
+   "summary": "The head: one event loop that schedules every driver's tasks onto workers.",
+   "description": "Drivers and workers connect to the head and say hello with their role and\nregistry hash. A head built into a program refuses a peer whose hash isn't\nits own, so every process runs the same tasks. A generic head (`dista head`,\nregistry hash 0) takes any, and hands a driver's tasks and actors only to\nworkers built from the same program, so one head serves several programs.\nObservers (`dista status`, `timeline` and `stop`) say hello without a hash. A driver gets a number, which becomes the top bits of\nevery object ID it creates, so the head knows where each result goes.\n\nThe loop `poll`s the listener and every connection. Drivers send tasks, ready\nto run or waiting on other results; the head queues them, hands them to\nworkers round-robin up to `pipeline` in flight each, and forwards each result\nor error to the driver that owns it. A task whose inputs live mostly on one\nnode goes to a worker there when one is free (see `_pick`). Every socket is non-blocking with its\nown output queue (`Conn`), so a slow peer can't stall anyone else.\n\nSmall results come through the head, which keeps them, because a task\nsubmitted later may take one as input. A large result stays on the worker\nthat computed it: the head records where, tells the owning driver, and sends\na task that needs it as task-inputs, so the worker running that task fetches\nit from its peer. A worker that goes away loses the results it held: dista\ndoesn't rebuild them (that's Ray's lineage reconstruction), so a task that\nneeds one fails, naming it, and an orchestrator runs the job again. The\ntasks it was running are sent to another worker, up to `DISTA_TASK_RETRIES`\ntimes (default 3), unless an input they read from that worker is gone too.\n\nSubmissions are admitted, not just accepted. While the tasks queued or\nwaiting on inputs reach `DISTA_MAX_QUEUED` (default 100,000), or their\narguments `DISTA_MAX_QUEUED_BYTES` (default 1 GiB), the head stops reading\nfrom drivers. Their sockets fill, and `remote` blocks until workers drain the\nqueue: backpressure through TCP, with no frame of its own. Clients inside a\nworker's task are read regardless, since pausing one would hold that worker,\nand with every worker held, nothing would drain. 0 turns a limit off.\n\nA driver that doesn't read what the head sends it, busy elsewhere, would\ngrow the head's output buffer by every result. Past `DISTA_MAX_DRIVER_BUFFER`\nbytes waiting for it (default 256 MiB), its queued tasks aren't sent to\nworkers until it reads; its queue then fills, and admission control stops its\nsubmissions. A driver waiting to submit reads meanwhile (see `Client`), so\nthis doesn't deadlock it.\n\nEvery object is reference counted: its driver holds it until it releases it\n(or disconnects), and each submitted task taking it as input holds it until\nthat task settles. At zero the head forgets the object and tells the worker\nholding it, if one does, to delete it. An object released before its task\nfinishes is freed when the task settles.\n\nThe head keeps nothing on disk. When it restarts, its state comes back from\nits peers: workers rejoin and report the results they hold, and each driver\nreconnects under its old number and restores, claims or resubmits everything\nit still needs (see `frame.mojo`). A reported result no resumed driver\nclaimed is freed. A task that was running when the head died may run again.\n\nA worker told to stop drains (see `worker.mojo`). The head sends it no more\ntasks and has the other workers adopt every result it holds: each fetches\nits copy, the head records where the result is now, and tells the driver\nthat owns it. A task sent the old location still finds the result, since the\ndraining worker keeps serving until it's gone. Once the worker runs no task\nand holds nothing, the head lets it go, and it leaves without anything\nfailing or running again. An actor on a draining worker moves: the head\nholds its new calls, asks for a checkpoint after the ones it sent, and once\nthat's written, restores the actor on another worker and sends the held\ncalls there, so none runs twice. Without `DISTA_CHECKPOINT_URI` the\ncheckpoint fails, and the actor restarts when its worker leaves, replaying\nits calls, as for one lost.\n\nAn actor is placed on a worker that hosts no other, the one with the fewest\ntasks in flight, as soon as it's created; the worker builds it once those\ntasks finish. From then on the head sends that worker only the actor's calls,\neach as it arrives, so they run in order. An actor created when every worker\nhosts one waits for a worker to join or an actor to be killed. Killing an\nactor, or its driver leaving, frees its worker for tasks.\n\nThe head keeps every call made to an actor since its last checkpoint. When\nthe actor's worker goes away, the actor is placed on another worker, built\nagain from that checkpoint, or from its constructor if it has none, and\nthose calls are run again in order, so its state is rebuilt: calls run at\nleast once. Each call is answered once: a call answered before the restart\nkeeps its first answer, and the replay's is dropped.\n\nA checkpoint is asked for every `checkpoint_every` calls, if the actor was\ncreated with one, and whenever a driver asks. The head sends it to the\nactor's worker between calls, numbered by the calls it covers, and once the\nworker says it's written, forgets the calls it covers, and tells each\ncaller the newest of its calls the checkpoint includes.\n\nAfter a head restart, a resuming driver creates its actors again. The head\nrestores each from its newest checkpoint in `DISTA_CHECKPOINT_URI`, which\nthe head lists, or builds it if there's none, and the calls the callers\nresend run on that: every call no checkpoint includes, answered or not.",
+   "aliases": [
+    {
+     "name": "DRIVER_SHIFT",
+     "value": "40",
+     "summary": "Object IDs carry their driver's number above this bit."
+    },
+    {
+     "name": "MAX_SPANS",
+     "value": "1000000",
+     "summary": "Finished task spans the head keeps per driver until it asks for them."
+    },
+    {
+     "name": "DRIVER_READ",
+     "value": "1048576",
+     "summary": "Bytes read from a driver per poll: frames past the admission limits stay in its socket rather than in the head's buffer."
+    },
+    {
+     "name": "LOOKAHEAD",
+     "value": "64",
+     "summary": "How far into its queue a free worker looks for a task to take."
+    }
+   ],
+   "structs": [
+    {
+     "name": "Head",
+     "signature": "struct Head",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var listener: Listener, registry_hash: UInt64, pipeline: Int, exit_when_idle: Bool, local_workers: Int = Int(0))",
+         "summary": "A head serving `listener`.",
+         "args": [
+          {
+           "name": "listener",
+           "doc": "Where drivers and workers connect."
+          },
+          {
+           "name": "registry_hash",
+           "doc": "What every peer's hello must carry."
+          },
+          {
+           "name": "pipeline",
+           "doc": "Tasks in flight per worker."
+          },
+          {
+           "name": "exit_when_idle",
+           "doc": "Return once the last driver leaves (local mode)."
+          },
+          {
+           "name": "local_workers",
+           "doc": "In local mode, how many workers were forked."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "run",
+       "overloads": [
+        {
+         "signature": "def run(mut self)",
+         "summary": "Serves until the last driver leaves, in local mode; else forever."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "owner_of",
+     "overloads": [
+      {
+       "signature": "def owner_of(object_id: UInt64) -> UInt64",
+       "summary": "The number of the driver that created `object_id`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.metrics",
+   "summary": "Prometheus metrics: counters and a histogram, and the `/metrics` page.",
+   "description": "With `DISTA_METRICS_PORT` set, the head and every worker answer HTTP on that\nport with Prometheus's text format, which Kubernetes monitoring scrapes as it\nis. It's off by default, since in local mode the head and its workers share\na host.\n\nThe server is the smallest one that does: the event loop polls its listener,\nand each connection is answered on the spot. The request is read for up to\n`READ_TIMEOUT_MS` and only its first line matters; every path gets the\nmetrics. A scrape is a few kilobytes, so answering it blocks the loop for\nwell under a millisecond, but a client that connects and sends nothing holds\nit for the timeout.",
+   "aliases": [
+    {
+     "name": "READ_TIMEOUT_MS",
+     "value": "200"
+    },
+    {
+     "name": "BUCKETS",
+     "value": "6",
+     "summary": "Task duration buckets: 1 ms, 10 ms, 100 ms, 1 s, 10 s and 60 s."
+    }
+   ],
+   "structs": [
+    {
+     "name": "Histogram",
+     "signature": "struct Histogram",
+     "summary": "A Prometheus histogram of durations.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "counts",
+       "type": "List[Int]",
+       "summary": "Per bucket, how many observations were at most its bound."
+      },
+      {
+       "name": "count",
+       "type": "Int"
+      },
+      {
+       "name": "sum",
+       "type": "Float64"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "observe",
+       "overloads": [
+        {
+         "signature": "def observe(mut self, seconds: Float64)"
+        }
+       ]
+      },
+      {
+       "name": "write",
+       "overloads": [
+        {
+         "signature": "def write(self, mut out: String, name: String, help: String)"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "bucket_bound",
+     "overloads": [
+      {
+       "signature": "def bucket_bound(i: Int) -> Float64",
+       "summary": "Bucket `i`'s upper bound, in seconds."
+      }
+     ]
+    },
+    {
+     "name": "write_metric",
+     "overloads": [
+      {
+       "signature": "def write_metric(mut out: String, kind: String, name: String, help: String, value: Int)",
+       "summary": "One counter or gauge, without labels."
+      }
+     ]
+    },
+    {
+     "name": "write_outcomes",
+     "overloads": [
+      {
+       "signature": "def write_outcomes(mut out: String, name: String, help: String, ok: Int, err: Int)",
+       "summary": "A counter split by outcome, ok and error."
+      }
+     ]
+    },
+    {
+     "name": "metrics_listener",
+     "overloads": [
+      {
+       "signature": "def metrics_listener() -> Optional[Listener]",
+       "summary": "A listener on `DISTA_METRICS_PORT`, on every interface, if it's set."
+      }
+     ]
+    },
+    {
+     "name": "answer_scrape",
+     "overloads": [
+      {
+       "signature": "def answer_scrape(l: Listener, body: String)",
+       "summary": "Accepts one connection on `l` and answers it with `body`. A client that misbehaves only loses its answer."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.runtime",
+   "summary": "The runtime: one binary that runs as driver, head or worker.",
+   "description": "```mojo\ncomptime Square = Task[Int, Int, square]\n\ndef main() raises:\n    var rt = Runtime[Square](workers=4)\n    var r = rt.remote[Square](7)\n    print(rt.get(r))  # 49\n```\n\n`Runtime(...)` reads the environment to decide what this process is:\n\n| Environment | Role |\n|---|---|\n| `DISTA_ROLE=head` | runs the head on `DISTA_PORT` (default 6390) and never returns |\n| `DISTA_ROLE=worker` | serves the head at `DISTA_HEAD=host:port` and never returns |\n| `DISTA_HEAD=host:port` | a driver that submits to that head |\n| neither | local mode: forks a head and `workers` workers, then drives them |\n\nSo a cluster runs one image everywhere, and the same program runs on a laptop\nunchanged. The registry is the runtime's parameter list: workers dispatch\nwith a `comptime for` over it, and every process's hello carries a hash of it\nso the head refuses a mismatched build.\n\nA driver sends tasks to the head and reads results back. Small results come\nwith the reply; a large one stays on the worker that computed it. On the same\nhost `get` maps it from the node store and decodes it in place; from another\nhost it fetches it from that worker directly. A task can take\nanother task's result: pass an `ObjectRef[A]` instead of an `A`, or a\n`List[ObjectRef[X]]` to a task that takes a `Seq[X]`. The head runs it once\nevery input exists, and fails it if an input failed.\n\n`create` starts an actor on a worker of its own and returns its handle;\n`call` runs one of its methods there, in the order of the calls, and returns\nan `ObjectRef` like a task does; `checkpoint` saves its state to\n`DISTA_CHECKPOINT_URI`; `kill` destroys it.",
+   "aliases": [
+    {
+     "name": "DEFAULT_PORT",
+     "value": "6390"
+    }
+   ],
+   "structs": [
+    {
+     "name": "Runtime",
+     "signature": "struct Runtime[*Ts: TaskLike]",
+     "summary": "A driver for tasks `Ts`, or a head or worker if the environment says so.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, workers: Int = Int(4), pipeline: Int = Int(2))",
+         "summary": "Starts this process in the role its environment names.",
+         "args": [
+          {
+           "name": "workers",
+           "doc": "Workers to fork in local mode; ignored otherwise."
+          },
+          {
+           "name": "pipeline",
+           "doc": "Tasks in flight per worker, if this process runs a head."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "remote",
+       "overloads": [
+        {
+         "signature": "def remote[T: TaskLike](mut self, arg: T.A) -> ObjectRef[T.R]",
+         "summary": "Submits task `T` on `arg` and returns a handle to its result."
+        },
+        {
+         "signature": "def remote[T: Task2Like](mut self, a: T.A, b: T.B) -> ObjectRef[T.R]",
+         "summary": "Submits task `T`, a `Task2`, on `a` and `b`."
+        },
+        {
+         "signature": "def remote[T: Task3Like](mut self, a: T.A, b: T.B, c: T.C) -> ObjectRef[T.R]",
+         "summary": "Submits task `T`, a `Task3`, on `a`, `b` and `c`."
+        },
+        {
+         "signature": "def remote[T: TaskLike](mut self, arg: ObjectRef[T.A]) -> ObjectRef[T.R]",
+         "summary": "Submits task `T` to run on another task's result, once it exists."
+        },
+        {
+         "signature": "def remote[X: AnyType, //, T: TaskLike](mut self, args: List[ObjectRef[X]]) -> ObjectRef[T.R]",
+         "summary": "Submits task `T`, which takes a `Seq[X]`, to run on these results.",
+         "description": "The task runs once every result exists, and receives them in order."
+        },
+        {
+         "signature": "def remote[X: AnyType, //, T: TaskLike](mut self, arg: T.A, args: List[ObjectRef[X]]) -> ObjectRef[T.R]",
+         "summary": "Submits task `T`, a `TaskWith`, on `arg` and these results: it runs once every result exists, and receives them in order as a `Seq`.",
+         "description": "A shuffle's reducer takes this shape: its partition number, and the\nmap outputs holding that partition."
+        }
+       ]
+      },
+      {
+       "name": "remote_many",
+       "overloads": [
+        {
+         "signature": "def remote_many[T: ManyLike](mut self, arg: T.A, n: Int) -> List[ObjectRef[T.Part]]",
+         "summary": "Submits task `T`, a `TaskMany`, on `arg`, for `n` results: each is an object of its own, stored, fetched and freed on its own.",
+         "description": "A shuffle's map task takes this shape: one partition per reducer."
+        },
+        {
+         "signature": "def remote_many[T: ManyLike](mut self, arg: ObjectRef[T.A], n: Int) -> List[ObjectRef[T.Part]]",
+         "summary": "Submits task `T`, a `TaskMany`, to run on another task's result once it exists, for `n` results."
+        },
+        {
+         "signature": "def remote_many[X: AnyType, //, T: ManyLike](mut self, args: List[ObjectRef[X]], n: Int) -> List[ObjectRef[T.Part]]",
+         "summary": "Submits task `T`, a `TaskMany` taking a `Seq[X]`, to run on these results once they exist, for `n` results.",
+         "description": "A shuffle's later stage takes this shape: it partitions again what\nearlier tasks made, without the driver fetching it."
+        }
+       ]
+      },
+      {
+       "name": "create",
+       "overloads": [
+        {
+         "signature": "def create[T: ActorLike](mut self, arg: T.A, checkpoint_every: Int = Int(0)) -> ActorHandle[T]",
+         "summary": "Starts actor `T` on a worker of its own, built from `arg`.",
+         "description": "It returns at once; calls made before the actor is up wait for it.\nIf the constructor raises, every call fails with its error. The\nhandle is a value: a task given it can call the actor too.\n\nWith `checkpoint_every` set, the actor's state is written to\n`DISTA_CHECKPOINT_URI` after every that many calls, and a restart\nrestores it from there instead of running every call again."
+        }
+       ]
+      },
+      {
+       "name": "checkpoint",
+       "overloads": [
+        {
+         "signature": "def checkpoint[T: ActorLike](mut self, actor: ActorHandle[T]) -> ObjectRef[Int]",
+         "summary": "Checkpoints `actor` after the calls made to it so far. The result is the number of calls the checkpoint covers, once it's written."
+        }
+       ]
+      },
+      {
+       "name": "call",
+       "overloads": [
+        {
+         "signature": "def call[M: MethodLike](mut self, actor: ActorHandle[M.Act], arg: M.A) -> ObjectRef[M.R]",
+         "summary": "Calls method `M` on `actor` with `arg`, after every earlier call."
+        }
+       ]
+      },
+      {
+       "name": "kill",
+       "overloads": [
+        {
+         "signature": "def kill[T: ActorLike](mut self, actor: ActorHandle[T])",
+         "summary": "Destroys `actor` once its earlier calls have run, and frees its worker. Their results stay until released."
+        }
+       ]
+      },
+      {
+       "name": "ready",
+       "overloads": [
+        {
+         "signature": "def ready[R: AnyType](mut self, r: ObjectRef[R]) -> Bool",
+         "summary": "Returns whether `r`'s task has finished, without waiting for it."
+        }
+       ]
+      },
+      {
+       "name": "get",
+       "overloads": [
+        {
+         "signature": "def get[R: Movable](mut self, r: ObjectRef[R]) -> R",
+         "summary": "Waits for `r`'s task and returns its result, or raises its error."
+        }
+       ]
+      },
+      {
+       "name": "release",
+       "overloads": [
+        {
+         "signature": "def release[R: AnyType](mut self, r: ObjectRef[R])",
+         "summary": "Says this driver is done with `r`: see `Client.release`."
+        },
+        {
+         "signature": "def release[R: AnyType](mut self, refs: List[ObjectRef[R]])",
+         "summary": "Releases every ref in `refs`."
+        }
+       ]
+      },
+      {
+       "name": "stats",
+       "overloads": [
+        {
+         "signature": "def stats(mut self) -> HeadStats",
+         "summary": "Asks the head what it holds. Frames that arrive first are kept."
+        }
+       ]
+      },
+      {
+       "name": "location",
+       "overloads": [
+        {
+         "signature": "def location[R: AnyType](mut self, r: ObjectRef[R]) -> String",
+         "summary": "Where `r`'s result lives: see `Client.location`."
+        }
+       ]
+      },
+      {
+       "name": "bytes_fetched",
+       "overloads": [
+        {
+         "signature": "def bytes_fetched(self) -> Int",
+         "summary": "How many result bytes this driver has fetched over sockets."
+        }
+       ]
+      },
+      {
+       "name": "clock",
+       "overloads": [
+        {
+         "signature": "def clock() -> UInt64",
+         "summary": "Wall-clock nanoseconds, the clock the timeline uses: the start to give `span`."
+        }
+       ]
+      },
+      {
+       "name": "span",
+       "overloads": [
+        {
+         "signature": "def span(mut self, name: String, start: UInt64, end: UInt64 = UInt64(0))",
+         "summary": "Records a stretch of this driver's own work for the timeline, from `start` (from `clock`) to `end`, or to now. `timeline` draws these as the driver's track, above the workers."
+        }
+       ]
+      },
+      {
+       "name": "spans",
+       "overloads": [
+        {
+         "signature": "def spans(mut self) -> List[TaskSpan]",
+         "summary": "Every task this driver submitted that has finished, with its timeline, since the last call. A head restart loses the spans it held and those of tasks running then."
+        }
+       ]
+      },
+      {
+       "name": "timeline",
+       "overloads": [
+        {
+         "signature": "def timeline(mut self, path: String) -> Int",
+         "summary": "Writes the finished tasks' timeline to `path` in Chrome's trace format, for Perfetto (ui.perfetto.dev) or chrome://tracing, and returns how many tasks it holds.",
+         "description": "Each worker is a process with two tracks: its tasks running, and its\ntasks waiting for their inputs. The driver's own spans, from `span`,\nare a process above them. Times are microseconds from the first\nsubmission or driver span; each run's arguments carry the head's\nwaits too. Driver spans are written once, like task spans."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.scale",
+   "summary": "How many workers a running job wants: a policy over the head's demand.",
+   "description": "dista starts no machines. Whatever owns them (orca's `ec2` runner, a shell\nloop, a Kubernetes operator) reads the head's demand, `dista status --json`,\nasks `decide` what to do, starts that many workers and drains the ones it\nnames with `dista drain`:\n\n    var d = Demand.parse(observer.status_json())\n    var got = decide(d, Policy(min_workers=0, max_workers=12), now, pending,\n                     short_since)\n    # start got.start workers; drain each of got.drain; keep got.short_since\n\n`decide` has no clock and no I/O: `now` is the provider's, in seconds, and\n`short_since`, when the job first ran short of workers, comes back in the\ndecision for the next call. So it's tested on tables of demand over time.\n\nUp: tasks ready with no free slot for `up_after` seconds start workers, at\nmost `max_step` at once, up to `max_workers`; with no worker at all, they\nstart at once. Workers asked for but not yet joined (`pending`) count as\nthere, so a slow boot isn't asked for twice.\n\nDown: workers idle for `idle_before_down` seconds drain, fewest held bytes\nfirst, down to `min_workers`, which may be 0. A worker hosting an actor\ndrains only with a checkpoint store to move it through; and the last worker\ndrains only once no task is left and it holds nothing, since its results\nwould have nowhere to go.",
+   "structs": [
+    {
+     "name": "WorkerDemand",
+     "signature": "struct WorkerDemand",
+     "summary": "One worker, as the head sees it.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "address",
+       "type": "String",
+       "summary": "Its object server, `ip:port`: what `dista drain` takes."
+      },
+      {
+       "name": "running",
+       "type": "Int",
+       "summary": "Tasks in flight on it."
+      },
+      {
+       "name": "idle_seconds",
+       "type": "Float64",
+       "summary": "How long it's had nothing to do; 0 while it has."
+      },
+      {
+       "name": "held_bytes",
+       "type": "Int",
+       "summary": "Bytes of results stored on it."
+      },
+      {
+       "name": "actor",
+       "type": "UInt64",
+       "summary": "The actor it hosts, or 0."
+      },
+      {
+       "name": "draining",
+       "type": "Bool"
+      }
+     ]
+    },
+    {
+     "name": "Demand",
+     "signature": "struct Demand",
+     "summary": "The head's demand, from `dista status --json`.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "tasks_ready",
+       "type": "Int",
+       "summary": "Tasks whose inputs are ready, waiting for a worker."
+      },
+      {
+       "name": "tasks_waiting",
+       "type": "Int",
+       "summary": "Tasks waiting for their inputs."
+      },
+      {
+       "name": "tasks_running",
+       "type": "Int"
+      },
+      {
+       "name": "actors_waiting",
+       "type": "Int",
+       "summary": "Actors waiting for a worker of their own."
+      },
+      {
+       "name": "pipeline",
+       "type": "Int",
+       "summary": "Tasks the head keeps in flight per worker."
+      },
+      {
+       "name": "checkpoints",
+       "type": "Bool",
+       "summary": "Whether actors can move, through a checkpoint store."
+      },
+      {
+       "name": "workers",
+       "type": "List[WorkerDemand]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, tasks_ready: Int = Int(0), tasks_waiting: Int = Int(0), tasks_running: Int = Int(0), actors_waiting: Int = Int(0), pipeline: Int = Int(2), checkpoints: Bool = False, var workers: List[WorkerDemand] = List())"
+        }
+       ]
+      },
+      {
+       "name": "parse",
+       "overloads": [
+        {
+         "signature": "def parse(text: String) -> Self",
+         "summary": "Reads `dista status --json`'s object. Unknown fields are skipped, so a newer head's output still reads."
+        }
+       ]
+      },
+      {
+       "name": "live",
+       "overloads": [
+        {
+         "signature": "def live(self) -> Int",
+         "summary": "Workers that aren't draining."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Policy",
+     "signature": "struct Policy",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "min_workers",
+       "type": "Int",
+       "summary": "May be 0: a job with nothing to do then runs no worker."
+      },
+      {
+       "name": "max_workers",
+       "type": "Int"
+      },
+      {
+       "name": "tasks_per_worker",
+       "type": "Int",
+       "summary": "Tasks one worker takes at once; 0 for the head's pipeline depth."
+      },
+      {
+       "name": "up_after",
+       "type": "Float64",
+       "summary": "Seconds tasks stay ready with no free slot before workers start."
+      },
+      {
+       "name": "idle_before_down",
+       "type": "Float64",
+       "summary": "Seconds a worker stays idle before it drains."
+      },
+      {
+       "name": "max_step",
+       "type": "Int",
+       "summary": "Most workers started by one decision."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, min_workers: Int = Int(1), max_workers: Int = Int(4), tasks_per_worker: Int = Int(0), up_after: Float64 = Float64(\"5\"), idle_before_down: Float64 = Float64(\"60\"), max_step: Int = Int(4))"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Decision",
+     "signature": "struct Decision",
+     "traits": [
+      "Copyable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "start",
+       "type": "Int",
+       "summary": "Workers to start."
+      },
+      {
+       "name": "drain",
+       "type": "List[String]",
+       "summary": "Workers to drain, by address."
+      },
+      {
+       "name": "want",
+       "type": "Int",
+       "summary": "The workers the demand calls for, within the policy's range."
+      },
+      {
+       "name": "short_since",
+       "type": "Float64",
+       "summary": "When the job ran short of workers, for the next `decide`; 0 if it isn't."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)",
+         "summary": "`dista scale --once`'s output: one line each."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "decide",
+     "overloads": [
+      {
+       "signature": "def decide(demand: Demand, policy: Policy, now: Float64, pending: Int = Int(0), short_since: Float64 = Float64(\"0\")) -> Decision",
+       "summary": "What to do now: workers to start and workers to drain. `pending` is workers started that haven't joined the head yet."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.seq",
+   "summary": "`Seq[T]`: a list that goes through the codec.",
+   "description": "`List` can't be encoded by reflection, because reflection can't recover its\nelement type. `Seq[T]` carries `T` as a parameter, so it can encode each\nelement with the generic codec:\n\n```mojo\ndef total(xs: Seq[Int]) -> Int:\n    var t = 0\n    for i in range(len(xs)):\n        t += xs[i]\n    return t\n\ncomptime Total = Task[Seq[Int], Int, total]\n```\n\nOn the wire a `Seq` is an 8-byte count, then each element's encoding. That is\nalso how the runtime builds one from a list of `ObjectRef`s: the count, then\neach result's bytes as they arrived, without decoding them.",
+   "structs": [
+    {
+     "name": "Seq",
+     "signature": "struct Seq[T: Copyable & Deinitable]",
+     "summary": "A list of `T` that tasks can take and return.",
+     "traits": [
+      "Codec",
+      "Copyable",
+      "Movable",
+      "Sized"
+     ],
+     "fields": [
+      {
+       "name": "items",
+       "type": "List[T]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        },
+        {
+         "signature": "def __init__(out self, var items: List[T])"
+        }
+       ]
+      },
+      {
+       "name": "__getitem__",
+       "overloads": [
+        {
+         "signature": "def __getitem__(self, i: Int) -> T",
+         "summary": "A copy of element `i`. Use `items` to borrow instead."
+        }
+       ]
+      },
+      {
+       "name": "append",
+       "overloads": [
+        {
+         "signature": "def append(mut self, var value: T)"
+        }
+       ]
+      },
+      {
+       "name": "__len__",
+       "overloads": [
+        {
+         "signature": "def __len__(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "encode",
+       "overloads": [
+        {
+         "signature": "def encode(self, mut out: List[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "decode",
+       "overloads": [
+        {
+         "signature": "def decode(buf: Span[UInt8], mut pos: Int) -> Self"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.signals",
+   "summary": "SIGTERM: the head exits, and a worker drains, even as a container's PID 1.",
+   "description": "Kubernetes stops a pod with SIGTERM, and the kernel drops any signal sent to\na container's PID 1, as dista's process is, unless it has a handler for it.\nThe head's handler exits at once, as the signal's default action would. A\nworker's writes a byte to a pipe its event loop polls, so the worker can\ndrain: finish what it's running, hand what it holds to other workers, and\nleave (see `worker.mojo`). A second SIGTERM, or one that arrives before the\nworker's loop runs, ends it at once.\n\nA signal handler can't reach a Mojo variable, so the pipe's write end is\nduplicated onto a fixed descriptor, `WAKE_FD`, which the handler writes to.",
+   "aliases": [
+    {
+     "name": "SIGTERM",
+     "value": "Int32(15)"
+    },
+    {
+     "name": "WAKE_FD",
+     "value": "Int32(250)",
+     "summary": "The descriptor a worker's handler writes to: below macOS's default limit of 256 open files, and above what a process has open when it starts."
+    }
+   ],
+   "functions": [
+    {
+     "name": "exit_on_sigterm",
+     "overloads": [
+      {
+       "signature": "def exit_on_sigterm()",
+       "summary": "Makes SIGTERM end this process, even where it would be dropped."
+      }
+     ]
+    },
+    {
+     "name": "wake_on_sigterm",
+     "overloads": [
+      {
+       "signature": "def wake_on_sigterm() -> c_int",
+       "summary": "Makes SIGTERM write a byte to a pipe, and returns its read end; or -1, with SIGTERM ending the process, if `WAKE_FD` is taken or the pipe can't be made. Both ends block (setting O_NONBLOCK needs a variadic `fcntl`, which `external_call` can't make on Apple's arm64), so read it only once `poll` says it's readable."
+      }
+     ]
+    },
+    {
+     "name": "take_wakes",
+     "overloads": [
+      {
+       "signature": "def take_wakes(fd: Int32) -> Int",
+       "summary": "Reads, once, the bytes SIGTERMs wrote to `fd`, which `poll` found readable; how many there were."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.socket",
+   "summary": "IPv4 TCP and process control over libc.",
+   "description": "Just enough of `socket(2)` and friends for dista's processes: listeners on\nloopback or on every interface, streams to a host name or to loopback, the\nnon-blocking reads and writes the head's event loop uses, `poll`, and\n`fork`/`waitpid`/`_exit` to start and reap local processes. macOS and Linux\ndiffer in `sockaddr_in`'s first byte, in `addrinfo`'s field order, in the\n`SOL_SOCKET`, `MSG_DONTWAIT` and `EAGAIN` constants, and in how a write to a\nclosed peer is kept from raising SIGPIPE; `platform_map` picks the right value\nfor each.",
+   "aliases": [
+    {
+     "name": "AF_INET",
+     "value": "Int32(2)"
+    },
+    {
+     "name": "SOCK_STREAM",
+     "value": "Int32(1)"
+    },
+    {
+     "name": "SOL_SOCKET",
+     "value": "SIMD(platform_map[Optional(String(\"SOL_SOCKET\")), linux=Optional(Int(1)), macos=Optional(Int(65535))]())"
+    },
+    {
+     "name": "SO_REUSEADDR",
+     "value": "SIMD(platform_map[Optional(String(\"SO_REUSEADDR\")), linux=Optional(Int(2)), macos=Optional(Int(4))]())"
+    },
+    {
+     "name": "SO_NOSIGPIPE",
+     "value": "SIMD(platform_map[Optional(String(\"SO_NOSIGPIPE\")), linux=Optional(Int(0)), macos=Optional(Int(4130))]())"
+    },
+    {
+     "name": "MSG_NOSIGNAL",
+     "value": "SIMD(platform_map[Optional(String(\"MSG_NOSIGNAL\")), linux=Optional(Int(16384)), macos=Optional(Int(0))]())"
+    },
+    {
+     "name": "EINTR",
+     "value": "Int32(4)"
+    },
+    {
+     "name": "IPPROTO_TCP",
+     "value": "Int32(6)"
+    },
+    {
+     "name": "TCP_NODELAY",
+     "value": "Int32(1)"
+    },
+    {
+     "name": "SOCKADDR_IN_SIZE",
+     "value": "16"
+    },
+    {
+     "name": "EAGAIN",
+     "value": "SIMD(platform_map[Optional(String(\"EAGAIN\")), linux=Optional(Int(11)), macos=Optional(Int(35))]())"
+    },
+    {
+     "name": "F_GETFL",
+     "value": "Int32(3)"
+    },
+    {
+     "name": "F_SETFL",
+     "value": "Int32(4)"
+    },
+    {
+     "name": "O_NONBLOCK",
+     "value": "SIMD(platform_map[Optional(String(\"O_NONBLOCK\")), linux=Optional(Int(2048)), macos=Optional(Int(4))]())"
+    },
+    {
+     "name": "MSG_DONTWAIT",
+     "value": "SIMD(platform_map[Optional(String(\"MSG_DONTWAIT\")), linux=Optional(Int(64)), macos=Optional(Int(128))]())"
+    },
+    {
+     "name": "ADDRINFO_SIZE",
+     "value": "48"
+    },
+    {
+     "name": "ADDRINFO_FAMILY_OFF",
+     "value": "4"
+    },
+    {
+     "name": "ADDRINFO_SOCKTYPE_OFF",
+     "value": "8"
+    },
+    {
+     "name": "ADDRINFO_ADDR_OFF",
+     "value": "platform_map[Optional(String(\"AI_ADDR_OFF\")), linux=Optional(Int(24)), macos=Optional(Int(32))]()"
+    },
+    {
+     "name": "POLLIN",
+     "value": "Int16(1)"
+    },
+    {
+     "name": "POLLOUT",
+     "value": "Int16(4)"
+    },
+    {
+     "name": "POLLERR",
+     "value": "Int16(8)"
+    },
+    {
+     "name": "POLLHUP",
+     "value": "Int16(16)"
+    },
+    {
+     "name": "POLLFD_SIZE",
+     "value": "8"
+    }
+   ],
+   "structs": [
+    {
+     "name": "Stream",
+     "signature": "struct Stream",
+     "summary": "A connected TCP socket. It's non-blocking, but `write_all` and `read_into` wait for it, so to its users it blocks; the head's loop uses `send_some` and `recv_some`, which don't. Closes itself when dropped.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "fd",
+       "type": "c_int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, fd: Int32)"
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "connect",
+       "overloads": [
+        {
+         "signature": "def connect(port: Int) -> Self",
+         "summary": "Connects to 127.0.0.1:`port`."
+        },
+        {
+         "signature": "def connect(host: String, port: Int) -> Self",
+         "summary": "Connects to `host`:`port`; `host` is a name or a dotted quad."
+        },
+        {
+         "signature": "def connect(ip: Array[UInt8, Int(4)], port: Int) -> Self",
+         "summary": "Connects to `ip`:`port`."
+        }
+       ]
+      },
+      {
+       "name": "local_ip",
+       "overloads": [
+        {
+         "signature": "def local_ip(self) -> Array[UInt8, Int(4)]",
+         "summary": "The local IPv4 address this connection goes out from."
+        }
+       ]
+      },
+      {
+       "name": "write_all",
+       "overloads": [
+        {
+         "signature": "def write_all(self, data: Span[UInt8])",
+         "summary": "Writes every byte of `data`."
+        }
+       ]
+      },
+      {
+       "name": "read_into",
+       "overloads": [
+        {
+         "signature": "def read_into(self, buf: Pointer[UInt8], size: Int) -> Int",
+         "summary": "Reads exactly `size` bytes into `buf`.",
+         "description": "Returns `size`, or 0 when the peer closed before sending anything.\nRaises if the peer closes partway through."
+        }
+       ]
+      },
+      {
+       "name": "close",
+       "overloads": [
+        {
+         "signature": "def close(mut self)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Listener",
+     "signature": "struct Listener",
+     "summary": "A TCP listener. Closes itself when dropped.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "fd",
+       "type": "c_int"
+      },
+      {
+       "name": "port",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, port: Int = Int(0), any_interface: Bool = False, backlog: Int = Int(128))",
+         "summary": "Binds and starts listening.",
+         "args": [
+          {
+           "name": "port",
+           "doc": "The port, or 0 for one the OS picks."
+          },
+          {
+           "name": "any_interface",
+           "doc": "Listen on every interface instead of loopback."
+          },
+          {
+           "name": "backlog",
+           "doc": "How many connections may wait to be accepted."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "accept",
+       "overloads": [
+        {
+         "signature": "def accept(self) -> Stream",
+         "summary": "Waits for the next connection."
+        }
+       ]
+      },
+      {
+       "name": "close",
+       "overloads": [
+        {
+         "signature": "def close(mut self)"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "resolve_ipv4",
+     "overloads": [
+      {
+       "signature": "def resolve_ipv4(host: String) -> Array[UInt8, Int(4)]",
+       "summary": "The first IPv4 address of `host`, a name or a dotted quad."
+      }
+     ]
+    },
+    {
+     "name": "send_some",
+     "overloads": [
+      {
+       "signature": "def send_some(fd: Int32, data: Pointer[UInt8], size: Int) -> Int",
+       "summary": "Sends what the socket takes without blocking. Returns the bytes sent."
+      }
+     ]
+    },
+    {
+     "name": "recv_some",
+     "overloads": [
+      {
+       "signature": "def recv_some(fd: Int32, buf: Pointer[UInt8], size: Int) -> Int",
+       "summary": "Reads what has arrived, without blocking.",
+       "description": "Returns the bytes read, 0 at end of stream, or -1 if nothing is waiting."
+      }
+     ]
+    },
+    {
+     "name": "fcntl",
+     "overloads": [
+      {
+       "signature": "def fcntl(fd: Int32, cmd: Int32, arg: Int32) -> c_int",
+       "summary": "`fcntl(2)` with one int argument: the only declaration of it in dista, since two with different signatures don't link."
+      }
+     ]
+    },
+    {
+     "name": "set_nonblocking",
+     "overloads": [
+      {
+       "signature": "def set_nonblocking(fd: Int32) -> Bool",
+       "summary": "Makes `fd` non-blocking; whether that worked."
+      }
+     ]
+    },
+    {
+     "name": "wall_ns",
+     "overloads": [
+      {
+       "signature": "def wall_ns() -> UInt64",
+       "summary": "Nanoseconds since the epoch, from CLOCK_REALTIME.",
+       "description": "The timeline stamps tasks on the head and on workers with this, so the\nstamps compare across processes and, NTP permitting, machines; a\nmonotonic clock only compares within one host."
+      }
+     ]
+    },
+    {
+     "name": "stream_pair",
+     "overloads": [
+      {
+       "signature": "def stream_pair() -> List[Stream]",
+       "summary": "Two connected local stream sockets, for tests and fuzzing."
+      }
+     ]
+    },
+    {
+     "name": "poll",
+     "overloads": [
+      {
+       "signature": "def poll(fds: List[Int32], events: List[Int16], timeout_ms: Int = Int(-1)) -> List[Int16]",
+       "summary": "Waits for any of `events[i]` on `fds[i]`, or until `timeout_ms` passes.",
+       "description": "Returns each descriptor's `revents`. A timeout of -1 waits indefinitely."
+      }
+     ]
+    },
+    {
+     "name": "poll_readable",
+     "overloads": [
+      {
+       "signature": "def poll_readable(fds: List[Int32], timeout_ms: Int = Int(-1)) -> List[Bool]",
+       "summary": "Waits until at least one of `fds` is readable, or `timeout_ms` passes.",
+       "description": "A closed or failed socket counts as readable, so the read that follows\nreports it. A timeout of -1 waits indefinitely."
+      }
+     ]
+    },
+    {
+     "name": "fork",
+     "overloads": [
+      {
+       "signature": "def fork() -> Int",
+       "summary": "Forks the process. Returns 0 in the child, the child's pid in the parent."
+      }
+     ]
+    },
+    {
+     "name": "wait_child",
+     "overloads": [
+      {
+       "signature": "def wait_child(pid: Int) -> Int",
+       "summary": "Waits for child `pid` to exit and returns its raw wait status."
+      }
+     ]
+    },
+    {
+     "name": "exit_now",
+     "overloads": [
+      {
+       "signature": "def exit_now(code: Int)",
+       "summary": "Ends the process immediately, without running atexit handlers.",
+       "description": "A forked worker leaves through here, so it never returns into the driver's\n`main` or flushes the driver's buffered output a second time."
+      }
+     ]
+    },
+    {
+     "name": "addr_key",
+     "overloads": [
+      {
+       "signature": "def addr_key(ip: Array[UInt8, Int(4)], port: Int) -> String"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.store",
+   "summary": "The node-local object store: large results in shared mappings.",
+   "description": "A worker writes each large result into a file in a node-local directory\n(`/dev/shm` on Linux, `$TMPDIR` on macOS, or `DISTA_STORE_DIR`). A reader\nthat can see that file maps it, through memory-region's `SharedMapping`,\nread-only and reads the bytes where they lie: no socket, no copy through\nthe kernel's network stack. A reader that can't fetches the result over a\nsocket from the worker, as before.\n\n\"Can see the file\" is the test, not a matching host name: file names carry a\nrandom token per worker, so a file with the right name is the right file.\nThat covers one machine, and Kubernetes pods that share a volume. (Host\nnames turned out to be unreliable: on GitHub's macOS runners, processes on\none machine reported different ones.)\n\n`DISTA_SHM=0` turns the store off; large results then stay in the worker's\nmemory and are always fetched over sockets.\n\nSpilling: a worker keeps at most `DISTA_STORE_BYTES` of results in the store\n(no limit when unset), and a result past that, or one the store can't take,\ngoes to `DISTA_SPILL_DIR` on disk instead (default `$TMPDIR`, or `/tmp`).\nA spilled result is read the same way, mapped or fetched, only from disk.\nOn Kubernetes `/dev/shm` is an in-memory volume whose size limit evicts the\npod rather than failing a write, so the limit is what keeps it in bounds.\n\nA location says where a result is: the worker's object server address, its\nhost name, the file's path (\"\" when it's only in memory) and the exact size,\nsince mapped files are padded.",
+   "structs": [
+    {
+     "name": "Location",
+     "signature": "struct Location",
+     "summary": "Where a large result lives.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "ip",
+       "type": "Array[UInt8, Int(4)]"
+      },
+      {
+       "name": "port",
+       "type": "Int"
+      },
+      {
+       "name": "node",
+       "type": "String"
+      },
+      {
+       "name": "path",
+       "type": "String"
+      },
+      {
+       "name": "size",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, ip: Array[UInt8, Int(4)], port: Int, var node: String, var path: String, size: Int)"
+        }
+       ]
+      },
+      {
+       "name": "is_local",
+       "overloads": [
+        {
+         "signature": "def is_local(self) -> Bool",
+         "summary": "Whether this process can map it instead of fetching it."
+        }
+       ]
+      },
+      {
+       "name": "encode",
+       "overloads": [
+        {
+         "signature": "def encode(self) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "decode",
+       "overloads": [
+        {
+         "signature": "def decode(buf: Span[UInt8], mut pos: Int) -> Self"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "node_name",
+     "overloads": [
+      {
+       "signature": "def node_name() -> String",
+       "summary": "This host's name, which identifies a shared `/dev/shm`, or `DISTA_NODE` if it's set: tests use it to run one host as several nodes."
+      }
+     ]
+    },
+    {
+     "name": "worker_token",
+     "overloads": [
+      {
+       "signature": "def worker_token() -> UInt64",
+       "summary": "A number naming one worker's files, so that no two workers, on this host or another, write the same file name: a hash of the host name, the process ID and a nanosecond clock."
+      }
+     ]
+    },
+    {
+     "name": "store_dir",
+     "overloads": [
+      {
+       "signature": "def store_dir() -> String",
+       "summary": "Where large results go, or \"\" when the shared store is off."
+      }
+     ]
+    },
+    {
+     "name": "remove_file",
+     "overloads": [
+      {
+       "signature": "def remove_file(path: String)"
+      }
+     ]
+    },
+    {
+     "name": "write_shared",
+     "overloads": [
+      {
+       "signature": "def write_shared(path: String, data: Span[UInt8])",
+       "summary": "Writes `data` into a new file at `path`, for readers to map.",
+       "description": "It's written under a temporary name and renamed into place, so a reader\nthat maps `path` sees a whole result, old or new, never one mid-write.\nIt's written with `write(2)`, not through a mapping: a full file system\nthen fails the write with an error, where a mapped store would kill the\nprocess with SIGBUS on a page it couldn't back."
+      }
+     ]
+    },
+    {
+     "name": "spill_dir",
+     "overloads": [
+      {
+       "signature": "def spill_dir() -> String",
+       "summary": "Where results that don't fit the store go: `DISTA_SPILL_DIR`, or the temporary directory, which in a container is on disk."
+      }
+     ]
+    },
+    {
+     "name": "store_limit",
+     "overloads": [
+      {
+       "signature": "def store_limit() -> Int",
+       "summary": "`DISTA_STORE_BYTES`: how many bytes of results a worker keeps in the store before it spills; 0, no limit, when unset."
+      }
+     ]
+    },
+    {
+     "name": "read_shared",
+     "overloads": [
+      {
+       "signature": "def read_shared(path: String, size: Int) -> List[UInt8]",
+       "summary": "The first `size` bytes of the shared mapping at `path`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.task",
+   "summary": "Tasks: remote functions, their IDs, and how a worker runs one.",
+   "description": "A task wraps a top-level `def` with its argument and result types:\n\n```mojo\ndef square(x: Int) -> Int:\n    return x * x\n\ncomptime Square = Task[Int, Int, square]\n```\n\nThe types are spelled out because Mojo can't infer a function's result type\nfrom the function value. The function may raise or not; both bind to\n`def(A) thin raises -> R`.\n\nEvery node runs the same binary, so a task message names the task by ID: a\n64-bit FNV-1a hash of the function's linkage name, which includes its module\nand argument types. The hash is fixed, unlike `hash()`, so a driver and a\nworker started separately agree on it.\n\nAn actor is a state type and the function that builds it, and each of its\nmethods is a function taking the state `mut`:\n\n```mojo\ndef new_counter(start: Int) -> Counter:\n    return Counter(start)\n\ndef add(mut c: Counter, n: Int) -> Int:\n    c.total += n\n    return c.total\n\ncomptime CounterActor = Actor[Counter, Int, new_counter]\ncomptime Add = Method[CounterActor, Int, Int, add]\n```\n\nActors and methods go in the runtime's registry with the tasks. The worker\nhosting an actor keeps its state behind a `StatePtr`, which only the actor's\nown `create`, `destroy`, `save` and `restore` and its methods' `call` cast\nback to its type. A checkpoint is the state through the codec, so a state\ntype that implements `Codec` chooses what it saves.",
+   "aliases": [
+    {
+     "name": "StatePtr",
+     "value": "Pointer[NoneType, MutUntrackedOrigin]",
+     "summary": "An actor's state on its worker, with its type erased."
+    }
+   ],
+   "structs": [
+    {
+     "name": "Task",
+     "signature": "struct Task[A_: Deinitable & Movable, R_: Deinitable & Movable, f: def(A_) raises thin -> R_]",
+     "summary": "A remote function taking one `A_` and returning an `R_`.",
+     "traits": [
+      "Movable",
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "A",
+       "value": "A_"
+      },
+      {
+       "name": "R",
+       "value": "R_"
+      }
+     ],
+     "functions": [
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name() -> StaticString"
+        }
+       ]
+      },
+      {
+       "name": "id",
+       "overloads": [
+        {
+         "signature": "def id() -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "run",
+       "overloads": [
+        {
+         "signature": "def run(args: Span[UInt8], mut out: List[UInt8])"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Task2",
+     "signature": "struct Task2[A_: Deinitable & Movable, B_: Deinitable & Movable, R_: Deinitable & Movable, f: def(A_, B_) raises thin -> R_]",
+     "summary": "A remote function taking two arguments: `rt.remote[T](a, b)`.",
+     "description": "One type per argument count, as Mojo's own library does it until its\nvariadic type parameters settle, when `Task` can take any number\n(https://github.com/magmalake/dista.mojo/issues/71). On the wire the arguments are encoded one after the other.",
+     "traits": [
+      "Movable",
+      "Task2Like",
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "A",
+       "value": "A_"
+      },
+      {
+       "name": "B",
+       "value": "B_"
+      },
+      {
+       "name": "R",
+       "value": "R_"
+      }
+     ],
+     "functions": [
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name() -> StaticString"
+        }
+       ]
+      },
+      {
+       "name": "id",
+       "overloads": [
+        {
+         "signature": "def id() -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "arity",
+       "overloads": [
+        {
+         "signature": "def arity() -> Int"
+        }
+       ]
+      },
+      {
+       "name": "run",
+       "overloads": [
+        {
+         "signature": "def run(args: Span[UInt8], mut out: List[UInt8])"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Task3",
+     "signature": "struct Task3[A_: Deinitable & Movable, B_: Deinitable & Movable, C_: Deinitable & Movable, R_: Deinitable & Movable, f: def(A_, B_, C_) raises thin -> R_]",
+     "summary": "A remote function taking three arguments: `rt.remote[T](a, b, c)`. See `Task2`.",
+     "traits": [
+      "Movable",
+      "Task2Like",
+      "Task3Like",
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "A",
+       "value": "A_"
+      },
+      {
+       "name": "B",
+       "value": "B_"
+      },
+      {
+       "name": "C",
+       "value": "C_"
+      },
+      {
+       "name": "R",
+       "value": "R_"
+      }
+     ],
+     "functions": [
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name() -> StaticString"
+        }
+       ]
+      },
+      {
+       "name": "id",
+       "overloads": [
+        {
+         "signature": "def id() -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "arity",
+       "overloads": [
+        {
+         "signature": "def arity() -> Int"
+        }
+       ]
+      },
+      {
+       "name": "run",
+       "overloads": [
+        {
+         "signature": "def run(args: Span[UInt8], mut out: List[UInt8])"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "TaskWith",
+     "signature": "struct TaskWith[A_: Deinitable & Movable, X: Copyable & Deinitable, R_: Deinitable & Movable, f: def(A_, Seq[X]) raises thin -> R_]",
+     "summary": "A task taking a value and other tasks' results, gathered in order: `f(a, xs)`, submitted as `rt.remote[T](a, refs)`. A shuffle's reducer is one: its partition number, and the map outputs holding that partition.",
+     "traits": [
+      "Movable",
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "A",
+       "value": "A_"
+      },
+      {
+       "name": "R",
+       "value": "R_"
+      }
+     ],
+     "functions": [
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name() -> StaticString"
+        }
+       ]
+      },
+      {
+       "name": "id",
+       "overloads": [
+        {
+         "signature": "def id() -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "run",
+       "overloads": [
+        {
+         "signature": "def run(args: Span[UInt8], mut out: List[UInt8])"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "TaskMany",
+     "signature": "struct TaskMany[A_: Deinitable & Movable, X: Copyable & Deinitable, f: def(A_) raises thin -> Seq[X]]",
+     "summary": "A task with several results, each its own object: `rt.remote_many[T](a, n)` returns `n` `ObjectRef[X]`s, and `f` must return a `Seq` of exactly `n`. Each is stored, fetched and freed on its own, so a shuffle's map task can make one partition per reducer.",
+     "description": "On the wire its result is a count, then each part as a length and its\nencoding, so the worker splits it without knowing `X`.",
+     "traits": [
+      "ManyLike",
+      "Movable",
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "A",
+       "value": "A_"
+      },
+      {
+       "name": "R",
+       "value": "Seq[X]"
+      },
+      {
+       "name": "Part",
+       "value": "X"
+      }
+     ],
+     "functions": [
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name() -> StaticString"
+        }
+       ]
+      },
+      {
+       "name": "id",
+       "overloads": [
+        {
+         "signature": "def id() -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "is_many",
+       "overloads": [
+        {
+         "signature": "def is_many() -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "run",
+       "overloads": [
+        {
+         "signature": "def run(args: Span[UInt8], mut out: List[UInt8])"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Actor",
+     "signature": "struct Actor[S_: Deinitable & Movable, A_: Deinitable & Movable, new: def(A_) raises thin -> S_]",
+     "summary": "An actor whose state is an `S_`, built by `new` from an `A_`.",
+     "traits": [
+      "ActorLike",
+      "Movable",
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "S",
+       "value": "S_"
+      },
+      {
+       "name": "A",
+       "value": "A_"
+      },
+      {
+       "name": "R",
+       "value": "NoneType"
+      }
+     ],
+     "functions": [
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name() -> StaticString"
+        }
+       ]
+      },
+      {
+       "name": "id",
+       "overloads": [
+        {
+         "signature": "def id() -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "is_actor",
+       "overloads": [
+        {
+         "signature": "def is_actor() -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "create",
+       "overloads": [
+        {
+         "signature": "def create(args: Span[UInt8]) -> StatePtr"
+        }
+       ]
+      },
+      {
+       "name": "destroy",
+       "overloads": [
+        {
+         "signature": "def destroy(state: Pointer[NoneType, MutUntrackedOrigin])"
+        }
+       ]
+      },
+      {
+       "name": "save",
+       "overloads": [
+        {
+         "signature": "def save(state: Pointer[NoneType, MutUntrackedOrigin], mut out: List[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "restore",
+       "overloads": [
+        {
+         "signature": "def restore(bytes: Span[UInt8]) -> StatePtr"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Method",
+     "signature": "struct Method[Act_: ActorLike, A_: Deinitable & Movable, R_: Deinitable & Movable, f: def(mut Act_.S, A_) raises thin -> R_]",
+     "summary": "A method of actor `Act_`: `f` on its state and an `A_`, returning `R_`.",
+     "traits": [
+      "MethodLike",
+      "Movable",
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "A",
+       "value": "A_"
+      },
+      {
+       "name": "R",
+       "value": "R_"
+      },
+      {
+       "name": "Act",
+       "value": "Act_"
+      }
+     ],
+     "functions": [
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name() -> StaticString"
+        }
+       ]
+      },
+      {
+       "name": "id",
+       "overloads": [
+        {
+         "signature": "def id() -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "owner",
+       "overloads": [
+        {
+         "signature": "def owner() -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "call",
+       "overloads": [
+        {
+         "signature": "def call(state: Pointer[NoneType, MutUntrackedOrigin], args: Span[UInt8], mut out: List[UInt8])"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "traits": [
+    {
+     "name": "TaskLike",
+     "summary": "What the runtime needs from a task, an actor or a method, without knowing its function. Each implements the part that applies to it.",
+     "aliases": [
+      {
+       "name": "A",
+       "summary": "The argument type."
+      },
+      {
+       "name": "R",
+       "summary": "The result type."
+      }
+     ],
+     "functions": [
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name() -> StaticString",
+         "summary": "The function's linkage name."
+        }
+       ]
+      },
+      {
+       "name": "id",
+       "overloads": [
+        {
+         "signature": "def id() -> UInt64",
+         "summary": "The task's wire ID."
+        }
+       ]
+      },
+      {
+       "name": "run",
+       "overloads": [
+        {
+         "signature": "def run(args: Span[UInt8], mut out: List[UInt8])",
+         "summary": "Decodes the argument, calls the function, appends the encoded result."
+        }
+       ]
+      },
+      {
+       "name": "arity",
+       "overloads": [
+        {
+         "signature": "def arity() -> Int",
+         "summary": "How many arguments it takes: 2 for a `Task2`, 3 for a `Task3`."
+        }
+       ]
+      },
+      {
+       "name": "is_actor",
+       "overloads": [
+        {
+         "signature": "def is_actor() -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "is_many",
+       "overloads": [
+        {
+         "signature": "def is_many() -> Bool",
+         "summary": "Whether its result is several objects (`TaskMany`)."
+        }
+       ]
+      },
+      {
+       "name": "owner",
+       "overloads": [
+        {
+         "signature": "def owner() -> UInt64",
+         "summary": "For a method, its actor's ID; 0 for anything else."
+        }
+       ]
+      },
+      {
+       "name": "create",
+       "overloads": [
+        {
+         "signature": "def create(args: Span[UInt8]) -> StatePtr",
+         "summary": "An actor: decodes the argument and builds the state."
+        }
+       ]
+      },
+      {
+       "name": "destroy",
+       "overloads": [
+        {
+         "signature": "def destroy(state: Pointer[NoneType, MutUntrackedOrigin])",
+         "summary": "An actor: destroys the state `create` built."
+        }
+       ]
+      },
+      {
+       "name": "save",
+       "overloads": [
+        {
+         "signature": "def save(state: Pointer[NoneType, MutUntrackedOrigin], mut out: List[UInt8])",
+         "summary": "An actor: appends its state's encoding, a checkpoint."
+        }
+       ]
+      },
+      {
+       "name": "restore",
+       "overloads": [
+        {
+         "signature": "def restore(bytes: Span[UInt8]) -> StatePtr",
+         "summary": "An actor: builds the state again from a checkpoint `save` wrote."
+        }
+       ]
+      },
+      {
+       "name": "call",
+       "overloads": [
+        {
+         "signature": "def call(state: Pointer[NoneType, MutUntrackedOrigin], args: Span[UInt8], mut out: List[UInt8])",
+         "summary": "A method: runs on the actor's state, appends the encoded result."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Task2Like",
+     "traits": [
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "B",
+       "summary": "The second argument's type; `A` is the first's."
+      }
+     ]
+    },
+    {
+     "name": "Task3Like",
+     "traits": [
+      "Task2Like",
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "C",
+       "summary": "The third argument's type."
+      }
+     ]
+    },
+    {
+     "name": "ManyLike",
+     "traits": [
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "Part",
+       "summary": "The type of each of its results."
+      }
+     ]
+    },
+    {
+     "name": "ActorLike",
+     "traits": [
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "S",
+       "summary": "The actor's state type."
+      }
+     ]
+    },
+    {
+     "name": "MethodLike",
+     "traits": [
+      "TaskLike"
+     ],
+     "aliases": [
+      {
+       "name": "Act",
+       "summary": "The actor whose method this is."
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "fnv1a64",
+     "overloads": [
+      {
+       "signature": "def fnv1a64(s: StringSpan) -> UInt64",
+       "summary": "The 64-bit FNV-1a hash of `s`'s bytes."
+      }
+     ]
+    },
+    {
+     "name": "split_parts",
+     "overloads": [
+      {
+       "signature": "def split_parts(result: Span[UInt8]) -> List[List[UInt8]]",
+       "summary": "A `TaskMany` result's parts, each as its own encoded object."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "dista.worker",
+   "summary": "A worker: runs tasks for the head and serves its results to peers.",
+   "description": "A small result (up to `INLINE_LIMIT` bytes) goes back to the head, which\nforwards it. A larger one stays here: in a shared mapping in the node's store\n(see `store.mojo`), or in memory if the store is off. The worker tells the\nhead where it is; a reader on this host maps the file, and one elsewhere\nfetches it from this worker's object server.\n\nSo a worker is an event loop over the head, its listener, the drivers and\nworkers fetching from it, and the workers it fetches from. A task whose\ninputs live on other workers waits, parked, until they've all arrived; the\nworker keeps serving fetches meanwhile. No worker ever waits on another one\nsynchronously, so two workers that need each other's results can't deadlock.\nRunning a task does block the loop, so fetches from this worker wait until\nthe current task finishes.\n\nA result here lives until the head says free, once nothing references it.\nInputs fetched from peers are copies, kept only until the tasks waiting on\nthem have their arguments.\n\nA worker the head gives an actor builds its state and then runs only that\nactor's calls, in the order they come. A kill destroys the state, and the\nworker goes back to running tasks. Between calls the head may ask for a\ncheckpoint: the worker writes the state through the codec to\n`DISTA_CHECKPOINT_URI` (see `checkpoint.mojo`), and deletes the checkpoint\nbefore it. An actor restarted elsewhere is restored from the last one.\n\nA worker told to stop (SIGTERM, as Kubernetes sends) drains: it tells the\nhead, which sends it no more work and has other workers adopt the results it\nholds, each fetching its copy from here. It finishes what it was given, and\nonce the head says stop, it serves fetches a moment longer, for tasks given\nits old locations, and exits. `DISTA_DRAIN_SECONDS` (default 25, inside\nKubernetes' default grace period of 30) bounds the whole drain.\n\nIf the head goes away, `run` returns and the results here stay. `rejoin`\nintroduces the worker to a new head and reports what it holds; the tasks it\nhad queued are dropped, since their drivers resubmit them. An actor it\nhosted is destroyed: actors don't survive a head restart yet, though their\ncheckpoints stay.",
+   "aliases": [
+    {
+     "name": "INLINE_LIMIT",
+     "value": "65536",
+     "summary": "Results up to this size travel through the head; larger ones stay put."
+    },
+    {
+     "name": "LINGER_NS",
+     "value": "UInt64(1000000000)",
+     "summary": "How long a drained worker keeps serving fetches after the head says stop: a task sent before its inputs moved may still fetch them from here."
+    },
+    {
+     "name": "DispatchFn",
+     "value": "def(UInt64, List[UInt8], mut List[UInt8], mut TaskContext) raises thin -> None",
+     "summary": "Runs task `task_id` on encoded arguments, appending the encoded result; a `CtxTask` gets the worker's `TaskContext`."
+    },
+    {
+     "name": "CreateFn",
+     "value": "def(UInt64, List[UInt8]) raises thin -> StatePtr",
+     "summary": "Builds actor type `type_id`'s state from its encoded argument."
+    },
+    {
+     "name": "CallFn",
+     "value": "def(UInt64, UInt64, Pointer[NoneType, MutUntrackedOrigin], List[UInt8], mut List[UInt8], mut TaskContext) raises thin -> None",
+     "summary": "Runs method `method_id` on the state of an actor of type `type_id`."
+    },
+    {
+     "name": "DestroyFn",
+     "value": "def(UInt64, Pointer[NoneType, MutUntrackedOrigin]) thin -> None",
+     "summary": "Destroys the state of an actor of type `type_id`."
+    },
+    {
+     "name": "SaveFn",
+     "value": "def(UInt64, Pointer[NoneType, MutUntrackedOrigin], mut List[UInt8]) raises thin -> None",
+     "summary": "Appends the encoded state of an actor of type `type_id`."
+    },
+    {
+     "name": "RestoreFn",
+     "value": "def(UInt64, List[UInt8]) raises thin -> StatePtr",
+     "summary": "Builds actor type `type_id`'s state from a checkpoint."
+    }
+   ],
+   "structs": [
+    {
+     "name": "InputSpec",
+     "signature": "struct InputSpec",
+     "summary": "One input in a task-inputs frame: its bytes, or where to get them.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "object_id",
+       "type": "UInt64"
+      },
+      {
+       "name": "inline",
+       "type": "Bool"
+      },
+      {
+       "name": "bytes",
+       "type": "List[UInt8]"
+      },
+      {
+       "name": "location",
+       "type": "Optional[Location]"
+      }
+     ]
+    },
+    {
+     "name": "TaskInputs",
+     "signature": "struct TaskInputs",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "many",
+       "type": "Int",
+       "summary": "A `TaskMany`'s number of results; 0 for any other task."
+      },
+      {
+       "name": "gather",
+       "type": "Bool"
+      },
+      {
+       "name": "inputs",
+       "type": "List[InputSpec]"
+      },
+      {
+       "name": "value",
+       "type": "List[UInt8]",
+       "summary": "A `TaskWith`'s value, which goes before the inputs; or empty."
+      }
+     ]
+    },
+    {
+     "name": "Worker",
+     "signature": "struct Worker[dispatch: def(UInt64, List[UInt8], mut List[UInt8], mut TaskContext) raises thin -> None, create: def(UInt64, List[UInt8]) raises thin -> StatePtr, call: def(UInt64, UInt64, Pointer[NoneType, MutUntrackedOrigin], List[UInt8], mut List[UInt8], mut TaskContext) raises thin -> None, destroy: def(UInt64, Pointer[NoneType, MutUntrackedOrigin]) thin -> None, save: def(UInt64, Pointer[NoneType, MutUntrackedOrigin], mut List[UInt8]) raises thin -> None, restore: def(UInt64, List[UInt8]) raises thin -> StatePtr]",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "stopped",
+       "type": "Bool",
+       "summary": "The head said stop, or the worker drained: `run` returned for good."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var head: Stream, registry_hash: UInt64, head_addr: String = \"\", resume_at: String = \"\")",
+         "summary": "Starts the object server and says hello to the head on `head`.",
+         "description": "`head_addr` is where a task's client connects, and `resume_at` where\nit reconnects after a head restart (\"\" in local mode)."
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)"
+        }
+       ]
+      },
+      {
+       "name": "rejoin",
+       "overloads": [
+        {
+         "signature": "def rejoin(mut self, var head: Stream, registry_hash: UInt64)",
+         "summary": "Says hello to a new head and reports the results held here."
+        }
+       ]
+      },
+      {
+       "name": "run",
+       "overloads": [
+        {
+         "signature": "def run(mut self)",
+         "summary": "Serves until the head hangs up, or until a drain ends."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "parse_task_inputs",
+     "overloads": [
+      {
+       "signature": "def parse_task_inputs(payload: Span[UInt8]) -> TaskInputs",
+       "summary": "A task-inputs payload, checked: a malformed one raises."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

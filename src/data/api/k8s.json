@@ -1,0 +1,417 @@
+{
+ "tin": "k8s",
+ "version": "0.1.2",
+ "rev": "6cb83ce08e02234873f2d09c7501208eedb5589f",
+ "package": "k8s",
+ "path": "src/k8s",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "k8s: a small Kubernetes client for Mojo.",
+ "description": "Create, get, delete, list and watch Pods, Services and Jobs, authenticated\nin a pod with its service account or from a kubeconfig:\n\n```mojo\nfrom k8s import Client, Config, PODS\n\nvar k = Client(Config.load())\nvar pods = k.list(PODS, \"orca.run=7\")\n```\n\nSee `k8s.client` for the calls and `k8s.config` for where credentials\ncome from.",
+ "modules": [
+  {
+   "path": "k8s",
+   "summary": "k8s: a small Kubernetes client for Mojo.",
+   "description": "Create, get, delete, list and watch Pods, Services and Jobs, authenticated\nin a pod with its service account or from a kubeconfig:\n\n```mojo\nfrom k8s import Client, Config, PODS\n\nvar k = Client(Config.load())\nvar pods = k.list(PODS, \"orca.run=7\")\n```\n\nSee `k8s.client` for the calls and `k8s.config` for where credentials\ncome from."
+  },
+  {
+   "path": "k8s.client",
+   "summary": "The calls: create, get, delete, list and watch, for Pods, Services and Jobs in a namespace, and a pod's log.",
+   "description": "```mojo\nvar k = Client(Config.load())\n_ = k.create(PODS, '{\"apiVersion\": \"v1\", \"kind\": \"Pod\", ...}')\nvar pod = k.get(PODS, \"smoke\")                  # None if there's none\nvar w = k.watch(PODS, \"app=smoke\")\nwhile True:\n    var e = w.next()                            # None once the watch ends\n    if not e or e.value().object.at(\"/status/phase\").string_value() == \"Succeeded\":\n        break\n_ = k.delete_all(PODS, \"app=smoke\")\n```\n\nObjects go in as JSON text and come back as json's `Value`, so a caller\nwrites the manifests it needs and reads the fields it needs (`at` takes a\nJSON pointer), and this tin knows no schema. An answer that isn't 2xx\nraises `Error(\"k8s: <METHOD> <path>: <code> <reason>: <message>\")` with the\nAPI's own `Status` message, except a 404 from `get` and `delete`, which\nanswer None and False.\n\nA watch is one long response of JSON lines, one event each (`ADDED`,\n`MODIFIED`, `DELETED`, `ERROR`), which `Watch.next` reads as they arrive.\nThe server ends it after `timeout_seconds`; to see every change, list\nfirst and watch from the list's `resource_version`, and on a watch that\nended, watch again from the last event's. A 410 (the version is too old)\nraises; list again.",
+   "aliases": [
+    {
+     "name": "PODS",
+     "value": "Resource(StringSpan(\"/api/v1\"), StringSpan(\"pods\"))"
+    },
+    {
+     "name": "SERVICES",
+     "value": "Resource(StringSpan(\"/api/v1\"), StringSpan(\"services\"))"
+    },
+    {
+     "name": "JOBS",
+     "value": "Resource(StringSpan(\"/apis/batch/v1\"), StringSpan(\"jobs\"))"
+    }
+   ],
+   "structs": [
+    {
+     "name": "Resource",
+     "signature": "struct Resource",
+     "summary": "A kind of namespaced object, by where the API serves it.",
+     "traits": [
+      "Copyable",
+      "ImplicitlyCopyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "prefix",
+       "type": "StaticString",
+       "summary": "`/api/v1` for the core group, `/apis/<group>/<version>` otherwise."
+      },
+      {
+       "name": "plural",
+       "type": "StaticString"
+      }
+     ]
+    },
+    {
+     "name": "Listed",
+     "signature": "struct Listed",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "items",
+       "type": "List[Value]"
+      },
+      {
+       "name": "resource_version",
+       "type": "String",
+       "summary": "The list's, to watch from."
+      }
+     ]
+    },
+    {
+     "name": "Event",
+     "signature": "struct Event",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "type",
+       "type": "String",
+       "summary": "`ADDED`, `MODIFIED`, `DELETED` or `ERROR`."
+      },
+      {
+       "name": "object",
+       "type": "Value",
+       "summary": "The object as it is after the change, or for `ERROR` a `Status`."
+      }
+     ]
+    },
+    {
+     "name": "Watch",
+     "signature": "struct Watch",
+     "summary": "The events of one watch request, as they arrive.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "resource_version",
+       "type": "String",
+       "summary": "The last event's, to watch again from."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var stream: HttpStreamResponse, path: String, since: String)"
+        }
+       ]
+      },
+      {
+       "name": "next",
+       "overloads": [
+        {
+         "signature": "def next(mut self) -> Optional[Event]",
+         "summary": "The next event, waiting for it; None once the server has ended the watch. An `ERROR` event raises."
+        }
+       ]
+      },
+      {
+       "name": "close",
+       "overloads": [
+        {
+         "signature": "def close(mut self)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Client",
+     "signature": "struct Client",
+     "summary": "Calls to the API server `config` names, as its user.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "config",
+       "type": "Config"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var config: Config)"
+        }
+       ]
+      },
+      {
+       "name": "create",
+       "overloads": [
+        {
+         "signature": "def create(self, r: Resource, manifest: String, namespace: String = \"\") -> Value",
+         "summary": "Creates the object `manifest` describes, and returns it as the server made it."
+        }
+       ]
+      },
+      {
+       "name": "get",
+       "overloads": [
+        {
+         "signature": "def get(self, r: Resource, name: String, namespace: String = \"\") -> Optional[Value]"
+        }
+       ]
+      },
+      {
+       "name": "logs",
+       "overloads": [
+        {
+         "signature": "def logs(self, pod: String, container: String = \"\", namespace: String = \"\") -> String",
+         "summary": "A pod's log, of its only container or of `container`; empty for a pod that's gone."
+        }
+       ]
+      },
+      {
+       "name": "delete",
+       "overloads": [
+        {
+         "signature": "def delete(self, r: Resource, name: String, namespace: String = \"\", propagation: String = \"Background\") -> Bool",
+         "summary": "Deletes the object, and what it owns by `propagation` (`Background`, `Foreground` or `Orphan`); False if there was none."
+        }
+       ]
+      },
+      {
+       "name": "list",
+       "overloads": [
+        {
+         "signature": "def list(self, r: Resource, selector: String = \"\", namespace: String = \"\") -> Listed",
+         "summary": "The objects whose labels match `selector` (`app=x,run=7`), or all of them."
+        }
+       ]
+      },
+      {
+       "name": "delete_all",
+       "overloads": [
+        {
+         "signature": "def delete_all(self, r: Resource, selector: String, namespace: String = \"\") -> Int",
+         "summary": "Deletes every object matching `selector`, which mustn't be empty, and returns how many there were."
+        }
+       ]
+      },
+      {
+       "name": "watch",
+       "overloads": [
+        {
+         "signature": "def watch(self, r: Resource, selector: String = \"\", resource_version: String = \"\", timeout_seconds: Int = Int(300), namespace: String = \"\") -> Watch",
+         "summary": "A watch of the objects matching `selector`, from `resource_version` (else from now, with an `ADDED` event for each that exists), until the server ends it after `timeout_seconds`."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "query_escape",
+     "overloads": [
+      {
+       "signature": "def query_escape(s: String) -> String",
+       "summary": "`s` with everything but unreserved characters percent-encoded."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "k8s.config",
+   "summary": "Where the API server is and how to authenticate to it.",
+   "description": "```mojo\nvar cfg = Config.load()               # in a pod, its service account; else the kubeconfig\nvar cfg = Config.in_cluster()\nvar cfg = Config.from_kubeconfig()    # $KUBECONFIG or ~/.kube/config, its current context\nvar cfg = Config.from_kubeconfig(path, context=\"kind-orca\")\n```\n\n**In a pod**, Kubernetes mounts the service account's token, the cluster's\nCA certificate and the pod's namespace under\n`/var/run/secrets/kubernetes.io/serviceaccount/`, and sets\n`KUBERNETES_SERVICE_HOST` and `KUBERNETES_SERVICE_PORT`. The token is read\nagain for every request, since the kubelet rotates it.\n\n**From a kubeconfig**, the context names a cluster (its `server` and CA)\nand a user: a client certificate and key (what kind writes), or a token or\ntoken file. Certificates and keys given inline (`*-data`, base64) are\nwritten to files in a fresh directory only this user can read\n(`mkdtemp`), as TLS takes them by path. Authentication by `exec` or an\n`auth-provider` (cloud CLIs) isn't supported: run the command and pass its\ntoken instead.",
+   "aliases": [
+    {
+     "name": "SERVICE_ACCOUNT",
+     "value": "\"/var/run/secrets/kubernetes.io/serviceaccount\""
+    }
+   ],
+   "structs": [
+    {
+     "name": "Config",
+     "signature": "struct Config",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "server",
+       "type": "String",
+       "summary": "The API server's base URL, `https://host:port`."
+      },
+      {
+       "name": "ca_file",
+       "type": "String",
+       "summary": "A PEM bundle the server's certificate must chain to; empty for the system's."
+      },
+      {
+       "name": "cert_file",
+       "type": "String",
+       "summary": "A PEM client certificate, or empty."
+      },
+      {
+       "name": "key_file",
+       "type": "String"
+      },
+      {
+       "name": "token",
+       "type": "String",
+       "summary": "A bearer token, or empty."
+      },
+      {
+       "name": "token_file",
+       "type": "String",
+       "summary": "A file the token is read from for every request, or empty."
+      },
+      {
+       "name": "namespace",
+       "type": "String",
+       "summary": "The namespace a context or pod is in; `default` if none is said."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, server: String, ca_file: String = \"\", cert_file: String = \"\", key_file: String = \"\", token: String = \"\", token_file: String = \"\", namespace: String = \"default\")"
+        }
+       ]
+      },
+      {
+       "name": "bearer",
+       "overloads": [
+        {
+         "signature": "def bearer(self) -> String",
+         "summary": "The token to send now: the file's, read again, or the given one."
+        }
+       ]
+      },
+      {
+       "name": "load",
+       "overloads": [
+        {
+         "signature": "def load() -> Self",
+         "summary": "In a pod, its service account's; otherwise the kubeconfig's current context."
+        }
+       ]
+      },
+      {
+       "name": "in_cluster",
+       "overloads": [
+        {
+         "signature": "def in_cluster() -> Self"
+        }
+       ]
+      },
+      {
+       "name": "from_kubeconfig",
+       "overloads": [
+        {
+         "signature": "def from_kubeconfig(path: String = \"\", context: String = \"\") -> Self",
+         "summary": "The kubeconfig at `path` (else the first of `$KUBECONFIG`, else `~/.kube/config`), in `context` (else its current context)."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "kubeconfig",
+     "overloads": [
+      {
+       "signature": "def kubeconfig(y: Yaml, context: String = \"\", file: String = \"\") -> Config",
+       "summary": "The configuration of `context` (else the current one) in a kubeconfig read from `file`, which relative paths in it are against."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "k8s.yaml",
+   "summary": "Just enough YAML to read a kubeconfig: block mappings and sequences of scalars, read into a flat map from paths to strings.",
+   "description": "```mojo\nvar y = read_yaml(text)\ny.get(\"current-context\")                  # \"kind-orca\"\ny.get(\"clusters/0/cluster/server\")        # \"https://127.0.0.1:6443\"\ny.count(\"users\")                          # 1\n```\n\nA path is the keys and sequence indices from the top, joined by `/`. A\nscalar may be plain, single-quoted or double-quoted; `~`, `null` and an\nempty value are the empty string, as are the empty flow collections `{}`\nand `[]`. That covers what `kubectl` and `kind` write. Anything else,\nsuch as a block scalar (`|`), a flow collection with something in it, an\nanchor or a tab used to indent, raises rather than being read wrong.",
+   "structs": [
+    {
+     "name": "Yaml",
+     "signature": "struct Yaml",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "values",
+       "type": "Dict[String, String]",
+       "summary": "Each scalar, by its path."
+      },
+      {
+       "name": "counts",
+       "type": "Dict[String, Int]",
+       "summary": "Each sequence's length, by its path."
+      },
+      {
+       "name": "maps",
+       "type": "Dict[String, Bool]",
+       "summary": "The path of each mapping below the top."
+      }
+     ],
+     "functions": [
+      {
+       "name": "get",
+       "overloads": [
+        {
+         "signature": "def get(self, path: String, default: String = \"\") -> String"
+        }
+       ]
+      },
+      {
+       "name": "has",
+       "overloads": [
+        {
+         "signature": "def has(self, path: String) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "count",
+       "overloads": [
+        {
+         "signature": "def count(self, path: String) -> Int",
+         "summary": "The length of the sequence at `path`, or 0."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "read_yaml",
+     "overloads": [
+      {
+       "signature": "def read_yaml(text: String) -> Yaml"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

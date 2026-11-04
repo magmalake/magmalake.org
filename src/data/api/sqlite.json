@@ -1,0 +1,928 @@
+{
+ "tin": "sqlite",
+ "version": "0.3.5",
+ "rev": "0d76aa7b672c85580f4d8c5de855772bc972d535",
+ "package": "sqlite",
+ "path": "sqlite",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "SQLite bindings for Mojo — a dependency-free fork of ehsanmok/sqlite.",
+ "description": "``sqlite`` provides two layers of abstraction over the SQLite C library:\n\n**Layer 1, FFI** (``sqlite.ffi``): raw ``sqlite3_*`` wrappers with\nhandles stored as ``Int``.  Not intended for direct use.  ``libsqlite3`` is\n``dlopen``ed once per process and its entry points resolved once, so opening a\nconnection or compiling a statement costs no dynamic linking.\n\n**Layer 2, Safe API** (``sqlite.db``): ``Database``, ``Statement``,\n``Row``, and ``Transaction`` structs that own their handles and clean up on\ndestruction.\n\nUpstream carries a third layer, an ORM built on compile-time reflection via\n`morph <https://github.com/ehsanmok/morph>`_.  This fork deliberately drops it\nso the package depends on nothing outside conda-forge's ``libsqlite`` — use\n`ehsanmok/sqlite <https://github.com/ehsanmok/sqlite>`_ if you want the ORM.\n\n## Quick Start\n\n```mojo\nfrom sqlite import Database\n\ndef main() raises:\n    var db = Database(\":memory:\")\n    db.execute(\"CREATE TABLE people (name TEXT, age INTEGER, score REAL)\")\n\n    var ins = db.prepare(\"INSERT INTO people VALUES (?, ?, ?)\")\n    ins.bind_text(1, \"Alice\")\n    ins.bind_int(2, 30)\n    ins.bind_float(3, 9.5)\n    _ = ins.step()\n\n    var q = db.prepare(\"SELECT name, age, score FROM people\")\n    while True:\n        var row = q.step()\n        if not row:\n            break\n        ref r = row.value()\n        print(r.text_val(0), r.int_val(1), r.float_val(2))\n```\n\n## Transaction API: context manager (recommended)\n\n``db.transaction()`` supports Mojo's ``with`` statement.  The ``with`` block\nauto-commits on clean exit and auto-rolls back (re-raising) if any statement\nraises, identical to Python's ``with conn:`` pattern.\n\n```mojo\nfrom sqlite import Database\n\ndef transfer(db: Database, from_id: Int, to_id: Int, amount: Int) raises:\n    with db.transaction():\n        db.execute(\n            \"UPDATE accounts SET balance = balance - \"\n            + String(amount) + \" WHERE id = \" + String(from_id)\n        )\n        db.execute(\n            \"UPDATE accounts SET balance = balance + \"\n            + String(amount) + \" WHERE id = \" + String(to_id)\n        )\n    # -> COMMIT on success; ROLLBACK + re-raise if either UPDATE failed\n```\n\nFor fine-grained control (conditional rollback without raising, multiple\ncommit points), use the ``var tx`` manual form.  Note: Mojo's\n``with``/``__exit__`` protocol requires a non-consuming ``__enter__``, so\n``with ... as tx:`` would bind ``tx`` to ``None``, so use ``var tx`` instead:\n\n```mojo\nvar tx = db.transaction()   # BEGIN\ndb.execute(\"INSERT ...\")\nif some_condition:\n    tx.rollback()           # abort without raising\n    return\ntx.commit()                 # explicit COMMIT\n```\n\n## Raw statement API\n\n```mojo\nfrom sqlite import Database\n\nvar db = Database(\":memory:\")\ndb.execute(\"CREATE TABLE t (id INTEGER, label TEXT)\")\nvar stmt = db.prepare(\"INSERT INTO t VALUES (?, ?)\")\nstmt.bind_int(1, 42)\nstmt.bind_text(2, \"hello\")\n_ = stmt.step()\n\nvar q = db.prepare(\"SELECT id, label FROM t\")\nwhile True:\n    var row = q.step()\n    if not row:\n        break\n    print(row.value().int_val(0), row.value().text_val(1))\n```",
+ "modules": [
+  {
+   "path": "sqlite",
+   "summary": "SQLite bindings for Mojo — a dependency-free fork of ehsanmok/sqlite.",
+   "description": "``sqlite`` provides two layers of abstraction over the SQLite C library:\n\n**Layer 1, FFI** (``sqlite.ffi``): raw ``sqlite3_*`` wrappers with\nhandles stored as ``Int``.  Not intended for direct use.  ``libsqlite3`` is\n``dlopen``ed once per process and its entry points resolved once, so opening a\nconnection or compiling a statement costs no dynamic linking.\n\n**Layer 2, Safe API** (``sqlite.db``): ``Database``, ``Statement``,\n``Row``, and ``Transaction`` structs that own their handles and clean up on\ndestruction.\n\nUpstream carries a third layer, an ORM built on compile-time reflection via\n`morph <https://github.com/ehsanmok/morph>`_.  This fork deliberately drops it\nso the package depends on nothing outside conda-forge's ``libsqlite`` — use\n`ehsanmok/sqlite <https://github.com/ehsanmok/sqlite>`_ if you want the ORM.\n\n## Quick Start\n\n```mojo\nfrom sqlite import Database\n\ndef main() raises:\n    var db = Database(\":memory:\")\n    db.execute(\"CREATE TABLE people (name TEXT, age INTEGER, score REAL)\")\n\n    var ins = db.prepare(\"INSERT INTO people VALUES (?, ?, ?)\")\n    ins.bind_text(1, \"Alice\")\n    ins.bind_int(2, 30)\n    ins.bind_float(3, 9.5)\n    _ = ins.step()\n\n    var q = db.prepare(\"SELECT name, age, score FROM people\")\n    while True:\n        var row = q.step()\n        if not row:\n            break\n        ref r = row.value()\n        print(r.text_val(0), r.int_val(1), r.float_val(2))\n```\n\n## Transaction API: context manager (recommended)\n\n``db.transaction()`` supports Mojo's ``with`` statement.  The ``with`` block\nauto-commits on clean exit and auto-rolls back (re-raising) if any statement\nraises, identical to Python's ``with conn:`` pattern.\n\n```mojo\nfrom sqlite import Database\n\ndef transfer(db: Database, from_id: Int, to_id: Int, amount: Int) raises:\n    with db.transaction():\n        db.execute(\n            \"UPDATE accounts SET balance = balance - \"\n            + String(amount) + \" WHERE id = \" + String(from_id)\n        )\n        db.execute(\n            \"UPDATE accounts SET balance = balance + \"\n            + String(amount) + \" WHERE id = \" + String(to_id)\n        )\n    # -> COMMIT on success; ROLLBACK + re-raise if either UPDATE failed\n```\n\nFor fine-grained control (conditional rollback without raising, multiple\ncommit points), use the ``var tx`` manual form.  Note: Mojo's\n``with``/``__exit__`` protocol requires a non-consuming ``__enter__``, so\n``with ... as tx:`` would bind ``tx`` to ``None``, so use ``var tx`` instead:\n\n```mojo\nvar tx = db.transaction()   # BEGIN\ndb.execute(\"INSERT ...\")\nif some_condition:\n    tx.rollback()           # abort without raising\n    return\ntx.commit()                 # explicit COMMIT\n```\n\n## Raw statement API\n\n```mojo\nfrom sqlite import Database\n\nvar db = Database(\":memory:\")\ndb.execute(\"CREATE TABLE t (id INTEGER, label TEXT)\")\nvar stmt = db.prepare(\"INSERT INTO t VALUES (?, ?)\")\nstmt.bind_int(1, 42)\nstmt.bind_text(2, \"hello\")\n_ = stmt.step()\n\nvar q = db.prepare(\"SELECT id, label FROM t\")\nwhile True:\n    var row = q.step()\n    if not row:\n        break\n    print(row.value().int_val(0), row.value().text_val(1))\n```"
+  },
+  {
+   "path": "sqlite.db",
+   "summary": "Safe Mojo API for SQLite -- Layer 2.",
+   "description": "Provides four structs that wrap the raw FFI handles from ``ffi.mojo``:\n\n- ``Database``    -- owns a SQLite connection; closes it on destruction.\n- ``Statement``   -- owns a prepared statement; finalizes it on destruction.\n- ``Row``         -- a snapshot of a single result row (value types, not a borrow).\n- ``Transaction`` -- context-manager / RAII transaction guard; commits on clean\n                     exit, rolls back automatically on exception.\n\n**Basic usage**::\n\n    var db = Database(\":memory:\")\n    db.execute(\"CREATE TABLE t (id INTEGER, name TEXT)\")\n    var stmt = db.prepare(\"INSERT INTO t VALUES (?, ?)\")\n    stmt.bind_int(1, 1)\n    stmt.bind_text(2, \"Alice\")\n    _ = stmt.step()\n\n    var q = db.prepare(\"SELECT id, name FROM t\")\n    while True:\n        var row = q.step()\n        if not row:\n            break\n        print(row.value().int_val(0), row.value().text_val(1))\n\n**Transaction usage -- context manager (recommended)**::\n\n    with db.transaction():\n        db.execute(\"INSERT INTO orders VALUES (1, 'Alice')\")\n        db.execute(\"INSERT INTO line_items VALUES (1, 42, 3)\")\n    # -> COMMIT on clean exit; ROLLBACK if any statement raises\n\n**Transaction usage -- manual control**::\n\n    var tx = db.transaction()       # issues BEGIN\n    db.execute(\"INSERT ...\")\n    db.execute(\"INSERT ...\")\n    tx.commit()                     # issues COMMIT; destructor becomes a no-op",
+   "structs": [
+    {
+     "name": "Transaction",
+     "signature": "struct Transaction",
+     "summary": "RAII transaction guard -- ``with`` block commits on success, rolls back on error.",
+     "description": "Obtain a ``Transaction`` via ``Database.transaction()``, which issues\n``BEGIN`` immediately.\n\n**Context-manager usage (recommended)** -- identical to Python's\n``with conn:`` pattern::\n\n    with db.transaction():\n        db.execute(\"INSERT INTO orders VALUES (1, 'Alice')\")\n        db.execute(\"INSERT INTO line_items VALUES (1, 42, 3)\")\n    # -> COMMIT issued automatically; both rows written atomically\n\nIf any statement inside raises, ``ROLLBACK`` is issued and the original\nexception propagates::\n\n    with db.transaction():\n        db.execute(\"INSERT INTO t VALUES (1)\")\n        raise Error(\"oops\")     # -> __exit__(err) -> ROLLBACK, re-raised\n\n**Manual usage (fine-grained control)** -- use ``var tx`` when you need\nexplicit guard access (conditional rollback, multiple commit points).\nNote: Mojo's ``with``/``__exit__`` protocol requires a non-consuming\n``__enter__``, so ``with ... as tx:`` binds ``tx`` to ``None`` -- use\n``var tx`` instead::\n\n    var tx = db.transaction()   # BEGIN\n    db.execute(\"INSERT ...\")\n    if some_condition:\n        tx.rollback()           # abort without raising\n        return\n    tx.commit()                 # explicit COMMIT; destructor becomes no-op\n\nTo abandon without raising, consume the guard immediately::\n\n    var tx = db.transaction()\n    _ = tx^                     # guard destroyed -> immediate ROLLBACK\n\nNote:\nNested transactions are not supported via ``BEGIN``/``COMMIT``.\nUse ``SAVEPOINT`` directly if you need nesting.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, handle: Int)",
+         "summary": "Begin a new transaction on ``handle``.",
+         "args": [
+          {
+           "name": "handle",
+           "doc": "Open ``sqlite3*`` connection handle."
+          }
+         ],
+         "raises": "Error: If ``BEGIN`` fails (e.g. a transaction is already active)."
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Issue ``ROLLBACK`` if the transaction was neither committed nor rolled back.",
+         "description": "Errors from the implicit ``ROLLBACK`` are swallowed so destructors\nnever raise."
+        }
+       ]
+      },
+      {
+       "name": "commit",
+       "overloads": [
+        {
+         "signature": "def commit(mut self)",
+         "summary": "Commit the transaction and make all changes permanent.",
+         "description": "After this call the destructor becomes a no-op.",
+         "raises": "Error: If ``COMMIT`` fails."
+        }
+       ]
+      },
+      {
+       "name": "rollback",
+       "overloads": [
+        {
+         "signature": "def rollback(mut self)",
+         "summary": "Explicitly roll back the transaction.",
+         "description": "Useful when you detect a logical error and want to abort early\nwithout raising an exception.  After this call the destructor\nbecomes a no-op.",
+         "raises": "Error: If ``ROLLBACK`` fails."
+        }
+       ]
+      },
+      {
+       "name": "__enter__",
+       "overloads": [
+        {
+         "signature": "def __enter__(mut self)",
+         "summary": "Enter the transaction context manager.",
+         "description": "``BEGIN`` was already issued in ``__init__``, so nothing extra is\nneeded here.  Mojo's ``with`` statement calls ``__exit__`` on this\nsame object when the block finishes.\n\nNote:\nBecause ``__exit__`` is defined, Mojo requires a non-consuming\n``__enter__``.  Use ``with db.transaction():`` (without ``as``);\nfor explicit guard access, use ``var tx = db.transaction()``."
+        }
+       ]
+      },
+      {
+       "name": "__exit__",
+       "overloads": [
+        {
+         "signature": "def __exit__(mut self)",
+         "summary": "Commit on clean exit.",
+         "description": "Called automatically when the ``with`` block finishes without raising.\nEquivalent to calling ``commit()`` explicitly.",
+         "raises": "Error: If ``COMMIT`` fails (e.g., disk full, constraint violation)."
+        },
+        {
+         "signature": "def __exit__(mut self, err: Error) -> Bool",
+         "summary": "Roll back on exception and re-raise.",
+         "description": "Called automatically when an exception escapes the ``with`` block.\nIssues ``ROLLBACK`` to discard all pending changes, swallows any\nrollback error (so the original exception is not replaced), then\nreturns ``False`` so the original exception continues to propagate.",
+         "args": [
+          {
+           "name": "err",
+           "doc": "The exception raised inside the ``with`` block."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Row",
+     "signature": "struct Row",
+     "summary": "An immutable snapshot of a single result row.",
+     "description": "All column values are copied out of the statement at construction time,\nso the ``Row`` outlives the ``Statement`` that produced it.\n\nColumn indices are 0-based throughout.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, ncols: Int, types: List[Int], ints: List[Int], floats: List[Float64], texts: List[String])",
+         "summary": "Construct a ``Row`` from pre-read column snapshots.",
+         "args": [
+          {
+           "name": "ncols",
+           "doc": "Number of columns."
+          },
+          {
+           "name": "types",
+           "doc": "Per-column SQLite type codes."
+          },
+          {
+           "name": "ints",
+           "doc": "Per-column integer values (0 for non-integer columns)."
+          },
+          {
+           "name": "floats",
+           "doc": "Per-column float values (0.0 for non-float columns)."
+          },
+          {
+           "name": "texts",
+           "doc": "Per-column text values (empty for non-text columns)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "num_cols",
+       "overloads": [
+        {
+         "signature": "def num_cols(self) -> Int",
+         "summary": "Return the number of columns in this row."
+        }
+       ]
+      },
+      {
+       "name": "int_val",
+       "overloads": [
+        {
+         "signature": "def int_val(self, col: Int) -> Int",
+         "summary": "Return the integer value of column ``col``.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "0-based column index."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "float_val",
+       "overloads": [
+        {
+         "signature": "def float_val(self, col: Int) -> Float64",
+         "summary": "Return the floating-point value of column ``col``.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "0-based column index."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "text_val",
+       "overloads": [
+        {
+         "signature": "def text_val(self, col: Int) -> String",
+         "summary": "Return the text value of column ``col``.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "0-based column index."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "is_null",
+       "overloads": [
+        {
+         "signature": "def is_null(self, col: Int) -> Bool",
+         "summary": "Check whether column ``col`` contains SQL NULL.",
+         "args": [
+          {
+           "name": "col",
+           "doc": "0-based column index."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Statement",
+     "signature": "struct Statement",
+     "summary": "A compiled, prepared SQLite statement.",
+     "description": "Finalizes the underlying ``sqlite3_stmt`` on destruction.\nParameters use 1-based indexing (as in the SQLite C API).",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, db: Int, sql: String)",
+         "summary": "Compile a SQL statement.",
+         "args": [
+          {
+           "name": "db",
+           "doc": "``sqlite3`` handle of the owning connection."
+          },
+          {
+           "name": "sql",
+           "doc": "A single SQL statement (no trailing semicolon needed)."
+          }
+         ],
+         "raises": "Error: If the SQL fails to compile."
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Finalize the statement and release its resources."
+        }
+       ]
+      },
+      {
+       "name": "reset",
+       "overloads": [
+        {
+         "signature": "def reset(self)",
+         "summary": "Reset the statement so it can be re-executed.",
+         "raises": "Error: If the reset call fails."
+        }
+       ]
+      },
+      {
+       "name": "bind_int",
+       "overloads": [
+        {
+         "signature": "def bind_int(self, idx: Int, val: Int)",
+         "summary": "Bind an integer value to parameter ``idx``.",
+         "args": [
+          {
+           "name": "idx",
+           "doc": "1-based parameter index."
+          },
+          {
+           "name": "val",
+           "doc": "Integer value."
+          }
+         ],
+         "raises": "Error: On binding failure."
+        }
+       ]
+      },
+      {
+       "name": "bind_float",
+       "overloads": [
+        {
+         "signature": "def bind_float(self, idx: Int, val: Float64)",
+         "summary": "Bind a floating-point value to parameter ``idx``.",
+         "args": [
+          {
+           "name": "idx",
+           "doc": "1-based parameter index."
+          },
+          {
+           "name": "val",
+           "doc": "Float64 value."
+          }
+         ],
+         "raises": "Error: On binding failure."
+        }
+       ]
+      },
+      {
+       "name": "bind_text",
+       "overloads": [
+        {
+         "signature": "def bind_text(self, idx: Int, val: String)",
+         "summary": "Bind a text value to parameter ``idx``.",
+         "args": [
+          {
+           "name": "idx",
+           "doc": "1-based parameter index."
+          },
+          {
+           "name": "val",
+           "doc": "String value (copied by SQLite)."
+          }
+         ],
+         "raises": "Error: On binding failure."
+        }
+       ]
+      },
+      {
+       "name": "bind_null",
+       "overloads": [
+        {
+         "signature": "def bind_null(self, idx: Int)",
+         "summary": "Bind SQL NULL to parameter ``idx``.",
+         "args": [
+          {
+           "name": "idx",
+           "doc": "1-based parameter index."
+          }
+         ],
+         "raises": "Error: On binding failure."
+        }
+       ]
+      },
+      {
+       "name": "step",
+       "overloads": [
+        {
+         "signature": "def step(self) -> Optional[Row]",
+         "summary": "Advance the statement by one step.",
+         "description": "Reads all column values into a ``Row`` snapshot when a row is\navailable, so the caller does not need to keep the statement alive.",
+         "raises": "Error: If ``sqlite3_step`` returns an error code."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Database",
+     "signature": "struct Database",
+     "summary": "A SQLite database connection.",
+     "description": "Opens (or creates) the database file on construction and closes the\nconnection on destruction.  Use ``:memory:`` for a transient in-memory\ndatabase.\n\nExample::\n\n    var db = Database(\":memory:\")\n    db.execute(\"CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)\")",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, path: String)",
+         "summary": "Open or create a SQLite database.",
+         "args": [
+          {
+           "name": "path",
+           "doc": "File-system path to the database, or ``:memory:``."
+          }
+         ],
+         "raises": "Error: If ``sqlite3_open`` fails."
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Close the database connection."
+        }
+       ]
+      },
+      {
+       "name": "execute",
+       "overloads": [
+        {
+         "signature": "def execute(self, sql: String)",
+         "summary": "Execute one or more SQL statements with no result rows.",
+         "description": "Suitable for DDL (``CREATE TABLE``, ``DROP TABLE``) and DML without\na return value (``INSERT ... VALUES ...``, ``DELETE ...``).",
+         "args": [
+          {
+           "name": "sql",
+           "doc": "Semicolon-separated SQL text."
+          }
+         ],
+         "raises": "Error: If ``sqlite3_exec`` fails."
+        }
+       ]
+      },
+      {
+       "name": "prepare",
+       "overloads": [
+        {
+         "signature": "def prepare(self, sql: String) -> Statement",
+         "summary": "Compile a SQL statement for repeated execution.",
+         "args": [
+          {
+           "name": "sql",
+           "doc": "A single SQL statement."
+          }
+         ],
+         "raises": "Error: If the SQL fails to compile."
+        }
+       ]
+      },
+      {
+       "name": "transaction",
+       "overloads": [
+        {
+         "signature": "def transaction(self) -> Transaction",
+         "summary": "Begin a new transaction and return an RAII guard.",
+         "description": "The guard issues ``BEGIN`` immediately.  Call ``commit()`` on the\nreturned ``Transaction`` to persist changes.  If the guard is\ndestroyed before ``commit()`` (exception, early return, or explicit\n``rollback()``), a ``ROLLBACK`` is issued automatically.\n\nExample::\n\n    var tx = db.transaction()\n    db.execute(\"INSERT INTO orders VALUES (1, 'Alice')\")\n    db.execute(\"INSERT INTO line_items VALUES (1, 42, 3)\")\n    tx.commit()   # both rows committed atomically.",
+         "raises": "Error: If ``BEGIN`` fails (e.g. a transaction is already open)."
+        }
+       ]
+      },
+      {
+       "name": "changes",
+       "overloads": [
+        {
+         "signature": "def changes(self) -> Int",
+         "summary": "Return rows inserted, updated or deleted by the most recent statement.",
+         "description": "The value a guarded write checks: an ``UPDATE ... WHERE`` whose\npredicate matched nothing reports 0, which is how optimistic\nconcurrency detects that it lost the race rather than silently\nsucceeding.",
+         "raises": "Error: Only if ``libsqlite3`` could not be loaded, which cannot\nhappen once a ``Database`` exists."
+        }
+       ]
+      },
+      {
+       "name": "total_changes",
+       "overloads": [
+        {
+         "signature": "def total_changes(self) -> Int",
+         "summary": "Return rows changed by every statement since this connection opened.",
+         "raises": "Error: Only if ``libsqlite3`` could not be loaded."
+        }
+       ]
+      },
+      {
+       "name": "last_insert_rowid",
+       "overloads": [
+        {
+         "signature": "def last_insert_rowid(self) -> Int",
+         "summary": "Return the rowid of the most recent successful INSERT.",
+         "raises": "Error: Only if ``libsqlite3`` could not be loaded."
+        }
+       ]
+      },
+      {
+       "name": "last_error",
+       "overloads": [
+        {
+         "signature": "def last_error(self) -> String",
+         "summary": "Return the most recent error message for this connection.",
+         "raises": "Error: Only if ``libsqlite3`` could not be loaded, which cannot\nhappen once a ``Database`` exists."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "sqlite.ffi",
+   "summary": "Low-level FFI wrappers for the SQLite C library.",
+   "description": "All sqlite3 handles (``sqlite3*`` and ``sqlite3_stmt*``) are stored as\n``Int`` (pointer address).  Input C strings are passed as ``Int`` via\n``unsafe_ptr() → Int`` cast.  Output C-string return values are received\nas ``Pointer[UInt8, MutUntrackedOrigin]`` and immediately copied\ninto owned ``String`` values via ``StringSlice``.\n\nThe library is loaded at runtime via ``OwnedDLHandle`` so Mojo's JIT\nnever needs to resolve SQLite symbols at compile time, eliminating the\n``JIT session error: Symbols not found`` failure on Linux.  The handle is\nopened, and every entry point resolved, **once per process** (``_FFI``\nbelow): a ``dlopen``/``dlclose`` cycle of an already-resident library costs\naround 450 microseconds on macOS, so opening one per ``Database`` — let alone\nper ``Statement`` or ``Transaction``, as this binding used to — made the fixed\ncost of preparing a query dwarf the query itself.\n\nDo not call ``Sqlite3FFI`` methods from user code -- use ``db.mojo``.",
+   "aliases": [
+    {
+     "name": "SQLITE_OK",
+     "value": "0"
+    },
+    {
+     "name": "SQLITE_ROW",
+     "value": "100"
+    },
+    {
+     "name": "SQLITE_DONE",
+     "value": "101"
+    },
+    {
+     "name": "SQLITE_INTEGER",
+     "value": "1"
+    },
+    {
+     "name": "SQLITE_FLOAT",
+     "value": "2"
+    },
+    {
+     "name": "SQLITE_TEXT",
+     "value": "3"
+    },
+    {
+     "name": "SQLITE_BLOB",
+     "value": "4"
+    },
+    {
+     "name": "SQLITE_NULL",
+     "value": "5"
+    }
+   ],
+   "structs": [
+    {
+     "name": "Sqlite3FFI",
+     "signature": "struct Sqlite3FFI",
+     "summary": "Runtime-loaded SQLite FFI: ``dlopen`` + ``dlsym`` for all C entry-points.",
+     "description": "Loads ``libsqlite3`` at construction via ``OwnedDLHandle`` and resolves\nevery function pointer once.  All opaque pointer arguments (``sqlite3*``,\n``sqlite3_stmt*``) are represented as ``Int`` (64-bit on all supported\nplatforms), matching the C ABI on x86-64 and arm64 without requiring\n``Pointer`` type annotations.\n\n**Construct this exactly once per process** -- reach it through\n``sqlite_ffi()``, which returns a borrow of the ``_Global`` instance.\n``RTLD.NODELETE`` additionally makes ``dlclose`` a no-op, so the library\nimage stays resident (and its VFS state, WAL locks and shared-memory\nmappings intact) for the process lifetime.\n\nBecause ``_dl_sym`` copies each symbol's address out into a plain\nfunction value, calls do not borrow the handle; the handle only has to\noutlive them, which the ``_Global`` guarantees.\n\nExample::\n\n    ref ffi = sqlite_ffi()\n    var db = ffi.open(\":memory:\")\n    ffi.exec(db, \"CREATE TABLE t (x INTEGER)\")\n    _ = ffi.close(db)",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, lib_path: String = \"\")",
+         "summary": "Load ``libsqlite3`` and resolve all function pointers.",
+         "args": [
+          {
+           "name": "lib_path",
+           "doc": "Explicit path to the library.  If empty, the soname is\n          looked up by ``_dlopen.open_library``:\n          ``$CONDA_PREFIX/lib``, next to the executable and in\n          its ``../lib``, then the dynamic linker's search path\n          (the build environment's lib via the binary's rpath,\n          then the system), so it works with or without\n          ``$CONDA_PREFIX``."
+          }
+         ],
+         "raises": "Error: If the library cannot be opened (the message names every\nplace searched and says to set ``CONDA_PREFIX``) or a symbol\nis missing."
+        }
+       ]
+      },
+      {
+       "name": "open",
+       "overloads": [
+        {
+         "signature": "def open(self, filename: String) -> Int",
+         "summary": "Open or create a SQLite database file.",
+         "description": "Uses a ``List[Int]`` as the output buffer for the ``sqlite3**``\nargument (same pattern as simdjson FFI for output pointer args).\n\nPasses an explicit null-terminated copy of ``filename`` (same\npattern as ``exec``) to avoid the Mojo ``String`` quirk where\nreused heap buffers may contain stale bytes after the logical\nstring end.",
+         "args": [
+          {
+           "name": "filename",
+           "doc": "File path or ``:memory:`` for an in-memory database."
+          }
+         ],
+         "raises": "Error: If ``sqlite3_open`` returns a non-zero code."
+        }
+       ]
+      },
+      {
+       "name": "close",
+       "overloads": [
+        {
+         "signature": "def close(self, db: Int) -> Int32",
+         "summary": "Close the database connection.",
+         "args": [
+          {
+           "name": "db",
+           "doc": "``sqlite3`` handle."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "errmsg",
+       "overloads": [
+        {
+         "signature": "def errmsg(self, db: Int) -> String",
+         "summary": "Return the most recent error message for the connection.",
+         "args": [
+          {
+           "name": "db",
+           "doc": "``sqlite3`` handle."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "exec",
+       "overloads": [
+        {
+         "signature": "def exec(self, db: Int, sql: String)",
+         "summary": "Execute one or more SQL statements with no result rows.",
+         "description": "``sqlite3_exec`` reads until a null byte, so we build an explicit\n``List[UInt8]`` copy of *sql* and append a ``0`` byte before calling\ninto C.  ``String.unsafe_ptr()`` returns a read-only pointer in this\nMojo version, so we cannot patch the null byte in-place.  The copy\neliminates the Mojo ``String`` quirk where reused heap buffers may\ncontain stale bytes after the logical string end.",
+         "args": [
+          {
+           "name": "db",
+           "doc": "``sqlite3`` handle."
+          },
+          {
+           "name": "sql",
+           "doc": "Semicolon-separated SQL text (DDL, DML, PRAGMA, etc.)."
+          }
+         ],
+         "raises": "Error: If ``sqlite3_exec`` returns a non-zero code."
+        }
+       ]
+      },
+      {
+       "name": "prepare_v2",
+       "overloads": [
+        {
+         "signature": "def prepare_v2(self, db: Int, sql: String) -> Int",
+         "summary": "Compile SQL text into a prepared statement.",
+         "description": "Uses a ``List[Int]`` as the output buffer for the ``sqlite3_stmt**``\nargument.\n\nPasses ``len(sql)`` as the explicit byte count to\n``sqlite3_prepare_v2`` (instead of ``-1``) so SQLite never reads\nbeyond the valid bytes.  This avoids a Mojo ``String`` quirk where\nreused heap buffers may contain stale bytes after the logical\nstring end, which with ``nByte = -1`` causes spurious parse errors\n(e.g. ``near \"NTEGER\": syntax error``).",
+         "args": [
+          {
+           "name": "db",
+           "doc": "``sqlite3`` handle."
+          },
+          {
+           "name": "sql",
+           "doc": "A single SQL statement (without trailing semicolon)."
+          }
+         ],
+         "raises": "Error: If compilation fails."
+        }
+       ]
+      },
+      {
+       "name": "step",
+       "overloads": [
+        {
+         "signature": "def step(self, stmt: Int) -> Int32",
+         "summary": "Advance a prepared statement by one step.",
+         "args": [
+          {
+           "name": "stmt",
+           "doc": "``sqlite3_stmt`` handle."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "reset",
+       "overloads": [
+        {
+         "signature": "def reset(self, stmt: Int) -> Int32",
+         "summary": "Reset a prepared statement for re-execution.",
+         "args": [
+          {
+           "name": "stmt",
+           "doc": "``sqlite3_stmt`` handle."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "finalize",
+       "overloads": [
+        {
+         "signature": "def finalize(self, stmt: Int)",
+         "summary": "Destroy a prepared statement and free its resources.",
+         "args": [
+          {
+           "name": "stmt",
+           "doc": "``sqlite3_stmt`` handle."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "bind_int",
+       "overloads": [
+        {
+         "signature": "def bind_int(self, stmt: Int, idx: Int, val: Int)",
+         "summary": "Bind an integer value to a statement parameter (1-based index).",
+         "description": "Wraps ``sqlite3_bind_int64``.",
+         "args": [
+          {
+           "name": "stmt",
+           "doc": "``sqlite3_stmt`` handle."
+          },
+          {
+           "name": "idx",
+           "doc": "Parameter index (1-based)."
+          },
+          {
+           "name": "val",
+           "doc": "Integer value."
+          }
+         ],
+         "raises": "Error: On binding failure."
+        }
+       ]
+      },
+      {
+       "name": "bind_double",
+       "overloads": [
+        {
+         "signature": "def bind_double(self, stmt: Int, idx: Int, val: Float64)",
+         "summary": "Bind a floating-point value to a statement parameter.",
+         "args": [
+          {
+           "name": "stmt",
+           "doc": "``sqlite3_stmt`` handle."
+          },
+          {
+           "name": "idx",
+           "doc": "Parameter index (1-based)."
+          },
+          {
+           "name": "val",
+           "doc": "Float64 value."
+          }
+         ],
+         "raises": "Error: On binding failure."
+        }
+       ]
+      },
+      {
+       "name": "bind_text",
+       "overloads": [
+        {
+         "signature": "def bind_text(self, stmt: Int, idx: Int, val: String)",
+         "summary": "Bind a text value to a statement parameter (SQLITE_TRANSIENT copy).",
+         "description": "Passes the explicit byte length (``len(v)``) to ``sqlite3_bind_text``\ninstead of ``-1`` to avoid the Mojo ``String`` null-termination quirk\nwhere reused buffers may contain stale bytes after the logical end.",
+         "args": [
+          {
+           "name": "stmt",
+           "doc": "``sqlite3_stmt`` handle."
+          },
+          {
+           "name": "idx",
+           "doc": "Parameter index (1-based)."
+          },
+          {
+           "name": "val",
+           "doc": "String value (copied by SQLite)."
+          }
+         ],
+         "raises": "Error: On binding failure."
+        }
+       ]
+      },
+      {
+       "name": "bind_null",
+       "overloads": [
+        {
+         "signature": "def bind_null(self, stmt: Int, idx: Int)",
+         "summary": "Bind SQL NULL to a statement parameter.",
+         "args": [
+          {
+           "name": "stmt",
+           "doc": "``sqlite3_stmt`` handle."
+          },
+          {
+           "name": "idx",
+           "doc": "Parameter index (1-based)."
+          }
+         ],
+         "raises": "Error: On binding failure."
+        }
+       ]
+      },
+      {
+       "name": "column_count",
+       "overloads": [
+        {
+         "signature": "def column_count(self, stmt: Int) -> Int",
+         "summary": "Return the number of columns in the current result row.",
+         "args": [
+          {
+           "name": "stmt",
+           "doc": "``sqlite3_stmt`` handle."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "changes",
+       "overloads": [
+        {
+         "signature": "def changes(self, db: Int) -> Int",
+         "summary": "Return the rows inserted, updated or deleted by the most recent statement.",
+         "args": [
+          {
+           "name": "db",
+           "doc": "``sqlite3`` handle."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "total_changes",
+       "overloads": [
+        {
+         "signature": "def total_changes(self, db: Int) -> Int",
+         "summary": "Return rows changed by all statements since the connection opened.",
+         "args": [
+          {
+           "name": "db",
+           "doc": "``sqlite3`` handle."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "last_insert_rowid",
+       "overloads": [
+        {
+         "signature": "def last_insert_rowid(self, db: Int) -> Int",
+         "summary": "Return the rowid of the most recent successful INSERT.",
+         "args": [
+          {
+           "name": "db",
+           "doc": "``sqlite3`` handle."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "column_type",
+       "overloads": [
+        {
+         "signature": "def column_type(self, stmt: Int, col: Int) -> Int",
+         "summary": "Return the SQLite type code of a column value (0-based index).",
+         "args": [
+          {
+           "name": "stmt",
+           "doc": "``sqlite3_stmt`` handle."
+          },
+          {
+           "name": "col",
+           "doc": "Column index (0-based)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "column_int",
+       "overloads": [
+        {
+         "signature": "def column_int(self, stmt: Int, col: Int) -> Int",
+         "summary": "Read an integer column value (0-based index).",
+         "args": [
+          {
+           "name": "stmt",
+           "doc": "``sqlite3_stmt`` handle."
+          },
+          {
+           "name": "col",
+           "doc": "Column index (0-based)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "column_double",
+       "overloads": [
+        {
+         "signature": "def column_double(self, stmt: Int, col: Int) -> Float64",
+         "summary": "Read a floating-point column value (0-based index).",
+         "args": [
+          {
+           "name": "stmt",
+           "doc": "``sqlite3_stmt`` handle."
+          },
+          {
+           "name": "col",
+           "doc": "Column index (0-based)."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "column_text",
+       "overloads": [
+        {
+         "signature": "def column_text(self, stmt: Int, col: Int) -> String",
+         "summary": "Read a text column value (0-based index).",
+         "args": [
+          {
+           "name": "stmt",
+           "doc": "``sqlite3_stmt`` handle."
+          },
+          {
+           "name": "col",
+           "doc": "Column index (0-based)."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "sqlite_ffi",
+     "overloads": [
+      {
+       "signature": "def sqlite_ffi() -> ref[MutUntrackedOrigin] Sqlite3FFI",
+       "summary": "The process-wide FFI table, borrowed.  Never destroy the referent.",
+       "raises": "Error: If libsqlite3 can't be loaded (see ``Sqlite3FFI.__init__``)."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

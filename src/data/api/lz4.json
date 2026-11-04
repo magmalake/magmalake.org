@@ -1,0 +1,136 @@
+{
+ "tin": "lz4",
+ "version": "0.1.4",
+ "rev": "23cd6e54967d7e41573371507228ca5c958ca685",
+ "package": "lz4",
+ "path": "src/lz4",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "`lz4` — Mojo bindings to liblz4 (block format + frame format) via a thin C shim (liblz4mojo.{dylib,so}), loaded through an `OwnedDLHandle`.",
+ "description": "Two independent codecs live in one liblz4:\n\n- **Block format** (`LZ4_RAW` in Parquet): a bare compressed blob with no\n  size prefix — the uncompressed length must be supplied out of band (that's\n  exactly what a Parquet page header carries). Legacy Parquet's `LZ4`\n  compression carries the same blocks but wrapped in a Hadoop framing of\n  `[BE u32 uncompressed_len][BE u32 compressed_len]` pairs.\n- **Frame format** (`LZ4F`): a self-describing container with a magic\n  number, optional content-size field, and (optionally) checksums. This is\n  the *only* codec Apache Iceberg allows for Puffin file footers, which is\n  why `compress_frame` always sets the content-size flag by default.\n\nMirrors zlib.mojo's FFI pattern: a single-call C wrapper\n(shim/lz4_wrapper.c, built to $CONDA_PREFIX/lib/liblz4mojo.{dylib,so} by the\nlz4-shim pixi package) so Mojo never reads back internal library state after\na foreign call. The handle is opened **once per process** and never closed\n(`_LIB` below) — a `dlopen`/`dlclose` cycle costs hundreds of microseconds,\nfar more than compressing a Parquet page, so opening one per call made the\nbinding's fixed cost dwarf the work it wrapped. It is passed as a borrowed\n(default-convention) parameter to each worker function, so Mojo's ASAP\ndestruction can't `dlclose` the library before the C call inside that worker\nruns.",
+ "modules": [
+  {
+   "path": "lz4",
+   "summary": "`lz4` — Mojo bindings to liblz4 (block format + frame format) via a thin C shim (liblz4mojo.{dylib,so}), loaded through an `OwnedDLHandle`.",
+   "description": "Two independent codecs live in one liblz4:\n\n- **Block format** (`LZ4_RAW` in Parquet): a bare compressed blob with no\n  size prefix — the uncompressed length must be supplied out of band (that's\n  exactly what a Parquet page header carries). Legacy Parquet's `LZ4`\n  compression carries the same blocks but wrapped in a Hadoop framing of\n  `[BE u32 uncompressed_len][BE u32 compressed_len]` pairs.\n- **Frame format** (`LZ4F`): a self-describing container with a magic\n  number, optional content-size field, and (optionally) checksums. This is\n  the *only* codec Apache Iceberg allows for Puffin file footers, which is\n  why `compress_frame` always sets the content-size flag by default.\n\nMirrors zlib.mojo's FFI pattern: a single-call C wrapper\n(shim/lz4_wrapper.c, built to $CONDA_PREFIX/lib/liblz4mojo.{dylib,so} by the\nlz4-shim pixi package) so Mojo never reads back internal library state after\na foreign call. The handle is opened **once per process** and never closed\n(`_LIB` below) — a `dlopen`/`dlclose` cycle costs hundreds of microseconds,\nfar more than compressing a Parquet page, so opening one per call made the\nbinding's fixed cost dwarf the work it wrapped. It is passed as a borrowed\n(default-convention) parameter to each worker function, so Mojo's ASAP\ndestruction can't `dlclose` the library before the C call inside that worker\nruns.",
+   "functions": [
+    {
+     "name": "compress_block",
+     "overloads": [
+      {
+       "signature": "def compress_block(data: Span[UInt8], acceleration: Int = Int(1)) -> List[UInt8]",
+       "summary": "Compress to a raw LZ4 block (`LZ4_RAW`) — no size prefix. The caller (e.g. a Parquet page writer) must record the uncompressed length out of band; `decompress_block` needs it back to decode.",
+       "args": [
+        {
+         "name": "data",
+         "doc": "Bytes to compress."
+        },
+        {
+         "name": "acceleration",
+         "doc": ">=1; higher trades compression ratio for speed\n    (1 matches `LZ4_compress_default`)."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "compress_block_hc",
+     "overloads": [
+      {
+       "signature": "def compress_block_hc(data: Span[UInt8], level: Int = Int(9)) -> List[UInt8]",
+       "summary": "Compress to a raw LZ4 block using the high-compression (HC) encoder. Same wire format as `compress_block` — slower, smaller output.",
+       "args": [
+        {
+         "name": "data",
+         "doc": "Bytes to compress."
+        },
+        {
+         "name": "level",
+         "doc": "1..12 (LZ4HC_CLEVEL_MIN..MAX); higher is slower and smaller."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "decompress_block_into",
+     "overloads": [
+      {
+       "signature": "def decompress_block_into(data: Span[UInt8], dst: Span[UInt8]) -> Int",
+       "summary": "Decompress a raw LZ4 block into a caller-supplied buffer. `dst` must be at least as large as the true uncompressed size — LZ4 blocks carry no size of their own, so this can't grow the buffer for you.",
+       "description": "Returns the number of bytes written."
+      }
+     ]
+    },
+    {
+     "name": "decompress_block",
+     "overloads": [
+      {
+       "signature": "def decompress_block(data: Span[UInt8], uncompressed_size: Int) -> List[UInt8]",
+       "summary": "Decompress a raw LZ4 block. `uncompressed_size` must be exact — Parquet page headers carry it, since LZ4 blocks carry no size prefix."
+      }
+     ]
+    },
+    {
+     "name": "compress_frame",
+     "overloads": [
+      {
+       "signature": "def compress_frame(data: Span[UInt8], level: Int = Int(0), content_size: Bool = True) -> List[UInt8]",
+       "summary": "Compress to a single LZ4 frame (`LZ4F`) — the format Apache Iceberg requires for Puffin file footers. `content_size=True` (the default, and the Puffin requirement) writes the uncompressed length into the frame header so a reader can size its output buffer up front.",
+       "args": [
+        {
+         "name": "data",
+         "doc": "Bytes to compress."
+        },
+        {
+         "name": "level",
+         "doc": "0 = fast mode (LZ4 default); >=1 selects the HC encoder\n    (1..12, higher is slower and smaller)."
+        },
+        {
+         "name": "content_size",
+         "doc": "Whether to record the uncompressed length in the\n    frame header."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "frame_content_size",
+     "overloads": [
+      {
+       "signature": "def frame_content_size(data: Span[UInt8]) -> Optional[Int]",
+       "summary": "Read the uncompressed content size from an LZ4 frame header without decompressing, if the frame carries one.",
+       "description": "Returns `None` if the frame doesn't carry a content size (LZ4F itself\ncan't distinguish \"unspecified\" from a genuine zero-length payload —\nboth are stored as 0), or raises if `data` isn't a valid frame header."
+      }
+     ]
+    },
+    {
+     "name": "is_lz4_frame",
+     "overloads": [
+      {
+       "signature": "def is_lz4_frame(data: Span[UInt8]) -> Bool",
+       "summary": "Whether `data` starts with the LZ4 frame magic number (`0x184D2204`, little-endian) — the standard way to tell an LZ4F frame apart from a bare LZ4 block, which has no magic at all."
+      }
+     ]
+    },
+    {
+     "name": "decompress_frame",
+     "overloads": [
+      {
+       "signature": "def decompress_frame(data: Span[UInt8]) -> List[UInt8]",
+       "summary": "Decompress a single LZ4 frame. Uses the frame header's content-size field to size the output buffer exactly when present (the case for every frame `compress_frame` produces, and the Puffin convention); otherwise grows the buffer and retries until the whole frame fits."
+      }
+     ]
+    },
+    {
+     "name": "decompress_hadoop",
+     "overloads": [
+      {
+       "signature": "def decompress_hadoop(data: Span[UInt8], uncompressed_size: Int) -> List[UInt8]",
+       "summary": "Decompress legacy Parquet `LZ4` (Hadoop-framed): a sequence of `[BE u32 uncompressed_len][BE u32 compressed_len][block…]` chunks, each block an ordinary `LZ4_RAW` block. This is the format `parquet-mr` historically wrote for codec `LZ4`; new writers should use `LZ4_RAW` (`compress_block`/`decompress_block`) instead — see PARQUET-1974."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

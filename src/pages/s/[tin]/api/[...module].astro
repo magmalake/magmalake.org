@@ -1,0 +1,56 @@
+---
+/**
+ * One module of a tin's API reference, /s/<tin>/api/<path> (see
+ * src/data/apiref.ts for the path). The package's own module is on the
+ * reference's first page instead.
+ */
+import TinPage from "../../../../components/TinPage.astro";
+import ApiModule from "../../../../components/ApiModule.astro";
+import { slugOf, type Tin } from "../../../../data/tins";
+import { apiTins } from "../../../../data/tinpages";
+import { apiOf, subModules, moduleSlug, apiHref, docHtml, type Api, type Module } from "../../../../data/apiref";
+
+export function getStaticPaths() {
+  return apiTins().flatMap((t) => {
+    const api = apiOf(slugOf(t))!;
+    return subModules(api).map((m) => ({
+      params: { tin: slugOf(t), module: moduleSlug(api, m) },
+      props: { tin: t, api, module: m },
+    }));
+  });
+}
+
+interface Props {
+  tin: Tin;
+  api: Api;
+  module: Module;
+}
+const { tin, api, module: m } = Astro.props;
+const slug = slugOf(tin);
+// The modules above this one, for the breadcrumb: iceberg.catalog for
+// iceberg.catalog.rest, when it has a page.
+const parts = m.path.split(".");
+const parents = parts
+  .slice(1, -1)
+  .map((_, i) => parts.slice(0, i + 2).join("."))
+  .map((p) => api.modules.find((x) => x.path === p))
+  .filter((x): x is Module => Boolean(x));
+const description = m.summary
+  ? `${m.path}, in ${tin.name}'s API: ${m.summary}`
+  : `${m.path}, in ${tin.name}'s API: its structs, traits and functions.`;
+---
+
+<TinPage tin={tin} title={`API: ${m.path}`} description={description}>
+  <section class="section section--flush api" id="api">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">
+        <a href={`/s/${slug}`}>{tin.name}</a> · <a href={apiHref(slug, api)}>API</a>
+        {parents.map((p) => <> · <a href={apiHref(slug, api, p)}>{p.path.split(".").pop()}</a></>)}
+      </p>
+      <h1 class="section-title api__title"><code>{m.path}</code></h1>
+      {m.summary && <div class="api__doc api__lead" set:html={docHtml(m.summary)} />}
+      {m.description && <div class="api__doc" set:html={docHtml(m.description)} />}
+      <ApiModule module={m} />
+    </div>
+  </section>
+</TinPage>

@@ -1,0 +1,513 @@
+{
+ "tin": "memory-region",
+ "version": "0.1.1",
+ "rev": "40068c4f95ea659e9b78aa91ced45420b07e3e6e",
+ "package": "memory_region",
+ "path": "src/memory_region",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "Bytes that survive being moved.",
+ "description": "A **region** is a contiguous byte range, however it was obtained: an ordinary\nallocation, or a file mapped `MAP_SHARED` that another process can map by\nname. A `BumpAllocator` carves one up.\n\nThe rule that makes it a library rather than a helper is that `claim` returns\nan **offset**, not an address. A shared mapping lands somewhere different in\nevery process that maps it, so anything built inside a region has to refer to\nitself by offset; a reader adds its own `base()` and it all resolves. What\nthat buys is a structure you can hand to someone else — through a file, a\nshared mapping, an object store — without serialising it.\n\n    var bump = BumpAllocator[MappedRegion](MappedRegion(\"/tmp/batch\", size))\n    var header = bump.claim(8)\n    var payload = bump.append(some_bytes)\n    bump.unsafe_ptr(header).unsafe_bitcast[Int64]()[unsafe_offset=0] = Int64(payload)\n    bump^.close()          # unmaps; the file stays\n\nand on the other side:\n\n    var mapped = SharedMapping(\"/tmp/batch\")   # read-only, unmapped at end of scope\n    var head = mapped.span[DType.int64](header, 1)[0]\n    var values = mapped.span[DType.uint8](Int(head), n)\n\n## Dropping is safe, giving away is explicit\n\nA region frees or unmaps itself at end of scope, because a leaked mapping has\nno other symptom. `into_raw()` is how an export says the bytes are the\nconsumer's now: it consumes the region so the destructor does not run.\n\n## What it does not do\n\n**Grow.** A fixed range, so `claim` raises rather than reallocating. Size it\nup front: a producer that knows its total sizes it exactly, one that does not\ncan over-allocate a mapping, since untouched pages never materialise.\n\n**Free a piece.** The whole region goes at once.\n\n**Describe itself.** A reader needs a manifest, and what that looks like\nbelongs to whoever owns the payload.",
+ "modules": [
+  {
+   "path": "memory_region",
+   "summary": "Bytes that survive being moved.",
+   "description": "A **region** is a contiguous byte range, however it was obtained: an ordinary\nallocation, or a file mapped `MAP_SHARED` that another process can map by\nname. A `BumpAllocator` carves one up.\n\nThe rule that makes it a library rather than a helper is that `claim` returns\nan **offset**, not an address. A shared mapping lands somewhere different in\nevery process that maps it, so anything built inside a region has to refer to\nitself by offset; a reader adds its own `base()` and it all resolves. What\nthat buys is a structure you can hand to someone else — through a file, a\nshared mapping, an object store — without serialising it.\n\n    var bump = BumpAllocator[MappedRegion](MappedRegion(\"/tmp/batch\", size))\n    var header = bump.claim(8)\n    var payload = bump.append(some_bytes)\n    bump.unsafe_ptr(header).unsafe_bitcast[Int64]()[unsafe_offset=0] = Int64(payload)\n    bump^.close()          # unmaps; the file stays\n\nand on the other side:\n\n    var mapped = SharedMapping(\"/tmp/batch\")   # read-only, unmapped at end of scope\n    var head = mapped.span[DType.int64](header, 1)[0]\n    var values = mapped.span[DType.uint8](Int(head), n)\n\n## Dropping is safe, giving away is explicit\n\nA region frees or unmaps itself at end of scope, because a leaked mapping has\nno other symptom. `into_raw()` is how an export says the bytes are the\nconsumer's now: it consumes the region so the destructor does not run.\n\n## What it does not do\n\n**Grow.** A fixed range, so `claim` raises rather than reallocating. Size it\nup front: a producer that knows its total sizes it exactly, one that does not\ncan over-allocate a mapping, since untouched pages never materialise.\n\n**Free a piece.** The whole region goes at once.\n\n**Describe itself.** A reader needs a manifest, and what that looks like\nbelongs to whoever owns the payload."
+  },
+  {
+   "path": "memory_region.bump",
+   "summary": "A cursor that only moves forward.",
+   "description": "`BumpAllocator` holds one number — how far into the region it has got — and\nallocating is \"give me where the cursor is, then move it on by `n`\". No free\nlist, no search, no per-allocation header: two instructions. The price is that\nan individual piece can never be freed, which is the usual arena trade and\nsuits data that is born together and dies together.\n\n## Offsets, not addresses\n\n`claim` returns an **offset from the start of the region**, and anything\nstored inside a region refers to the rest of it by offset. A shared mapping\nlands at a different address in every process that maps it, so an address\nwritten into it means something only to the process that wrote it; a reader\nadds its own `base()` and everything resolves.\n\n`span` is how to read and write what has been claimed: a typed view that\nborrows the allocator, so the compiler knows when it stops being valid.\n`unsafe_address` is the way back to a raw address, for the moment one has to\nbe written into a C structure whose consumer is this process.",
+   "structs": [
+    {
+     "name": "BumpAllocator",
+     "signature": "struct BumpAllocator[R: Region & Deinitable]",
+     "summary": "Hands out 8-byte-aligned offsets into a region, front to back.",
+     "description": "Arrow wants every buffer 8-byte aligned — consumers cast them in place —\nso alignment is the allocator's job rather than each caller's.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "region",
+       "type": "R"
+      },
+      {
+       "name": "used",
+       "type": "Int",
+       "summary": "How far the cursor has moved: the region's occupied prefix."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var region: R)"
+        }
+       ]
+      },
+      {
+       "name": "claim",
+       "overloads": [
+        {
+         "signature": "def claim(mut self, n: Int) -> Int",
+         "summary": "Reserve `n` bytes and return their **offset** from the base.",
+         "description": "Raises rather than growing: a region is a fixed range, and nothing\nthat has already handed out an offset could survive being moved."
+        }
+       ]
+      },
+      {
+       "name": "append",
+       "overloads": [
+        {
+         "signature": "def append[dtype: DType, //](mut self, data: Span[Scalar[dtype]]) -> Int",
+         "summary": "Claim room for `data`, copy it in, and return where it went.",
+         "description": "Any scalar element type, so a buffer of `Int32` offsets goes in as\nitself rather than as an address and a byte count."
+        }
+       ]
+      },
+      {
+       "name": "span",
+       "overloads": [
+        {
+         "signature": "def span[dtype: DType](ref self, offset: Int, count: Int) -> Span[Scalar[dtype], origin_of(self)]",
+         "summary": "`count` values of `dtype` at `offset`, as a view of this allocator.",
+         "description": "The view borrows the allocator: writable when the allocator is\nreached through `mut`, read-only otherwise, and unusable once it is\nclosed, moved or dropped — all checked by the compiler. Claiming more\nwhile a view is alive is fine, because `claim` never moves anything.\n\nThe offset is one this allocator handed out, so a bad one is a bug\nrather than bad input: it is a `debug_assert` against what has been\nclaimed, not a raise."
+        }
+       ]
+      },
+      {
+       "name": "unsafe_ptr",
+       "overloads": [
+        {
+         "signature": "def unsafe_ptr(self, offset: Int) -> Pointer[UInt8, MutUntrackedOrigin]",
+         "summary": "A writable pointer to `offset`, valid in this process only."
+        }
+       ]
+      },
+      {
+       "name": "unsafe_address",
+       "overloads": [
+        {
+         "signature": "def unsafe_address(self, offset: Int) -> Int",
+         "summary": "`offset` as an address in this process.",
+         "description": "The only place an address belongs: writing one into a C structure\nwhose consumer is this process. Anything a peer will read stores the\noffset instead."
+        }
+       ]
+      },
+      {
+       "name": "close",
+       "overloads": [
+        {
+         "signature": "def close(deinit self)",
+         "summary": "Give the region back now; it would go at end of scope anyway."
+        }
+       ]
+      },
+      {
+       "name": "into_raw",
+       "overloads": [
+        {
+         "signature": "def into_raw(deinit self) -> Int",
+         "summary": "Give up ownership of the region; returns its base address.",
+         "description": "What an export does when the bytes become the consumer's — the Arrow\nC Data Interface release callback frees them later."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "memory_region.ffi",
+   "summary": "POSIX, for the two backings that need it.",
+   "description": "Kept apart from the regions themselves so that a reader of `region.mojo` sees\nwhat a region *is* rather than which integer `O_CREAT` happens to be on this\nplatform.",
+   "aliases": [
+    {
+     "name": "PROT_READ",
+     "value": "Int(1)"
+    },
+    {
+     "name": "PROT_WRITE",
+     "value": "Int(2)"
+    },
+    {
+     "name": "MAP_SHARED",
+     "value": "Int(1)"
+    },
+    {
+     "name": "MAP_FAILED",
+     "value": "Int(-1)"
+    },
+    {
+     "name": "O_RDONLY",
+     "value": "Int(0)"
+    },
+    {
+     "name": "O_RDWR",
+     "value": "Int(2)"
+    }
+   ],
+   "functions": [
+    {
+     "name": "o_creat",
+     "overloads": [
+      {
+       "signature": "def o_creat() -> Int",
+       "summary": "`O_CREAT`, which is not the same number on both platforms.",
+       "description": "macOS has 0x0200 and Linux 0x40. Getting it wrong does not fail loudly —\nit opens with some other flag set — so it is spelled out here rather than\ninherited from a header nobody reads."
+      }
+     ]
+    },
+    {
+     "name": "o_trunc",
+     "overloads": [
+      {
+       "signature": "def o_trunc() -> Int",
+       "summary": "`O_TRUNC`: 0x0400 on macOS, 0x200 on Linux."
+      }
+     ]
+    },
+    {
+     "name": "cstr",
+     "overloads": [
+      {
+       "signature": "def cstr(s: String) -> List[UInt8]",
+       "summary": "A NUL-terminated copy, owned by the caller across the FFI call."
+      }
+     ]
+    },
+    {
+     "name": "open_file",
+     "overloads": [
+      {
+       "signature": "def open_file(path: String, flags: Int, mode: Int = Int(384)) -> Int",
+       "summary": "`open(2)`, as an fd.",
+       "description": "`open` is variadic in C — `int open(const char *, int, ...)` — and a\nvariadic call has a different ABI from a fixed one on arm64, so the\nfixed-argument count has to be declared or the mode lands in the wrong\nplace. It fails at LLVM lowering rather than at the call, so the error\ndoes not point here."
+      }
+     ]
+    },
+    {
+     "name": "close_fd",
+     "overloads": [
+      {
+       "signature": "def close_fd(fd: Int)"
+      }
+     ]
+    },
+    {
+     "name": "file_size",
+     "overloads": [
+      {
+       "signature": "def file_size(path: String) -> Int",
+       "summary": "The size of the file at `path`, from the standard library's `stat`.",
+       "description": "This used to be `lseek(fd, 0, SEEK_END)` through `external_call`. The\nstandard library declares `lseek` too, for `FileHandle.seek`, with\ndifferent argument types, and one program can't hold two declarations of\none C function: any binary that used both failed to compile with\n\"existing function with conflicting signature\"."
+      }
+     ]
+    },
+    {
+     "name": "truncate",
+     "overloads": [
+      {
+       "signature": "def truncate(fd: Int, size: Int) -> Bool"
+      }
+     ]
+    },
+    {
+     "name": "map_file",
+     "overloads": [
+      {
+       "signature": "def map_file(fd: Int, size: Int, writable: Bool) -> Int",
+       "summary": "`mmap(..., MAP_SHARED)`; 0 when the kernel refused."
+      }
+     ]
+    },
+    {
+     "name": "unmap",
+     "overloads": [
+      {
+       "signature": "def unmap(addr: Int, size: Int)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "memory_region.region",
+   "summary": "Where a region's bytes come from, and what giving them back means.",
+   "description": "A region is a contiguous byte range. What differs between one and the next is\nhow it was obtained — an allocation, a mapped file, later perhaps a slab in an\nobject store or a pinned buffer on the way to a GPU — and what releasing it\nmeans. Nothing that carves a region up needs to know which it has.\n\n## Dropping one is safe; giving it away is explicit\n\nA region frees or unmaps itself when it goes out of scope, because the failure\nit would otherwise have is invisible: a leaked mapping produces no error, no\ncrash and nothing in the output, and the file stays open through it.\n\n`into_raw` is the way out for the case that is not a leak — an export whose\nbytes become the consumer's, freed later by its own release callback. It\nconsumes the region, so the destructor does not also run, and the transfer is\nreadable at the call site instead of being implied by an omission.\n\nMojo can do better than this: `@explicit_destroy` with a `not Deinitable`\nconformance makes abandoning a region a *compile* error naming the method to\ncall. It is not used here because it needs a September-2026 nightly, and these\ntins build on `mojo-compiler` 1.2.0. Worth revisiting when stable catches up —\nit turns a safe default into an impossible mistake.",
+   "structs": [
+    {
+     "name": "HeapRegion",
+     "signature": "struct HeapRegion",
+     "summary": "An ordinary allocation: what an in-process export has always used.",
+     "traits": [
+      "Movable",
+      "Region"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, size: Int)"
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Freed when it goes out of scope, unless `into_raw` took it."
+        }
+       ]
+      },
+      {
+       "name": "base",
+       "overloads": [
+        {
+         "signature": "def base(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "size",
+       "overloads": [
+        {
+         "signature": "def size(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "close",
+       "overloads": [
+        {
+         "signature": "def close(deinit self)",
+         "summary": "Hand the allocation back, now rather than at the end of scope."
+        }
+       ]
+      },
+      {
+       "name": "into_raw",
+       "overloads": [
+        {
+         "signature": "def into_raw(deinit self) -> Int",
+         "summary": "Give up ownership; returns the base address.",
+         "description": "For a consumer that will free the bytes itself — the Arrow C Data\nInterface being the case this exists for, where the release callback\non the exported array is what eventually frees the block."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "MappedRegion",
+     "signature": "struct MappedRegion",
+     "summary": "A file mapped `MAP_SHARED`, which a peer process can map by name.",
+     "description": "The file is the handle. A consumer needs the path and nothing else:\neverything inside is laid out by offset, so it can map the same bytes\nwherever its own address space happens to put them.",
+     "traits": [
+      "Movable",
+      "Region"
+     ],
+     "fields": [
+      {
+       "name": "path",
+       "type": "String",
+       "summary": "Where a peer will find these bytes."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var path: String, size: Int)",
+         "summary": "Create (or truncate) `path` at `size` bytes and map it writable."
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Unmapped when it goes out of scope, unless `into_raw` took it."
+        }
+       ]
+      },
+      {
+       "name": "base",
+       "overloads": [
+        {
+         "signature": "def base(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "size",
+       "overloads": [
+        {
+         "signature": "def size(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "close",
+       "overloads": [
+        {
+         "signature": "def close(deinit self)",
+         "summary": "Drop this process's view of the bytes. The file stays.",
+         "description": "Unlinking is deliberately not done here: the consumer may not have\nmapped it yet, and when the bytes stop being needed is the caller's\nbusiness rather than the region's."
+        }
+       ]
+      },
+      {
+       "name": "into_raw",
+       "overloads": [
+        {
+         "signature": "def into_raw(deinit self) -> Int",
+         "summary": "Leave the mapping in place and give up ownership of it."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "SharedMapping",
+     "signature": "struct SharedMapping",
+     "summary": "The consumer's half: a peer's region, mapped read-only by path.",
+     "description": "It lands wherever this address space puts it, and everything inside is\nreached by offset from there. Unmapped at end of scope, like a region.\n\nViews come out of `span` and `bytes`, and carry this mapping's origin.\nThat makes two mistakes compile errors rather than crashes: writing\nthrough a view (the pages are `PROT_READ`, so a write would fault), and\nholding a view after the mapping has gone (it would point at nothing).\n\nWhat the types cannot promise is anything about the bytes: offsets come\nfrom another process's manifest, so `span` checks them against the\nmapping at run time, and the producer can still rewrite or truncate the\nfile underneath a view.\n\nIt is deliberately not a `Region`: a region is something a\n`BumpAllocator` carves up and writes into, and this one cannot be written.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "path",
+       "type": "String",
+       "summary": "The file these bytes were mapped from."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var path: String)",
+         "summary": "Map `path` read-only, all of it."
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Unmapped when it goes out of scope."
+        }
+       ]
+      },
+      {
+       "name": "size",
+       "overloads": [
+        {
+         "signature": "def size(self) -> Int",
+         "summary": "How many bytes are mapped: the file's length when it was opened."
+        }
+       ]
+      },
+      {
+       "name": "span",
+       "overloads": [
+        {
+         "signature": "def span[dtype: DType](self, offset: Int, count: Int) -> Span[Scalar[dtype], origin_of(self)]",
+         "summary": "`count` values of `dtype` starting `offset` bytes in, read-only.",
+         "description": "Raises if they do not fit inside the mapping, or if `offset` is not\naligned for `dtype` — both things a manifest from another process can\nget wrong, and neither of which a type can rule out."
+        }
+       ]
+      },
+      {
+       "name": "bytes",
+       "overloads": [
+        {
+         "signature": "def bytes(self) -> Span[UInt8, origin_of(self)]",
+         "summary": "The whole mapping, as bytes."
+        }
+       ]
+      },
+      {
+       "name": "unsafe_base",
+       "overloads": [
+        {
+         "signature": "def unsafe_base(self) -> Int",
+         "summary": "Address of byte 0 in this process, untracked.",
+         "description": "For handing a buffer to something outside Mojo's view — an Arrow\nC Data import, a foreign function. The address is only good while\nthis mapping is alive, and nothing checks that."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "traits": [
+    {
+     "name": "Region",
+     "summary": "A contiguous byte range that something else owns the lifetime of.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "base",
+       "overloads": [
+        {
+         "signature": "def base(self) -> Int",
+         "summary": "Address of byte 0 **in this process**."
+        }
+       ]
+      },
+      {
+       "name": "size",
+       "overloads": [
+        {
+         "signature": "def size(self) -> Int",
+         "summary": "How many bytes it holds."
+        }
+       ]
+      },
+      {
+       "name": "close",
+       "overloads": [
+        {
+         "signature": "def close(deinit self)",
+         "summary": "Give the bytes back: free, unmap, whatever this region means."
+        }
+       ]
+      },
+      {
+       "name": "into_raw",
+       "overloads": [
+        {
+         "signature": "def into_raw(deinit self) -> Int",
+         "summary": "Give up ownership; returns the base address.",
+         "description": "For bytes that become someone else's — an Arrow export whose release\ncallback frees them later. Consuming, so the destructor does not also\nrun."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "map_shared",
+     "overloads": [
+      {
+       "signature": "def map_shared(path: String) -> Tuple[Int, Int]",
+       "summary": "Map an existing file read-only; returns `(address, length)`.",
+       "description": "Nothing ever unmaps what this returns. Kept for one release while callers\nmove to `SharedMapping`.",
+       "deprecated": "use SharedMapping(path): it unmaps itself and checks offsets"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

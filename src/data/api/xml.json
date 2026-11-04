@@ -1,0 +1,299 @@
+{
+ "tin": "xml",
+ "version": null,
+ "rev": "26128827ae6fa11017192e40592c1604e4771595",
+ "package": "xml",
+ "path": "src/xml",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "xml — a small pure-Mojo XML parser.",
+ "description": "`xml.reader.XmlReader` is a pull parser (start / end / text events, entity\ndecoding, CDATA, comments and DOCTYPE skipped). `xml.document.Document`\nbuilds a flat read-only tree on top of it and answers path queries, which is\nwhat reading an API response actually needs.",
+ "modules": [
+  {
+   "path": "xml",
+   "summary": "xml — a small pure-Mojo XML parser.",
+   "description": "`xml.reader.XmlReader` is a pull parser (start / end / text events, entity\ndecoding, CDATA, comments and DOCTYPE skipped). `xml.document.Document`\nbuilds a flat read-only tree on top of it and answers path queries, which is\nwhat reading an API response actually needs."
+  },
+  {
+   "path": "xml.document",
+   "summary": "`xml.document` — a small read-only tree built from `XmlReader` events.",
+   "description": "API responses are small and are read by *path*: \"every\n`reservationSet/item/instancesSet/item`, and under each its `instanceType`\".\nThat is awkward over a pull parser and natural over a tree, so `Document`\nbuilds one — but flat, as parallel arrays indexed by node id, rather than as\nrecursive structs. A node is an element; its text is the concatenation of\nits direct text children (whitespace-only runs between child elements are\ndropped), which is the only text model an API response needs.\n\n```mojo\nvar doc = Document.parse(body)\nfor item in doc.find_all(doc.root(), \"reservationSet/item/instancesSet/item\"):\n    print(doc.child_text(item, \"instanceId\"), doc.find_text(item, \"instanceState/name\"))\n```\n\nPath segments match the *local* name, so a namespace prefix on the document\nside never has to be spelled out. `*` matches any element.",
+   "aliases": [
+    {
+     "name": "NO_NODE",
+     "value": "-1"
+    }
+   ],
+   "structs": [
+    {
+     "name": "Document",
+     "signature": "struct Document",
+     "traits": [
+      "Movable",
+      "Sized"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "parse",
+       "overloads": [
+        {
+         "signature": "def parse(doc: String) -> Self",
+         "summary": "Parses a whole document. Raises on malformed XML or no root."
+        }
+       ]
+      },
+      {
+       "name": "__len__",
+       "overloads": [
+        {
+         "signature": "def __len__(self) -> Int",
+         "summary": "Number of elements in the document."
+        }
+       ]
+      },
+      {
+       "name": "root",
+       "overloads": [
+        {
+         "signature": "def root(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "name",
+       "overloads": [
+        {
+         "signature": "def name(self, node: Int) -> String",
+         "summary": "The element's name as written, prefix included."
+        }
+       ]
+      },
+      {
+       "name": "text",
+       "overloads": [
+        {
+         "signature": "def text(self, node: Int) -> String",
+         "summary": "The element's own text, entity-decoded."
+        }
+       ]
+      },
+      {
+       "name": "parent",
+       "overloads": [
+        {
+         "signature": "def parent(self, node: Int) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "attr",
+       "overloads": [
+        {
+         "signature": "def attr(self, node: Int, name: String, default: String = \"\") -> String"
+        }
+       ]
+      },
+      {
+       "name": "children",
+       "overloads": [
+        {
+         "signature": "def children(self, node: Int) -> List[Int]"
+        }
+       ]
+      },
+      {
+       "name": "child",
+       "overloads": [
+        {
+         "signature": "def child(self, node: Int, name: String) -> Int",
+         "summary": "The first child with local name `name`, or `NO_NODE`."
+        }
+       ]
+      },
+      {
+       "name": "child_text",
+       "overloads": [
+        {
+         "signature": "def child_text(self, node: Int, name: String, default: String = \"\") -> String"
+        }
+       ]
+      },
+      {
+       "name": "find_all",
+       "overloads": [
+        {
+         "signature": "def find_all(self, node: Int, path: String) -> List[Int]",
+         "summary": "Every element reached from `node` by the `/`-separated `path`.",
+         "description": "Each segment steps down one level and matches *all* children of that\nname, so `a/b` yields every `b` under every `a`, in document order."
+        }
+       ]
+      },
+      {
+       "name": "find",
+       "overloads": [
+        {
+         "signature": "def find(self, node: Int, path: String) -> Int",
+         "summary": "The first element `find_all` would return, or `NO_NODE`."
+        }
+       ]
+      },
+      {
+       "name": "find_text",
+       "overloads": [
+        {
+         "signature": "def find_text(self, node: Int, path: String, default: String = \"\") -> String"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "xml.reader",
+   "summary": "`xml.reader` — a pull parser over an in-memory XML document.",
+   "description": "`XmlReader.next()` hands back one `XmlEvent` at a time: a start tag (with its\nattributes), an end tag, a run of text, or end of input. Self-closing tags\nproduce a start *and* an end event, so a consumer never has to special-case\n`<a/>`. Comments, processing instructions, the XML declaration and DOCTYPE are\nskipped; CDATA sections come back as text, verbatim.\n\nEntity references are decoded in text and attribute values: the five\npredefined ones (`&lt;` `&gt;` `&amp;` `&quot;` `&apos;`) and numeric\ncharacter references (`&#65;`, `&#x41;`). Anything else is an error rather\nthan being passed through, because an API response carrying an undeclared\nentity is malformed and silently keeping `&foo;` would hide that.\n\nWhat this is not: a validating parser. It checks that tags nest and close\nwith matching names — the property every consumer relies on — and nothing\nabout DTDs or schemas. Namespaces are left as written (`ec2:item` stays\n`ec2:item`); `local_name` strips a prefix when a consumer wants to ignore it.",
+   "aliases": [
+    {
+     "name": "EVENT_START",
+     "value": "1"
+    },
+    {
+     "name": "EVENT_END",
+     "value": "2"
+    },
+    {
+     "name": "EVENT_TEXT",
+     "value": "3"
+    },
+    {
+     "name": "EVENT_EOF",
+     "value": "4"
+    }
+   ],
+   "structs": [
+    {
+     "name": "Attr",
+     "signature": "struct Attr",
+     "summary": "One `name=\"value\"` pair, value already entity-decoded.",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "type": "String"
+      },
+      {
+       "name": "value",
+       "type": "String"
+      }
+     ]
+    },
+    {
+     "name": "XmlEvent",
+     "signature": "struct XmlEvent",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "kind",
+       "type": "Int",
+       "summary": "One of `EVENT_START`, `EVENT_END`, `EVENT_TEXT`, `EVENT_EOF`."
+      },
+      {
+       "name": "name",
+       "type": "String",
+       "summary": "The tag name for start and end events; empty otherwise."
+      },
+      {
+       "name": "text",
+       "type": "String",
+       "summary": "The decoded text for text events; empty otherwise."
+      },
+      {
+       "name": "attrs",
+       "type": "List[Attr]",
+       "summary": "The attributes of a start tag, in document order."
+      }
+     ]
+    },
+    {
+     "name": "XmlReader",
+     "signature": "struct XmlReader",
+     "summary": "Pull parser over a document held in memory.",
+     "description": "The reader owns a copy of the bytes, so the source string may go away.\nCall `next()` until it returns an `EVENT_EOF` event; a malformed document\nraises with the byte offset where parsing stopped.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, doc: String)"
+        }
+       ]
+      },
+      {
+       "name": "depth",
+       "overloads": [
+        {
+         "signature": "def depth(self) -> Int",
+         "summary": "How many elements are open at the current position."
+        }
+       ]
+      },
+      {
+       "name": "next",
+       "overloads": [
+        {
+         "signature": "def next(mut self) -> XmlEvent"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "is_blank",
+     "overloads": [
+      {
+       "signature": "def is_blank(s: String) -> Bool",
+       "summary": "True when `s` is only XML whitespace — the indentation between tags."
+      }
+     ]
+    },
+    {
+     "name": "local_name",
+     "overloads": [
+      {
+       "signature": "def local_name(name: String) -> String",
+       "summary": "`ec2:item` → `item`; a name without a prefix is returned unchanged."
+      }
+     ]
+    },
+    {
+     "name": "decode_entities",
+     "overloads": [
+      {
+       "signature": "def decode_entities(raw: Span[UInt8]) -> String",
+       "summary": "Decodes the predefined and numeric entity references in `raw`."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

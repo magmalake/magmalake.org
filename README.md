@@ -32,7 +32,8 @@ npx wrangler deploy      # or: npm run deploy
 
 ```
 src/
-  data/tins.ts          the twelve tins: description, oracle, version, repo
+  data/tins.ts          the tins: description, oracle, version, repo
+  data/api/*.json       each tin's API, from scripts/api-docs.mjs (see API reference)
   data/perf.ts          benchmark rows and the four optimisation passes
   data/site.ts          site-wide constants (currently: the PostHog project key)
   layouts/Base.astro    <head>, fonts, theme bootstrap, nav + footer, PostHog snippet
@@ -53,6 +54,39 @@ there and in `src/pages/s/[tin]/`, and every tin's header picks it up.
 
 Content lives in `src/data/*.ts`, so updating a version number or a benchmark is a one-line
 change in one file rather than a hunt through markup.
+
+## API reference
+
+Each tin with Mojo sources has an API reference at `/s/<tin>/api`. It lists the package's
+modules, and each module has a page with its structs, traits, functions and aliases, their
+signatures and their docstrings. The pages and their Markdown twins (`.md.ts` endpoints
+beside them) are rendered from `src/data/api/<tin>.json`. That JSON is committed, because
+Cloudflare's build has no Mojo. To regenerate it:
+
+```bash
+node scripts/api-docs.mjs            # every tin
+node scripts/api-docs.mjs iceberg    # or just these
+```
+
+For each tin, the script:
+
+1. asks `pixi shelf info <pkg>` which commit the version in `src/data/tins.ts` was
+   published from. xml isn't published yet, so it uses its default branch;
+2. exports that commit of the repository into `.cache/api-docs/` (gitignored);
+3. runs `mojo doc` over the tin's package, with every other tin's package on `-I`, using
+   the toolchain pinned in `scripts/api-docs/pixi.toml` (Mojo 1.2.0);
+4. trims the output to what the pages show. It keeps public names only, leaves out the
+   copy and move constructors every struct gets, and keeps arguments only where they have a
+   doc. It then writes the JSON with the version, the commit and the Mojo version it came
+   from, and prints how many declarations have a docstring.
+
+It needs git, pixi with the mojoshelf extension, and the network. After a release, bump
+the version in `tins.ts`, run the script for that tin, and commit the JSON with it. A tin
+whose repository holds more than one package names the one to document with `api` in
+`tins.ts` (parquet, parquet-full, avro). Per-tin include paths and directories to leave out
+are `EXTRA` in the script: threads' compat module, and json_mlake's GPU parser, which needs
+MAX. A file with a top-level `main()` is a program, not API, and is left out, since
+`mojo doc` refuses a package that holds one.
 
 ## Analytics
 

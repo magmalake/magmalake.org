@@ -1,0 +1,54 @@
+{
+ "tin": "parquet-full",
+ "version": "0.1.8",
+ "rev": "c15f51aee06ccf73102810e7de143745abba6c90",
+ "package": "parquet_full",
+ "path": "full/src/parquet_full",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "The codec set that includes ZSTD, LZ4 and BROTLI.",
+ "description": "`zstd.mojo`, `lz4.mojo` and `brotli.mojo` dlopen libzstd / liblz4 / libbrotli,\nso a consumer that wants these has to have those tins installed *and* on the\ninclude path:\n\n```console\nmojo build … -I ../zstd.mojo/src -I ../lz4.mojo/src -I ../brotli.mojo/src\n```\n\nEverything `DefaultCodecs` handles is handled here too. Between the two sets\nthat is every codec in the Parquet spec.",
+ "modules": [
+  {
+   "path": "parquet_full",
+   "summary": "The codec set that includes ZSTD, LZ4 and BROTLI.",
+   "description": "`zstd.mojo`, `lz4.mojo` and `brotli.mojo` dlopen libzstd / liblz4 / libbrotli,\nso a consumer that wants these has to have those tins installed *and* on the\ninclude path:\n\n```console\nmojo build … -I ../zstd.mojo/src -I ../lz4.mojo/src -I ../brotli.mojo/src\n```\n\nEverything `DefaultCodecs` handles is handled here too. Between the two sets\nthat is every codec in the Parquet spec.",
+   "structs": [
+    {
+     "name": "AllCodecs",
+     "signature": "struct AllCodecs",
+     "summary": "`UNCOMPRESSED`, `SNAPPY`, `GZIP`, `ZSTD`, `BROTLI`, `LZ4_RAW` and legacy `LZ4` — every codec the Parquet spec defines.",
+     "traits": [
+      "CodecSet",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "supports",
+       "overloads": [
+        {
+         "signature": "def supports(codec: Int32) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "decompress",
+       "overloads": [
+        {
+         "signature": "def decompress[page_origin: ImmOrigin, scratch_origin: MutOrigin](codec: Int32, data: Span[UInt8, page_origin], uncompressed_size: Int, ref[scratch_origin] scratch: List[UInt8]) -> Span[UInt8, origin_of(page_origin, scratch_origin)].Immutable"
+        }
+       ]
+      },
+      {
+       "name": "compress",
+       "overloads": [
+        {
+         "signature": "def compress(codec: Int32, data: Span[UInt8]) -> List[UInt8]"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

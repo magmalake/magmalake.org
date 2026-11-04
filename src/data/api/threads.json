@@ -1,0 +1,1458 @@
+{
+ "tin": "threads",
+ "version": "0.6.1",
+ "rev": "f45e780a8de77278c140cee36904e46e93e0ca1c",
+ "package": "threads",
+ "path": "src/threads",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "Minimal pthreads for Mojo — the `threads` package of threads.mojo.",
+ "description": "Spawn and join OS threads, share state through atomics and a mutex, and fan a\nloop out over cores with `parallel_for`. No dependencies beyond the Mojo\nstandard library and the pthread symbols every libc already exports.\n\n```mojo\nfrom threads import parallel_for, num_cpus, AtomicCounter\n```\n\nStart with `threads.parallel` for the `parallel_for` contract, `threads.pool`\nfor long-lived workers that run until stopped, `threads.thread` for the thread\nand send-contract rules, and `threads.atomic` for why this tin does not simply\nre-export `std.atomic`.",
+ "modules": [
+  {
+   "path": "threads",
+   "summary": "Minimal pthreads for Mojo — the `threads` package of threads.mojo.",
+   "description": "Spawn and join OS threads, share state through atomics and a mutex, and fan a\nloop out over cores with `parallel_for`. No dependencies beyond the Mojo\nstandard library and the pthread symbols every libc already exports.\n\n```mojo\nfrom threads import parallel_for, num_cpus, AtomicCounter\n```\n\nStart with `threads.parallel` for the `parallel_for` contract, `threads.pool`\nfor long-lived workers that run until stopped, `threads.thread` for the thread\nand send-contract rules, and `threads.atomic` for why this tin does not simply\nre-export `std.atomic`."
+  },
+  {
+   "path": "threads.atomic",
+   "summary": "Atomics that compile on Mojo 1.2.0 *and* on current nightly.",
+   "description": "Everything here operates on a **naturally aligned 64-bit cell at an address you\nown**. That is on purpose: atomics are only interesting between threads, and\nthreads in this library share state through a raw context pointer, so the\nuseful shape is a view over somebody else's memory rather than a value you hold.\n`AtomicCounter` and `AtomicFlag` are both such views — copying one copies the\nview, not the cell. The seven free functions below are that view expressed as\n`std.atomic` calls against a `Cell` the caller's pointer is bitcast to; a `Cell`\nis laid out exactly like the `Int64` it aliases, which the `comptime assert`s in\n`_cell` pin down so that a future stdlib change to `Atomic` fails the build\nrather than silently scribbling past the cell.\n\nOrderings are spelled into the function names (`_relaxed`, `_acquire`,\n`_release`) rather than passed as a parameter, because the ordering has to be\nselected at compile time anyway and a named function is both clearer at the call\nsite and cheaper to read than a `comptime if` ladder. `fetch_add` is\nsequentially consistent; that is what a work-queue counter wants.\n\n## Why `Cell` comes from outside this file\n\n`std.atomic.Atomic` changed its parameter *kind* under this tin once already:\n\n| toolchain | declaration |\n|---|---|\n| Mojo 1.0.0 | `struct Atomic[dtype: DType, *, scope: StaticString = \"\"]` |\n| Mojo 1.2.0, nightly | `struct Atomic[T: Deinitable & Movable, *, scope: ...]` |\n\nso `Atomic[DType.int64]` was the only spelling 1.0.0 accepted and `Atomic[Int64]`\nis the only spelling the two toolchains supported today accept. Everything else\nwas identical — the same `fetch_add[ordering=…]`, `load[ordering=…]`,\n`store[ordering=…]` and `fence` calls compile unchanged against any of them.\nThe divergence was one type expression and nothing more.\n\nMojo offers no way to pick a *type* at module scope from a compiler-version\npredicate: a `comptime if` around a `comptime Cell = …` does not parse on either\ntoolchain, and `-D` defines (`get_defined_bool` plus a `comptime if`) can only\nbranch inside a function body. So the choice is made by the include path\ninstead. `compat/threads_compat.mojo` declares `Cell` and nothing else, and a\nbuild says so:\n\n```sh\nmojo build … -I src -I compat\n```\n\nDropping Mojo 1.0.0 left that directory with one occupant rather than two: 1.2.0\nand the 1.3.0.dev nightlies agree on every spelling here. The seam stays because the\nnext divergence is a matter of when, not whether, and re-splitting `compat/` into\none directory per toolchain is then a two-line change in this tin and a path edit\nin each consumer.\n\nThis used to be solved one level *down* instead, by reaching past `std.atomic`\nto the `pop.atomic.rmw` / `pop.load` / `pop.store` intrinsics it is itself\nwritten on top of, on the reasoning that a compiler primitive would be steadier\nthan a stdlib signature. That held until it did not: nightlies from\n`26.6.0.dev2026090105` onward reject the `__mlir_attr` syntax those calls need\n(`error: invalid MLIR attribute: expected '<'`, filed as modular/modular#7094),\nand because this was the only file in the whole stack touching raw MLIR it was\nsingle-handedly capping every downstream tin below that nightly. Two spellings\nof one alias, in a directory the caller selects, is a far smaller and more\nlegible surface than a private compiler ABI — and when it breaks it breaks in\nMojo the language rather than in an attribute grammar nobody documents.\n\nThat particular regression was fixed upstream the same day it was reported, so\nthe intrinsics would compile again today. This module is not going back to\nthem. The reasoning that sent it there — that a compiler primitive is steadier\nthan a stdlib signature — was wrong in the way that matters: `std.atomic` is\nthe interface with a compatibility promise, and `pop.*` is an implementation\ndetail of it. Two spellings of one alias is the cost of being on the supported\nside of that line, and it is a cost worth paying whether or not the\nundocumented side happens to work this week.\n\nExpect `compat/` to grow again. Stable and nightly diverge as readily as they\nconverge, and `async` is the next thing this tin will want that they may well\nspell differently. The pattern to follow is the one here: the divergent file\nholds the declaration that differs and nothing whatsoever besides, so that a\nreader can see the entire delta between the two toolchains at a glance and every\nline that actually does work stays single-sourced.",
+   "aliases": [
+    {
+     "name": "CellPtr",
+     "value": "Pointer[Atomic[Int64], MutUntrackedOrigin]",
+     "summary": "A pointer to a shared atomic cell — what every primitive below actually operates on, obtained by bitcasting the caller's `I64Ptr`."
+    }
+   ],
+   "structs": [
+    {
+     "name": "AtomicCounter",
+     "signature": "struct AtomicCounter",
+     "summary": "A shared 64-bit counter: a *view* over a cell somebody else owns.",
+     "description": "The canonical use is a work queue. Every worker calls `fetch_add(1)` and\ntreats the returned value as its task index; the first worker to see an\nindex at or past the task count stops.\n\n```mojo\nwhile True:\n    var i = Int(counter.fetch_add(1))\n    if i >= n_tasks:\n        break\n    do_work(i)\n```\n\nCopying an `AtomicCounter` copies the view, never the cell — two copies\naddress the same counter, which is exactly what you want when you hand one\nto each worker.\n\nThe cell must be 8-byte aligned and must outlive every view of it. `alloc`\nsatisfies the alignment; the lifetime is on you.",
+     "traits": [
+      "Copyable",
+      "ImplicitlyCopyable",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "at",
+       "overloads": [
+        {
+         "signature": "def at(address: Int) -> Self",
+         "summary": "View the counter cell at a raw address.",
+         "args": [
+          {
+           "name": "address",
+           "doc": "Address of an 8-byte-aligned 64-bit cell."
+          }
+         ]
+        },
+        {
+         "signature": "def at(ctx: Pointer[UInt8, MutUntrackedOrigin], slot: Int) -> Self",
+         "summary": "View the `slot`-th 64-bit cell of a context block.",
+         "args": [
+          {
+           "name": "ctx",
+           "doc": "Base of a block of 64-bit cells, itself 8-byte aligned."
+          },
+          {
+           "name": "slot",
+           "doc": "Which cell, counted in 8-byte units."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "alloc",
+       "overloads": [
+        {
+         "signature": "def alloc(initial: Int64 = Int64(0)) -> Self",
+         "summary": "Allocate a fresh counter cell on the heap.",
+         "description": "The view returned owns nothing — call `unsafe_free` on exactly one copy\nonce every thread that could touch it has been joined.",
+         "args": [
+          {
+           "name": "initial",
+           "doc": "Starting value."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "unsafe_free",
+       "overloads": [
+        {
+         "signature": "def unsafe_free(self)",
+         "summary": "Free a cell obtained from `alloc`. Never call this while a thread that can see the cell is still running."
+        }
+       ]
+      },
+      {
+       "name": "address",
+       "overloads": [
+        {
+         "signature": "def address(self) -> Int",
+         "summary": "Return the raw address of the cell."
+        }
+       ]
+      },
+      {
+       "name": "fetch_add",
+       "overloads": [
+        {
+         "signature": "def fetch_add(self, delta: Int64 = Int64(1)) -> Int64",
+         "summary": "Atomically add and return the previous value.",
+         "args": [
+          {
+           "name": "delta",
+           "doc": "The amount to add."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "load",
+       "overloads": [
+        {
+         "signature": "def load(self) -> Int64",
+         "summary": "Atomically read the counter (acquire)."
+        }
+       ]
+      },
+      {
+       "name": "store",
+       "overloads": [
+        {
+         "signature": "def store(self, value: Int64)",
+         "summary": "Atomically write the counter (release).",
+         "args": [
+          {
+           "name": "value",
+           "doc": "The value to write."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "AtomicFlag",
+     "signature": "struct AtomicFlag",
+     "summary": "A one-way (or resettable) publish/observe flag over a shared cell.",
+     "description": "`set` is a *release* store and `is_set` is an *acquire* load, so the pair\ncarries data with it:\n\n```mojo\n# publisher\npayload[0] = 42        # plain write\nflag.set()             # release\n\n# observer\nwhile not flag.is_set():   # acquire\n    spin_hint()\nassert payload[0] == 42     # guaranteed visible\n```\n\nThat release/acquire pairing is the whole point — a plain `Bool` written\nfrom one thread and read from another has no such guarantee, and the\ncompiler is free to hoist the read out of the spin loop entirely.\n\nLike `AtomicCounter`, this is a view: copying it does not copy the cell.",
+     "traits": [
+      "Copyable",
+      "ImplicitlyCopyable",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "at",
+       "overloads": [
+        {
+         "signature": "def at(address: Int) -> Self",
+         "summary": "View the flag cell at a raw address.",
+         "args": [
+          {
+           "name": "address",
+           "doc": "Address of an 8-byte-aligned 64-bit cell."
+          }
+         ]
+        },
+        {
+         "signature": "def at(ctx: Pointer[UInt8, MutUntrackedOrigin], slot: Int) -> Self",
+         "summary": "View the `slot`-th 64-bit cell of a context block.",
+         "args": [
+          {
+           "name": "ctx",
+           "doc": "Base of a block of 64-bit cells, itself 8-byte aligned."
+          },
+          {
+           "name": "slot",
+           "doc": "Which cell, counted in 8-byte units."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "alloc",
+       "overloads": [
+        {
+         "signature": "def alloc() -> Self",
+         "summary": "Allocate a fresh, cleared flag cell on the heap."
+        }
+       ]
+      },
+      {
+       "name": "unsafe_free",
+       "overloads": [
+        {
+         "signature": "def unsafe_free(self)",
+         "summary": "Free a cell obtained from `alloc`. Never call this while a thread that can see the cell is still running."
+        }
+       ]
+      },
+      {
+       "name": "address",
+       "overloads": [
+        {
+         "signature": "def address(self) -> Int",
+         "summary": "Return the raw address of the cell."
+        }
+       ]
+      },
+      {
+       "name": "set",
+       "overloads": [
+        {
+         "signature": "def set(self)",
+         "summary": "Publish: release-store 1. Everything written before this call is visible to a thread that later observes `is_set()`."
+        }
+       ]
+      },
+      {
+       "name": "clear",
+       "overloads": [
+        {
+         "signature": "def clear(self)",
+         "summary": "Reset the flag to 0 with a release store."
+        }
+       ]
+      },
+      {
+       "name": "is_set",
+       "overloads": [
+        {
+         "signature": "def is_set(self) -> Bool",
+         "summary": "Observe: acquire-load."
+        }
+       ]
+      },
+      {
+       "name": "raw",
+       "overloads": [
+        {
+         "signature": "def raw(self) -> Int64",
+         "summary": "Return the cell's value as an integer (acquire load) — useful when a flag doubles as a small error code."
+        }
+       ]
+      },
+      {
+       "name": "set_value",
+       "overloads": [
+        {
+         "signature": "def set_value(self, value: Int64)",
+         "summary": "Release-store an arbitrary non-zero value, for the flag-as-error-code pattern.",
+         "args": [
+          {
+           "name": "value",
+           "doc": "The value to publish."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "atomic_fetch_add",
+     "overloads": [
+      {
+       "signature": "def atomic_fetch_add(ptr: Pointer[Int64, MutUntrackedOrigin], delta: Int64) -> Int64",
+       "summary": "Atomically add `delta` to the cell, sequentially consistent.",
+       "args": [
+        {
+         "name": "ptr",
+         "doc": "The cell."
+        },
+        {
+         "name": "delta",
+         "doc": "The amount to add."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "atomic_load_relaxed",
+     "overloads": [
+      {
+       "signature": "def atomic_load_relaxed(ptr: Pointer[Int64, MutUntrackedOrigin]) -> Int64",
+       "summary": "Atomically read the cell with relaxed ordering.",
+       "args": [
+        {
+         "name": "ptr",
+         "doc": "The cell."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "atomic_load_acquire",
+     "overloads": [
+      {
+       "signature": "def atomic_load_acquire(ptr: Pointer[Int64, MutUntrackedOrigin]) -> Int64",
+       "summary": "Atomically read the cell with acquire ordering.",
+       "args": [
+        {
+         "name": "ptr",
+         "doc": "The cell."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "atomic_store_relaxed",
+     "overloads": [
+      {
+       "signature": "def atomic_store_relaxed(ptr: Pointer[Int64, MutUntrackedOrigin], value: Int64)",
+       "summary": "Atomically write the cell with relaxed ordering.",
+       "args": [
+        {
+         "name": "ptr",
+         "doc": "The cell."
+        },
+        {
+         "name": "value",
+         "doc": "The value to write."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "atomic_store_release",
+     "overloads": [
+      {
+       "signature": "def atomic_store_release(ptr: Pointer[Int64, MutUntrackedOrigin], value: Int64)",
+       "summary": "Atomically write the cell with release ordering.",
+       "description": "Everything this thread wrote before the call becomes visible to any thread\nthat observes this write through `atomic_load_acquire`.",
+       "args": [
+        {
+         "name": "ptr",
+         "doc": "The cell."
+        },
+        {
+         "name": "value",
+         "doc": "The value to write."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "atomic_fence_acquire",
+     "overloads": [
+      {
+       "signature": "def atomic_fence_acquire()",
+       "summary": "A standalone acquire fence.",
+       "description": "`std.atomic.fence` covers standalone fences on both toolchains with the same\n`Ordering` the loads and stores take, so these two moved across with the\nrest and no intrinsic is left in this file."
+      }
+     ]
+    },
+    {
+     "name": "atomic_fence_release",
+     "overloads": [
+      {
+       "signature": "def atomic_fence_release()",
+       "summary": "A standalone release fence. See `atomic_fence_acquire`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "threads.ffi",
+   "summary": "Shared FFI vocabulary: the opaque pointer type every `threads` entry point speaks, and the C NULL convention.",
+   "description": "`pthread_create` hands the start routine a `void *`, so every callable that\ncrosses a thread boundary in this library has the shape\n\n```mojo\ndef (Pointer[UInt8, MutUntrackedOrigin]) thin -> Pointer[UInt8, MutUntrackedOrigin]\n```\n\n`OpaquePtr` is that pointer type. It is deliberately a byte pointer rather than\na `void`-like: Mojo has no `void`, and a byte pointer is what you want anyway\nwhen the context is a hand-laid-out block of cells.\n\nNULL is passed as a plain `Int` `0` in every `external_call` that needs it, not\nas a pointer. `Pointer` is non-nullable on both Mojo 1.0.0 and current\nnightly (`constraint failed: Pointer is non-nullable`), so a null pointer value\ncannot be constructed at all. An `Int` argument occupies the same register as a\npointer under both the SysV and AAPCS64 C ABIs, so the call is identical.",
+   "aliases": [
+    {
+     "name": "OpaquePtr",
+     "value": "Pointer[UInt8, MutUntrackedOrigin]",
+     "summary": "The `void *` of this library: what a thread start routine takes and returns, and what `parallel_for` passes to every task as its shared context."
+    },
+    {
+     "name": "I64Ptr",
+     "value": "Pointer[Int64, MutUntrackedOrigin]",
+     "summary": "Pointer to a naturally aligned 64-bit cell — the unit every atomic in `threads.atomic` operates on."
+    },
+    {
+     "name": "NULL",
+     "value": "Int(0)",
+     "summary": "C `NULL`, passed as an integer. See the module docstring for why."
+    }
+   ],
+   "functions": [
+    {
+     "name": "opaque_ptr",
+     "overloads": [
+      {
+       "signature": "def opaque_ptr(address: Int) -> OpaquePtr",
+       "summary": "Rebuild an `OpaquePtr` from a raw address.",
+       "args": [
+        {
+         "name": "address",
+         "doc": "The address, e.g. from `Int(some_pointer)` or a cell that a\n    worker reads out of its context block."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "i64_ptr",
+     "overloads": [
+      {
+       "signature": "def i64_ptr(address: Int) -> I64Ptr",
+       "summary": "Rebuild an `I64Ptr` from a raw address.",
+       "args": [
+        {
+         "name": "address",
+         "doc": "The address of a naturally aligned 64-bit cell."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "threads.mutex",
+   "summary": "A `pthread_mutex_t` (and `pthread_cond_t`) you can share between threads.",
+   "description": "Neither type has a portable size, so both are handled as an opaque\n**64-byte blob**. That covers every libc this tin targets with room to spare:\n`pthread_mutex_t` is 40 bytes on glibc x86-64, 48 on musl x86-64, 8 on glibc\naarch64 and 64 on macOS; `pthread_cond_t` is 48 on glibc and 48 on macOS. The\nblob is heap allocated, so its address is stable across moves of the owning\nMojo value — which matters, because the address is what the worker threads see.\n\n## Owning vs. viewing\n\n`Mutex` owns its blob: it initialises on construction, destroys and frees in\n`__deinit__`, and is move-only so there is exactly one owner. But a mutex is\nuseless unless several threads reach the *same* one, and threads only get a raw\ncontext pointer. So `Mutex.address()` hands out the blob address and\n`MutexRef.at(address)` rebuilds a lock/unlock view on the worker side. The view\nis copyable and owns nothing.\n\n## Why there is no scope guard\n\nThe obvious `with_lock` / RAII `Guard` is deliberately missing. Mojo destroys a\nvalue at its **last use**, not at the end of its scope, so a guard whose only\njob is to unlock in `__deinit__` gets destroyed — and therefore unlocks — at the\npoint you stop mentioning it, which is usually the first line of the critical\nsection. That is a silent correctness bug, not a compile error. Call `lock()`\nand `unlock()` explicitly, or use `with_lock`, which takes a thin function and\nbrackets it properly.",
+   "aliases": [
+    {
+     "name": "MUTEX_BYTES",
+     "value": "Int(64)",
+     "summary": "Size of the opaque `pthread_mutex_t` blob. Generous upper bound over glibc / musl / macOS on x86-64 and aarch64."
+    },
+    {
+     "name": "COND_BYTES",
+     "value": "Int(64)",
+     "summary": "Size of the opaque `pthread_cond_t` blob."
+    },
+    {
+     "name": "BlobPtr",
+     "value": "Pointer[UInt8, MutUntrackedOrigin]"
+    }
+   ],
+   "structs": [
+    {
+     "name": "MutexRef",
+     "signature": "struct MutexRef",
+     "summary": "A non-owning lock/unlock view of an initialised mutex blob.",
+     "description": "This is what a worker thread reconstructs from an address it found in its\ncontext block. It initialises nothing and frees nothing.",
+     "traits": [
+      "Copyable",
+      "ImplicitlyCopyable",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "at",
+       "overloads": [
+        {
+         "signature": "def at(address: Int) -> Self",
+         "summary": "View the mutex whose blob starts at `address`.",
+         "args": [
+          {
+           "name": "address",
+           "doc": "From `Mutex.address()`."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "address",
+       "overloads": [
+        {
+         "signature": "def address(self) -> Int",
+         "summary": "Return the blob address."
+        }
+       ]
+      },
+      {
+       "name": "lock",
+       "overloads": [
+        {
+         "signature": "def lock(self)",
+         "summary": "Block until this thread holds the mutex."
+        }
+       ]
+      },
+      {
+       "name": "unlock",
+       "overloads": [
+        {
+         "signature": "def unlock(self)",
+         "summary": "Release the mutex. Only the holding thread may call this."
+        }
+       ]
+      },
+      {
+       "name": "try_lock",
+       "overloads": [
+        {
+         "signature": "def try_lock(self) -> Bool",
+         "summary": "Take the mutex if it is free, without blocking."
+        }
+       ]
+      },
+      {
+       "name": "with_lock",
+       "overloads": [
+        {
+         "signature": "def with_lock[body: def(Pointer[UInt8, MutUntrackedOrigin]) thin -> None](self, ctx: Pointer[UInt8, MutUntrackedOrigin])",
+         "summary": "Run `body(ctx)` with the mutex held, then release it.",
+         "parameters": [
+          {
+           "name": "body",
+           "doc": "A thin, non-raising function. Non-raising is load-bearing:\n    an escaping exception would skip the unlock."
+          }
+         ],
+         "args": [
+          {
+           "name": "ctx",
+           "doc": "Passed straight through to `body`."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Mutex",
+     "signature": "struct Mutex",
+     "summary": "An owned `pthread_mutex_t`. Move-only; destroys and frees its blob.",
+     "description": "Default (non-recursive, non-error-checking) attributes: locking one twice\nfrom the same thread deadlocks, and unlocking one you do not hold is\nundefined. That is plain POSIX behaviour, not something this wrapper adds.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)",
+         "summary": "Allocate and initialise the mutex.",
+         "raises": "Error: If `pthread_mutex_init` fails."
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Destroy and free the mutex. Destroying a *locked* mutex is undefined under POSIX, so join every thread that can touch it first."
+        }
+       ]
+      },
+      {
+       "name": "address",
+       "overloads": [
+        {
+         "signature": "def address(self) -> Int",
+         "summary": "The blob address, to be stashed in a worker context block."
+        }
+       ]
+      },
+      {
+       "name": "ref",
+       "overloads": [
+        {
+         "signature": "def ref(self) -> MutexRef",
+         "summary": "A copyable non-owning view of this mutex."
+        }
+       ]
+      },
+      {
+       "name": "lock",
+       "overloads": [
+        {
+         "signature": "def lock(self)",
+         "summary": "Block until this thread holds the mutex."
+        }
+       ]
+      },
+      {
+       "name": "unlock",
+       "overloads": [
+        {
+         "signature": "def unlock(self)",
+         "summary": "Release the mutex."
+        }
+       ]
+      },
+      {
+       "name": "try_lock",
+       "overloads": [
+        {
+         "signature": "def try_lock(self) -> Bool",
+         "summary": "Take the mutex if it is free, without blocking."
+        }
+       ]
+      },
+      {
+       "name": "with_lock",
+       "overloads": [
+        {
+         "signature": "def with_lock[body: def(Pointer[UInt8, MutUntrackedOrigin]) thin -> None](self, ctx: Pointer[UInt8, MutUntrackedOrigin])",
+         "summary": "Run `body(ctx)` with the mutex held, then release it.",
+         "parameters": [
+          {
+           "name": "body",
+           "doc": "A thin, non-raising function."
+          }
+         ],
+         "args": [
+          {
+           "name": "ctx",
+           "doc": "Passed straight through to `body`."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "CondVarRef",
+     "signature": "struct CondVarRef",
+     "summary": "A non-owning view of an initialised condition variable, paired with the mutex address the waiter holds.",
+     "traits": [
+      "Copyable",
+      "ImplicitlyCopyable",
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "at",
+       "overloads": [
+        {
+         "signature": "def at(address: Int) -> Self",
+         "summary": "View the condition variable at `address`.",
+         "args": [
+          {
+           "name": "address",
+           "doc": "From `CondVar.address()`."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "wait",
+       "overloads": [
+        {
+         "signature": "def wait(self, mutex: MutexRef)",
+         "summary": "Atomically release `mutex` and block until signalled, then re-take it. Spurious wakeups are permitted by POSIX — always re-check your predicate in a loop.",
+         "args": [
+          {
+           "name": "mutex",
+           "doc": "The mutex this thread currently holds."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "signal",
+       "overloads": [
+        {
+         "signature": "def signal(self)",
+         "summary": "Wake at least one waiter."
+        }
+       ]
+      },
+      {
+       "name": "broadcast",
+       "overloads": [
+        {
+         "signature": "def broadcast(self)",
+         "summary": "Wake every waiter."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "CondVar",
+     "signature": "struct CondVar",
+     "summary": "An owned `pthread_cond_t`. Move-only; destroys and frees its blob.",
+     "description": "Always used with a `Mutex`: take the mutex, check the predicate in a\n`while`, `wait` if it does not hold.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)",
+         "summary": "Allocate and initialise the condition variable.",
+         "raises": "Error: If `pthread_cond_init` fails."
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Destroy and free the condition variable."
+        }
+       ]
+      },
+      {
+       "name": "address",
+       "overloads": [
+        {
+         "signature": "def address(self) -> Int",
+         "summary": "The blob address, to be stashed in a worker context block."
+        }
+       ]
+      },
+      {
+       "name": "ref",
+       "overloads": [
+        {
+         "signature": "def ref(self) -> CondVarRef",
+         "summary": "A copyable non-owning view."
+        }
+       ]
+      },
+      {
+       "name": "wait",
+       "overloads": [
+        {
+         "signature": "def wait(self, mutex: MutexRef)",
+         "summary": "Wait on this condition variable. See `CondVarRef.wait`.",
+         "args": [
+          {
+           "name": "mutex",
+           "doc": "The mutex this thread currently holds."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "signal",
+       "overloads": [
+        {
+         "signature": "def signal(self)",
+         "summary": "Wake at least one waiter."
+        }
+       ]
+      },
+      {
+       "name": "broadcast",
+       "overloads": [
+        {
+         "signature": "def broadcast(self)",
+         "summary": "Wake every waiter."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "threads.parallel",
+   "summary": "`parallel_for` — the reason this tin exists — plus the `spawn_n` / `join_all` layer underneath it.",
+   "description": "```mojo\nfrom threads import parallel_for, AtomicCounter\n\n@fieldwise_init\nstruct Totals(Copyable, Movable):\n    var sum: Int64\n\ndef task(i: Int, mut totals: Totals) -> None:\n    _ = AtomicCounter.at(Int(Pointer(to=totals.sum))).fetch_add(Int64(i))\n\ndef main() raises:\n    var totals = Totals(0)\n    parallel_for[task](1000, totals)\n    print(totals.sum)  # 499500\n```\n\n`parallel_for` starts `min(n_tasks, num_workers or num_cpus())` kernel threads.\nEach one loops on `AtomicCounter.fetch_add(1)` and runs `task(i, state)` for\nevery index it draws, stopping when the counter passes `n_tasks`. Every thread\nis joined before the call returns, so by construction nothing the caller owns\ncan be destroyed while a worker still reads it.\n\n## Two spellings of the same call\n\nThe **typed** form above takes the shared state by `ref` and the task by\n`mut`. Because the state is an argument, it is alive for the whole call — the\ncompiler extends its lifetime across the joins, with no later mention needed —\nand an immutable binding or a temporary is rejected at the call site. The\nerasure to `void *` that pthread demands happens inside the library, once.\n\nThe **opaque** form is the one underneath:\n\n```mojo\ndef square_chunk(i: Int, ctx: OpaquePtr) -> None:\n    var cells = i64_ptr(Int(ctx))\n    cells[unsafe_offset=i] = cells[unsafe_offset=i] * cells[unsafe_offset=i]\n\nparallel_for[square_chunk](n_tasks=64, ctx=opaque_ptr(Int(data)))\n```\n\nReach for it when the context is a hand-laid-out block of cells rather than a\nstruct, or when the pointer comes from somewhere the compiler cannot track\nanyway (an allocation, a foreign buffer). It carries no origin: the caller\nguarantees the pointee outlives the call, and `ctx` being an untracked\n`Pointer` means Mojo's last-use destruction can free a local out from under\nthe workers with no diagnostic — see `threads.thread`.\n\nWhat neither form checks: that `T` is safe to mutate from several threads at\nonce. Every task receives `mut` access to the same value; anything that is\nnot an atomic, a mutex-guarded region, or a slot only one task writes is a\ndata race the compiler will not see.\n\n## The send contract, restated\n\n- **`work` is thin and non-raising.** It is called through a C function\n  pointer, so it cannot capture, and pthread has no exception channel.\n- **All shared state travels through `ctx`.** One pointer, for every task.\n- **The caller guarantees `ctx` outlives the call.** `parallel_for` joins\n  before returning, so \"outlives the call\" is all that is needed — but see\n  `threads.thread` on Mojo's last-use destruction if you build the context out\n  of a local value.\n- **No allocator assumption beyond what the tests prove.** Workers *may*\n  allocate and free (`List`, `String`, `alloc`) concurrently; the\n  `allocator under threads` test in `tests/test_threads.mojo` is the evidence,\n  and it is run on all four CI legs.\n\n## Scheduling\n\nThe queue is a single shared counter, so it is dynamically load balanced — a\nslow task does not stall the others — at a cost of one atomic RMW per task.\nMake tasks chunky: prefer `n_tasks` in the tens-to-thousands over one task per\nelement. `n_tasks` may exceed the worker count freely; that is the normal case.\n\n## Reporting failures out of a task\n\n`work` cannot raise. The pattern that fits the model is an error cell in the\ncontext: an `AtomicFlag` plus a fixed-size array of error codes, one slot per\nworker or per task.\n\n```mojo\n# ctx layout, in 64-bit cells:\n#   [0]        error flag (0 = clean)\n#   [1..n+1]   per-task error code\ndef task(i: Int, ctx: OpaquePtr) -> None:\n    var flag = AtomicFlag.at(ctx, 0)\n    var cells = i64_ptr(Int(ctx))\n    if something_went_wrong:\n        cells[1 + i] = MY_ERROR_CODE   # plain write, this task owns the slot\n        flag.set()                      # release: publishes the write above\n        return\n\n# after parallel_for returns:\nif flag.is_set():                       # acquire\n    raise Error(\"task \", first_bad, \" failed with \", cells[1 + first_bad])\n```\n\nThe flag's release/acquire pairing is what makes the plain per-slot writes\nvisible to the caller; the join at the end of `parallel_for` also gives you\nthat, so the flag is really there to let you skip the scan when nothing failed.",
+   "aliases": [
+    {
+     "name": "WorkFn",
+     "value": "def(Int, Pointer[UInt8, MutUntrackedOrigin]) thin -> None",
+     "summary": "A `parallel_for` task body, opaque form: the task index and the shared context pointer."
+    },
+    {
+     "name": "TaskFn",
+     "type": "__mlir_type.`!kgen.non_struct_type`",
+     "value": "def(Int, mut T) thin -> None",
+     "summary": "A `parallel_for` task body, typed form: the task index and mutable access to the shared state. Every task gets the same `T`, at the same time."
+    }
+   ],
+   "structs": [
+    {
+     "name": "ThreadGroup",
+     "signature": "struct ThreadGroup",
+     "summary": "A batch of threads spawned together and joined together.",
+     "description": "Move-only for the same reason `ThreadHandle` is: the group owns the threads\nand there must be exactly one join.",
+     "traits": [
+      "Movable",
+      "Sized"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)",
+         "summary": "An empty group."
+        }
+       ]
+      },
+      {
+       "name": "__len__",
+       "overloads": [
+        {
+         "signature": "def __len__(self) -> Int",
+         "summary": "The number of threads in the group."
+        }
+       ]
+      },
+      {
+       "name": "append",
+       "overloads": [
+        {
+         "signature": "def append(mut self, var handle: ThreadHandle)",
+         "summary": "Take ownership of one more thread.",
+         "args": [
+          {
+           "name": "handle",
+           "doc": "The handle to adopt."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "join_all",
+       "overloads": [
+        {
+         "signature": "def join_all(mut self)",
+         "summary": "Join every thread in the group.",
+         "description": "Joins are attempted in spawn order. If one fails, the remaining threads\nare still joined before the error is re-raised — leaving live threads\nbehind while the caller unwinds and frees their context would be far\nworse than a late error.",
+         "raises": "Error: The first `pthread_join` failure, after all joins have been\nattempted."
+        }
+       ]
+      },
+      {
+       "name": "pin_all",
+       "overloads": [
+        {
+         "signature": "def pin_all(self)",
+         "summary": "Pin thread `i` to CPU `i % num_cpus()`.",
+         "description": "A no-op on macOS (see `ThreadHandle.pin_to_cpu`).",
+         "raises": "Error: On Linux if the affinity call fails."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "join_all",
+     "overloads": [
+      {
+       "signature": "def join_all(mut group: ThreadGroup)",
+       "summary": "Free-function spelling of `ThreadGroup.join_all`.",
+       "args": [
+        {
+         "name": "group",
+         "doc": "The group to join."
+        }
+       ],
+       "raises": "Error: The first join failure."
+      }
+     ]
+    },
+    {
+     "name": "spawn_n",
+     "overloads": [
+      {
+       "signature": "def spawn_n[start: def(Pointer[UInt8, MutUntrackedOrigin]) thin -> OpaquePtr](n: Int, ctx: Pointer[UInt8, MutUntrackedOrigin], stride: Int = Int(0)) -> ThreadGroup",
+       "summary": "Start `n` threads running `start`, thread `i` receiving `ctx + i * stride`.",
+       "description": "With the default `stride` of 0 every thread gets the same pointer, which is\nwhat you want for a shared context. A non-zero stride carves the context\ninto equal per-thread slices without a second allocation.\n\nIf a spawn fails partway through, the threads already started are joined\nbefore the error propagates, so the caller never has to reason about a\nhalf-started group.",
+       "parameters": [
+        {
+         "name": "start",
+         "doc": "The thread body — thin and non-raising."
+        }
+       ],
+       "args": [
+        {
+         "name": "n",
+         "doc": "How many threads to start. `n <= 0` yields an empty group."
+        },
+        {
+         "name": "ctx",
+         "doc": "Base context pointer."
+        },
+        {
+         "name": "stride",
+         "doc": "Bytes between consecutive threads' context pointers."
+        }
+       ],
+       "raises": "Error: If any `pthread_create` fails."
+      }
+     ]
+    },
+    {
+     "name": "parallel_for",
+     "overloads": [
+      {
+       "signature": "def parallel_for[work: def(Int, Pointer[UInt8, MutUntrackedOrigin]) thin -> None](n_tasks: Int, ctx: Pointer[UInt8, MutUntrackedOrigin], num_workers: Int = Int(0))",
+       "summary": "Run `work(i, ctx)` for every `i` in `[0, n_tasks)`, across threads.",
+       "description": "Starts `min(n_tasks, num_workers or num_cpus())` threads, hands out indices\nfrom one shared atomic counter, and joins every thread before returning.\nThe calling thread does not run tasks; it blocks in the joins.",
+       "parameters": [
+        {
+         "name": "work",
+         "doc": "The task body. Thin (non-capturing) and non-raising — see the\n    module docstring for reporting failures out of a task."
+        }
+       ],
+       "args": [
+        {
+         "name": "n_tasks",
+         "doc": "How many indices to hand out. Zero or negative does nothing."
+        },
+        {
+         "name": "ctx",
+         "doc": "The shared context pointer given to every task. Must outlive the\n    call; since the call joins before returning, that is automatic for\n    anything the caller keeps alive across it."
+        },
+        {
+         "name": "num_workers",
+         "doc": "Thread count. `0` (the default) means `num_cpus()`. Values\n    above `n_tasks` are clamped down, because a thread with no index to\n    draw is pure overhead."
+        }
+       ],
+       "raises": "Error: If a thread fails to start or to join. The worker context block\nis freed on every path *after* the joins, never before."
+      },
+      {
+       "signature": "def parallel_for[T: AnyType, origin: MutOrigin, //, task: def(Int, mut T) thin -> None](n_tasks: Int, ref[origin] state: T, num_workers: Int = Int(0))",
+       "summary": "Run `task(i, state)` for every `i` in `[0, n_tasks)`, across threads.",
+       "description": "The typed form of `parallel_for`. `state` is an argument, so it is alive\nfor the whole call, joins included, without the caller having to mention\nit afterwards; and it is taken by mutable `ref`, so a `read` argument or a\ntemporary is refused at the call site. The pointer pthread carries is\nbuilt here and rebuilt in `_typed_worker`; nothing outside the library\nhandles it.",
+       "parameters": [
+        {
+         "name": "T",
+         "doc": "The shared state type. Inferred from `state`."
+        },
+        {
+         "name": "origin",
+         "doc": "The origin of `state`. Inferred."
+        },
+        {
+         "name": "task",
+         "doc": "The task body, `def(Int, mut T) thin -> None`. Thin and\n    non-raising, as in the opaque form."
+        }
+       ],
+       "args": [
+        {
+         "name": "n_tasks",
+         "doc": "How many indices to hand out. Zero or negative does nothing."
+        },
+        {
+         "name": "state",
+         "doc": "The value every task receives by `mut`. Guarding concurrent\n    writes to it is the task's job — atomics, a `Mutex`, or per-task\n    slots."
+        },
+        {
+         "name": "num_workers",
+         "doc": "Thread count, as in the opaque form."
+        }
+       ],
+       "raises": "Error: If a thread fails to start or to join."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "threads.pool",
+   "summary": "`WorkerPool` — N long-lived threads that run until you tell them to stop.",
+   "description": "`parallel_for` is the right shape when the work is a *bounded set of indices*:\nit hands out tasks, drains the queue, and joins. A server is the other shape —\nthe work never runs out, each worker loops on its own until something external\nsays stop. That pattern is already expressible with `spawn_n` + `AtomicFlag` +\n`ThreadGroup.join_all()`, and this struct is exactly those three bundled so\nevery caller does not re-derive the header layout and the free-after-join rule.\n\nIt is deliberately thin. There is no queue here, no scheduler, no task type: a\n`WorkerPool` starts `n` symmetric threads, gives each one an index and a shared\nstop flag, and joins them. Whatever the workers pull from — a channel, a\nsocket, an FFI `next()` call — is the caller's business and travels through the\n`ctx` pointer.\n\n```mojo\nfrom threads import AtomicCounter, AtomicFlag, TypedPool\n\n@fieldwise_init\nstruct Totals(Copyable, Movable):\n    var served: Int64\n\ndef serve(worker: Int, mut totals: Totals, stop: AtomicFlag) -> None:\n    var served = AtomicCounter.at(Int(Pointer(to=totals.served)))\n    while not stop.is_set():\n        _ = served.fetch_add(1)\n\ndef main() raises:\n    var totals = Totals(0)\n    var pool = TypedPool.start[serve](n=4, state=totals)\n    ...\n    pool.shutdown()          # request_stop + join\n    print(pool.state().served)\n```\n\nThat is the **typed** form. The state is a value the caller owns, the workers\nreceive it by `mut`, and the `void *` erasure pthread demands happens twice\ninside this file and nowhere else. See \"Lifetimes\" below for why the pool's\n*type* mentions the state's origin.\n\nThe **untyped** form is the one underneath, for when the context is a\nhand-laid-out block of cells rather than a struct, or a pointer the compiler\ncould not track anyway:\n\n```mojo\nfrom threads import AtomicCounter, AtomicFlag, OpaquePtr, WorkerPool\n\ndef tally(worker: Int, ctx: OpaquePtr, stop: AtomicFlag) -> None:\n    var counter = AtomicCounter.at(Int(ctx))\n    while not stop.is_set():\n        _ = counter.fetch_add(1)\n\ndef main() raises:\n    var pool = WorkerPool.start[tally](n=4, ctx=my_ctx)\n    ...\n    pool.shutdown()          # request_stop + join\n```\n\n## The stop flag is cooperative\n\n`request_stop()` is a release-store to one cell. Nothing preempts a worker:\nit observes the flag the next time it looks. Two consequences worth stating\nplainly, because both have surprised people:\n\n- **A worker blocked in a syscall will not observe the flag until that syscall\n  returns.** A thread parked in `recv`, `accept`, or an FFI call that blocks\n  on a channel stays parked; setting the flag does not interrupt it. If your\n  workers block, you need a *wake* mechanism on the thing they block on — a\n  sentinel message, a closed channel, a timeout on the blocking call — and\n  `request_stop()` is only the second half of the handshake. `restate.mojo`'s\n  served mode is the worked example: its shim grew an `rst_stop` that makes the\n  blocking `rst_next` return, precisely because the flag alone could not reach\n  a thread inside the Rust receiver.\n- **A worker that never checks the flag never stops**, and `join()` therefore\n  never returns. Loop on `not stop.is_set()`.\n\n## Lifetimes\n\nThe pool allocates one small header block on the heap — the index counter, the\nstop cell, and the user context address — and hands *that* to every thread.\nThe header is freed only after every worker has been joined. The pool's\ndestructor enforces this: dropping a `WorkerPool` requests a stop, joins, and\nonly then frees. That is not politeness, it is the \"Mojo destroys a value at\nits last *use*\" trap (`.unsafe_ptr()` counts as a use) with the sharp edge\nfiled off — a pool whose last mention is `pool.request_stop()` is destroyed on\nthat line, and the destructor's join is what keeps the header alive under the\nstill-running workers.\n\nThe `ctx` you pass in is *not* owned by the pool. It must outlive the pool, and\nbecause the destructor joins, \"outlives the pool value\" is sufficient. With\n`WorkerPool` that sentence is a *rule for the caller*: an `OpaquePtr` carries no\norigin, so nothing checks it.\n\n`TypedPool` turns the same sentence into something the compiler enforces, and\nthe mechanism is worth stating because a pool is not a `parallel_for`. In\n`parallel_for` the typed overload takes `ref[origin] state` and that is the\nwhole story: the state is an *argument*, so it is alive for the duration of the\ncall, and the call joins before it returns. A pool outlives its `start` call, so\na `ref` argument on `start` alone buys nothing — the borrow ends when `start`\nreturns and the workers are still running.\n\nSo the origin travels out of `start` on the returned value: `TypedPool[T,\norigin]` names it in its type and holds a `Pointer[T, origin]` in a field. A\nlive `TypedPool` value is therefore a live use of the origin it was started\nover, and Mojo will not destroy `state` while the pool value exists. The pool's\nown destructor sets the flag, joins every worker, and only then frees its\nheader — so the last worker's last read of `state` happens strictly before\n`state` is destroyed. \"Outlives the pool value\" is still exactly the guarantee\nneeded; it is now a guarantee rather than a request.\n\nThe failure this rules out is not hypothetical, and it is silent: Mojo destroys\na value at its **last use**, and an untracked pointer is not a use. Build a\ncontext out of a local, hand its address to an untyped pool, and never mention\nthe local again, and the local is destroyed at the line where you took its\naddress — with the workers still reading it, and no diagnostic. The\n`typed pool state outlives the pool` test in `tests/test_threads.mojo` pins the\nopposite: it poisons the state in its destructor and asserts no worker ever\nsaw the poison.",
+   "aliases": [
+    {
+     "name": "WorkerFn",
+     "value": "def(Int, Pointer[UInt8, MutUntrackedOrigin], AtomicFlag) thin -> None",
+     "summary": "A worker body: its index in `[0, n)`, the shared user context, and the pool's stop flag.",
+     "description": "Thin (non-capturing) and non-raising, for the same reasons `parallel.WorkFn`\nis: it is reached through a C function pointer, and pthread has no exception\nchannel. Report failures through a cell in `ctx` — see `threads.parallel`'s\nmodule docstring for the error-cell pattern."
+    },
+    {
+     "name": "PoolTaskFn",
+     "type": "__mlir_type.`!kgen.non_struct_type`",
+     "value": "def(Int, mut T, AtomicFlag) thin -> None",
+     "summary": "A worker body, typed form: its index in `[0, n)`, mutable access to the shared state, and the pool's stop flag.",
+     "description": "Every worker gets the same `T`, at the same time, for as long as the pool runs.\nThin and non-raising, exactly like `WorkerFn` — the typing changes what the\nworker is handed, not how it is reached."
+    }
+   ],
+   "structs": [
+    {
+     "name": "WorkerPool",
+     "signature": "struct WorkerPool",
+     "summary": "`n` symmetric threads running the same body until asked to stop.",
+     "description": "Move-only, like everything else in this library that owns threads: the\npool owns the header block and the `ThreadGroup`, and there must be\nexactly one join and exactly one free.",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var group: ThreadGroup, header: Pointer[Int64, MutUntrackedOrigin], n: Int)",
+         "summary": "Adopt an already-spawned group. Use `WorkerPool.start` instead.",
+         "args": [
+          {
+           "name": "group",
+           "doc": "The spawned threads."
+          },
+          {
+           "name": "header",
+           "doc": "The heap header block backing them."
+          },
+          {
+           "name": "n",
+           "doc": "The worker count."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "__deinit__",
+       "overloads": [
+        {
+         "signature": "def __deinit__(deinit self)",
+         "summary": "Stop, join, then free the header — in that order, always.",
+         "description": "A pool that is simply dropped still shuts down cleanly. Freeing the\nheader while a worker could still read it would be a use-after-free,\nand Mojo's last-use destruction makes that easy to trigger by accident,\nso the destructor pays for the join rather than trusting the caller to\nhave done it. If `shutdown()` was already called, the joins are no-ops\nand this costs nothing.\n\nA join failure here cannot be reported — a destructor cannot raise —\nso it is swallowed. Call `shutdown()` explicitly if you want to see it."
+        }
+       ]
+      },
+      {
+       "name": "start",
+       "overloads": [
+        {
+         "signature": "def start[work: def(Int, Pointer[UInt8, MutUntrackedOrigin], AtomicFlag) thin -> None](n: Int, ctx: Pointer[UInt8, MutUntrackedOrigin]) -> Self",
+         "summary": "Start `n` threads, each running `work(index, ctx, stop_flag)`.",
+         "description": "Every worker gets the same `ctx` and the same stop flag; the index is\nthe only thing that distinguishes them, and it is drawn from a counter\nrather than baked in, so the workers are genuinely symmetric.",
+         "parameters": [
+          {
+           "name": "work",
+           "doc": "The worker body — thin and non-raising."
+          }
+         ],
+         "args": [
+          {
+           "name": "n",
+           "doc": "How many threads to start. Must be at least 1."
+          },
+          {
+           "name": "ctx",
+           "doc": "The shared context handed to every worker. Must outlive the\n    pool; since the destructor joins, outliving the pool value is\n    enough."
+          }
+         ],
+         "raises": "Error: If `n < 1`, or if any `pthread_create` fails. On a failed\nspawn the threads that did start are joined before the error\npropagates, and the header is freed."
+        },
+        {
+         "signature": "def start[work: def(Int, Pointer[UInt8, MutUntrackedOrigin], AtomicFlag) thin -> None](ctx: Pointer[UInt8, MutUntrackedOrigin]) -> Self",
+         "summary": "Start one thread per logical CPU.",
+         "parameters": [
+          {
+           "name": "work",
+           "doc": "The worker body."
+          }
+         ],
+         "args": [
+          {
+           "name": "ctx",
+           "doc": "The shared context."
+          }
+         ],
+         "raises": "Error: If any `pthread_create` fails."
+        }
+       ]
+      },
+      {
+       "name": "num_workers",
+       "overloads": [
+        {
+         "signature": "def num_workers(self) -> Int",
+         "summary": "How many threads this pool started."
+        }
+       ]
+      },
+      {
+       "name": "stop_flag",
+       "overloads": [
+        {
+         "signature": "def stop_flag(self) -> AtomicFlag",
+         "summary": "The shared stop flag, as a view.",
+         "description": "Useful when something other than the pool's owner needs to be able to\nask for a stop — store `flag.address()` in your own context and rebuild\nit with `AtomicFlag.at`."
+        }
+       ]
+      },
+      {
+       "name": "request_stop",
+       "overloads": [
+        {
+         "signature": "def request_stop(self)",
+         "summary": "Ask every worker to return: release-store 1 to the stop flag.",
+         "description": "Returns immediately. Cooperative — see the module docstring: a worker\nblocked in a syscall does not observe this until it returns."
+        }
+       ]
+      },
+      {
+       "name": "is_stopping",
+       "overloads": [
+        {
+         "signature": "def is_stopping(self) -> Bool",
+         "summary": "Whether a stop has been requested."
+        }
+       ]
+      },
+      {
+       "name": "join",
+       "overloads": [
+        {
+         "signature": "def join(mut self)",
+         "summary": "Wait for every worker to return.",
+         "description": "Does **not** set the stop flag — call `request_stop()` first, or use\n`shutdown()`. Joining a pool whose workers loop on the flag without\nhaving requested a stop hangs forever, which is a bug in the caller,\nnot something this method can rescue.\n\nIdempotent: `ThreadHandle.join` zeroes its id, so a second call is a\nno-op.",
+         "raises": "Error: The first `pthread_join` failure, after every thread has\nhad a join attempted."
+        }
+       ]
+      },
+      {
+       "name": "shutdown",
+       "overloads": [
+        {
+         "signature": "def shutdown(mut self)",
+         "summary": "`request_stop()` then `join()` — the ordinary way to end a pool.",
+         "raises": "Error: If a join fails. The stop has already been requested by\nthen, so the workers are on their way out regardless."
+        }
+       ]
+      },
+      {
+       "name": "pin_all",
+       "overloads": [
+        {
+         "signature": "def pin_all(self)",
+         "summary": "Pin worker `i` to CPU `i % num_cpus()` (a no-op on macOS).",
+         "raises": "Error: On Linux if the affinity call fails."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "TypedPool",
+     "signature": "struct TypedPool[T: AnyType, origin: MutOrigin]",
+     "summary": "A `WorkerPool` whose workers all share one `T`, held alive by `origin`.",
+     "description": "`WorkerPool` takes an `OpaquePtr` and asks the caller to keep the pointee\nalive; this wraps it and makes the compiler do the keeping. The `origin`\nparameter is the whole mechanism: a `TypedPool[T, origin]` value is a use of\nthe origin it was started over, so `state` cannot be destroyed while the\npool value is alive, and the pool's destructor joins every worker before it\nreturns. A pool outlives its `start` call, which is why the origin has to\nride on the *type* rather than only on `start`'s `ref` argument — see the\nmodule docstring's \"Lifetimes\" section for the version with the reasoning.\n\nMove-only, like the `WorkerPool` it owns: exactly one join, exactly one\nfree. Everything else is a straight delegation, with the same names and\nsignatures, so switching between the two forms is a change of construction\nand nothing more.",
+     "parameters": [
+      {
+       "name": "T",
+       "doc": "The shared state type."
+      },
+      {
+       "name": "origin",
+       "doc": "The origin of the state the pool was started over."
+      }
+     ],
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var pool: WorkerPool, state: Pointer[T, origin])",
+         "summary": "Adopt an already-started pool. Use `TypedPool.start` instead.",
+         "args": [
+          {
+           "name": "pool",
+           "doc": "The running untyped pool."
+          },
+          {
+           "name": "state",
+           "doc": "A pointer to the state its workers were given."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "start",
+       "overloads": [
+        {
+         "signature": "def start[task: def(Int, mut T, AtomicFlag) thin -> None](n: Int, ref[origin] state: T) -> Self",
+         "summary": "Start `n` threads, each running `task(index, state, stop_flag)`.",
+         "description": "`T` and `origin` are inferred from `state`, so the call site is\n`TypedPool.start[task](n, state)` with no parameters written out.\nBecause `state` is taken by mutable `ref`, an immutable binding or a\ntemporary is refused here rather than dangling later.",
+         "parameters": [
+          {
+           "name": "task",
+           "doc": "The worker body — thin and non-raising."
+          }
+         ],
+         "args": [
+          {
+           "name": "n",
+           "doc": "How many threads to start. Must be at least 1."
+          },
+          {
+           "name": "state",
+           "doc": "The value every worker receives by `mut`. Guarding\n    concurrent access to it is the worker's job — atomics, a\n    `Mutex`, or per-worker slots. The returned pool carries its\n    origin, so it is kept alive until the pool is destroyed."
+          }
+         ],
+         "raises": "Error: If `n < 1`, or if any `pthread_create` fails."
+        },
+        {
+         "signature": "def start[task: def(Int, mut T, AtomicFlag) thin -> None](ref[origin] state: T) -> Self",
+         "summary": "Start one thread per logical CPU.",
+         "parameters": [
+          {
+           "name": "task",
+           "doc": "The worker body."
+          }
+         ],
+         "args": [
+          {
+           "name": "state",
+           "doc": "The shared state."
+          }
+         ],
+         "raises": "Error: If any `pthread_create` fails."
+        }
+       ]
+      },
+      {
+       "name": "state",
+       "overloads": [
+        {
+         "signature": "def state(self) -> ref[origin] T",
+         "summary": "The state this pool was started over.",
+         "description": "Reading it through the pool is how the starter gets at totals after a\n`shutdown()` without having to name the local again — which, with the\nuntyped form, is the mention that would have been load-bearing.\nConcurrent access rules still apply while workers are running."
+        }
+       ]
+      },
+      {
+       "name": "num_workers",
+       "overloads": [
+        {
+         "signature": "def num_workers(self) -> Int",
+         "summary": "How many threads this pool started."
+        }
+       ]
+      },
+      {
+       "name": "stop_flag",
+       "overloads": [
+        {
+         "signature": "def stop_flag(self) -> AtomicFlag",
+         "summary": "The shared stop flag, as a view."
+        }
+       ]
+      },
+      {
+       "name": "request_stop",
+       "overloads": [
+        {
+         "signature": "def request_stop(self)",
+         "summary": "Ask every worker to return: release-store 1 to the stop flag.",
+         "description": "Cooperative, with the same two surprises as `WorkerPool` — see the\nmodule docstring."
+        }
+       ]
+      },
+      {
+       "name": "is_stopping",
+       "overloads": [
+        {
+         "signature": "def is_stopping(self) -> Bool",
+         "summary": "Whether a stop has been requested."
+        }
+       ]
+      },
+      {
+       "name": "join",
+       "overloads": [
+        {
+         "signature": "def join(mut self)",
+         "summary": "Wait for every worker to return.",
+         "description": "Does **not** set the stop flag — call `request_stop()` first, or use\n`shutdown()`.",
+         "raises": "Error: The first `pthread_join` failure."
+        }
+       ]
+      },
+      {
+       "name": "shutdown",
+       "overloads": [
+        {
+         "signature": "def shutdown(mut self)",
+         "summary": "`request_stop()` then `join()` — the ordinary way to end a pool.",
+         "raises": "Error: If a join fails."
+        }
+       ]
+      },
+      {
+       "name": "pin_all",
+       "overloads": [
+        {
+         "signature": "def pin_all(self)",
+         "summary": "Pin worker `i` to CPU `i % num_cpus()` (a no-op on macOS).",
+         "raises": "Error: On Linux if the affinity call fails."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "threads.thread",
+   "summary": "OS threads: `ThreadHandle`, `num_cpus`, `current_thread_id`, CPU pinning.",
+   "description": "A thin, honest wrapper over `pthread_create` / `pthread_join`. There is no\nthread pool here and no runtime — one `ThreadHandle` is one kernel thread, and\nyou are responsible for joining it.\n\n## The send contract\n\n`pthread_create` takes a C function pointer and a single `void *`. That is the\nentire channel, and this library does not pretend otherwise:\n\n- the start routine must be a **thin** (non-capturing) function\n  `def(OpaquePtr) thin -> OpaquePtr`;\n- everything the thread needs travels through the `OpaquePtr` argument;\n- the caller guarantees that whatever the pointer addresses **outlives the\n  join**.\n\nThat last point is not a style preference. Mojo destroys a value at its last\n*use*, not at the end of the enclosing scope, so a context that the main thread\nstops mentioning after `spawn` can be freed while the worker is still reading\nit. Keep the context alive across the join — mention it after `join()`, or heap\nallocate it and free it after `join()`. `threads.parallel.parallel_for` does the\nlatter, and `tests/test_threads.mojo` has a test that fails loudly if the\nordering is ever broken.\n\n## Platforms\n\npthread symbols are resolved with plain `external_call`, no `dlopen`. On macOS\npthread lives in `libSystem`, which is always linked; on Linux with glibc 2.34\nor newer `libpthread` is folded into `libc`. Both are in the default dynamic\nlink namespace, so the symbols resolve without any link flag. This is verified\non `ubuntu-latest` and `macos-latest` in CI.",
+   "aliases": [
+    {
+     "name": "StartFn",
+     "value": "def(Pointer[UInt8, MutUntrackedOrigin]) thin -> OpaquePtr",
+     "summary": "The one callable shape that can cross a thread boundary: a non-capturing function taking and returning the opaque context pointer."
+    }
+   ],
+   "structs": [
+    {
+     "name": "ThreadHandle",
+     "signature": "struct ThreadHandle",
+     "summary": "An owning handle to one live OS thread.",
+     "description": "`Movable` but deliberately **not** `Copyable`. A `pthread_t` names one\nkernel thread and POSIX forbids joining the same one twice, so\n\"exactly one owner, exactly one join\" belongs in the type system rather\nthan in a comment.\n\nAs defence in depth, `join()` also zeroes the stored id, so a second\n`join()` on the same handle short-circuits instead of calling\n`pthread_join` on a stale id (which is undefined behaviour, not an error\nreturn).",
+     "traits": [
+      "Movable"
+     ],
+     "functions": [
+      {
+       "name": "spawn",
+       "overloads": [
+        {
+         "signature": "def spawn[start: def(Pointer[UInt8, MutUntrackedOrigin]) thin -> OpaquePtr](arg: Pointer[UInt8, MutUntrackedOrigin]) -> Self",
+         "summary": "Start a thread running `start(arg)`.",
+         "parameters": [
+          {
+           "name": "start",
+           "doc": "The thread body. Thin (non-capturing) and non-raising —\n    pthread has no exception channel, so convert any failure into a\n    value the caller can read out of `arg`."
+          }
+         ],
+         "args": [
+          {
+           "name": "arg",
+           "doc": "The context pointer handed to `start`. Must stay valid until\n    the thread is joined."
+          }
+         ],
+         "raises": "Error: If `pthread_create` fails, carrying its POSIX return code\n(`EAGAIN` when the process is out of threads, `EPERM` for\nscheduling-attribute refusals)."
+        }
+       ]
+      },
+      {
+       "name": "join",
+       "overloads": [
+        {
+         "signature": "def join(mut self)",
+         "summary": "Wait for the thread to finish; discard its return value.",
+         "description": "Idempotent: after a successful join the handle's id is zeroed, so\ncalling `join()` again returns immediately instead of re-entering\n`pthread_join` with a stale id.",
+         "raises": "Error: If `pthread_join` fails. The handle is left untouched so the\ncaller can retry or propagate."
+        }
+       ]
+      },
+      {
+       "name": "detach",
+       "overloads": [
+        {
+         "signature": "def detach(mut self)",
+         "summary": "Release the thread without waiting for it; it cleans itself up when it returns.",
+         "description": "After this the handle is inert — `join()` becomes a no-op. Only detach\na thread whose context outlives the whole process, or one that owns its\ncontext outright: nothing is left to tell you when it stopped reading.",
+         "raises": "Error: If `pthread_detach` fails."
+        }
+       ]
+      },
+      {
+       "name": "is_joinable",
+       "overloads": [
+        {
+         "signature": "def is_joinable(self) -> Bool",
+         "summary": "Whether this handle still names a thread."
+        }
+       ]
+      },
+      {
+       "name": "pin_to_cpu",
+       "overloads": [
+        {
+         "signature": "def pin_to_cpu(self, cpu: Int)",
+         "summary": "Pin the thread to one logical CPU.",
+         "description": "On Linux this is a real, hard affinity set via\n`pthread_setaffinity_np`. **On macOS it is a documented no-op**: Darwin\nexposes only `thread_policy_set(THREAD_AFFINITY_POLICY)`, which is an\naffinity *hint* used to group threads onto a shared cache, not a pin,\nand pretending otherwise would be worse than doing nothing.",
+         "args": [
+          {
+           "name": "cpu",
+           "doc": "Zero-based logical CPU index."
+          }
+         ],
+         "raises": "Error: On Linux if `pthread_setaffinity_np` fails — typically\n`EINVAL` for a cpu index outside the process's cpuset, which is\nwhat happens inside a restricted container. Never raises on\nmacOS."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "functions": [
+    {
+     "name": "pin_current_to_cpu",
+     "overloads": [
+      {
+       "signature": "def pin_current_to_cpu(cpu: Int)",
+       "summary": "Pin the *calling* thread to one logical CPU.",
+       "description": "`ThreadHandle.pin_to_cpu` pins a thread you spawned; this pins the one you\nare on. That is the more common shape in a worker pool, where each worker\npicks its own core after starting rather than having the spawner reach in.\n\nA free function rather than a `ThreadHandle` built from `pthread_self`\ndeliberately: such a handle would look joinable, and joining it means a\nthread joining itself. There is no safe handle for \"me\", only operations.\n\nOn Linux a real affinity set; on macOS a documented no-op, for the reason\ngiven on `ThreadHandle.pin_to_cpu`.",
+       "args": [
+        {
+         "name": "cpu",
+         "doc": "Zero-based logical CPU index."
+        }
+       ],
+       "raises": "Error: On Linux if `pthread_setaffinity_np` fails — typically `EINVAL`\nfor a cpu outside the process's cpuset, as in a restricted\ncontainer. Never raises on macOS."
+      }
+     ]
+    },
+    {
+     "name": "num_cpus",
+     "overloads": [
+      {
+       "signature": "def num_cpus() -> Int",
+       "summary": "The number of logical CPUs available to this process.",
+       "description": "Uses `sysconf(_SC_NPROCESSORS_ONLN)`, whose constant differs between the\nplatforms (84 on Linux, 58 on Darwin)."
+      }
+     ]
+    },
+    {
+     "name": "current_thread_id",
+     "overloads": [
+      {
+       "signature": "def current_thread_id() -> UInt64",
+       "summary": "The calling thread's `pthread_self()`."
+      }
+     ]
+    },
+    {
+     "name": "yield_now",
+     "overloads": [
+      {
+       "signature": "def yield_now()",
+       "summary": "Hand the rest of this time slice to another runnable thread (`sched_yield`). The polite thing to do inside a spin loop."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

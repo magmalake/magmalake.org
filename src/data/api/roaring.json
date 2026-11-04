@@ -1,0 +1,669 @@
+{
+ "tin": "roaring",
+ "version": "0.1.3",
+ "rev": "a90a7bd30cf1c21403a29059282072e93fbeeee2",
+ "package": "roaring",
+ "path": "src/roaring",
+ "mojo": "Mojo 1.2.0 (2016d0cd)",
+ "summary": "`roaring` — pure-Mojo Roaring bitmaps (32-bit and 64-bit), with the RoaringFormatSpec portable serialization (including the 64-bit extension) and Apache Iceberg's deletion-vector v1 blob framing.",
+ "description": "from roaring import Bitmap32, Bitmap64, encode_iceberg_dv, decode_iceberg_dv\n\nNo dependencies — the CRC-32 used by the Iceberg framing is implemented\nlocally in `crc32.mojo`.",
+ "modules": [
+  {
+   "path": "roaring",
+   "summary": "`roaring` — pure-Mojo Roaring bitmaps (32-bit and 64-bit), with the RoaringFormatSpec portable serialization (including the 64-bit extension) and Apache Iceberg's deletion-vector v1 blob framing.",
+   "description": "from roaring import Bitmap32, Bitmap64, encode_iceberg_dv, decode_iceberg_dv\n\nNo dependencies — the CRC-32 used by the Iceberg framing is implemented\nlocally in `crc32.mojo`."
+  },
+  {
+   "path": "roaring.bitmap32",
+   "summary": "`Bitmap32` — a Roaring bitmap over `UInt32` values: a sorted set of 16-bit-keyed `Container`s, one per distinct high-16-bits key present.",
+   "structs": [
+    {
+     "name": "Bitmap32",
+     "signature": "struct Bitmap32",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "containers",
+       "type": "Dict[UInt16, Container]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "add",
+       "overloads": [
+        {
+         "signature": "def add(mut self, v: UInt32)"
+        }
+       ]
+      },
+      {
+       "name": "add_range",
+       "overloads": [
+        {
+         "signature": "def add_range(mut self, start: UInt32, stop: UInt32)",
+         "summary": "Add every value in `[start, stop)`."
+        }
+       ]
+      },
+      {
+       "name": "remove",
+       "overloads": [
+        {
+         "signature": "def remove(mut self, v: UInt32)"
+        }
+       ]
+      },
+      {
+       "name": "run_optimize",
+       "overloads": [
+        {
+         "signature": "def run_optimize(mut self)"
+        }
+       ]
+      },
+      {
+       "name": "contains",
+       "overloads": [
+        {
+         "signature": "def contains(self, v: UInt32) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "cardinality",
+       "overloads": [
+        {
+         "signature": "def cardinality(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "is_empty",
+       "overloads": [
+        {
+         "signature": "def is_empty(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "min",
+       "overloads": [
+        {
+         "signature": "def min(self) -> UInt32"
+        }
+       ]
+      },
+      {
+       "name": "max",
+       "overloads": [
+        {
+         "signature": "def max(self) -> UInt32"
+        }
+       ]
+      },
+      {
+       "name": "to_list",
+       "overloads": [
+        {
+         "signature": "def to_list(self) -> List[UInt32]"
+        }
+       ]
+      },
+      {
+       "name": "or_",
+       "overloads": [
+        {
+         "signature": "def or_(a, b: Self) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "and_",
+       "overloads": [
+        {
+         "signature": "def and_(a, b: Self) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "and_not",
+       "overloads": [
+        {
+         "signature": "def and_not(a, b: Self) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "xor",
+       "overloads": [
+        {
+         "signature": "def xor(a, b: Self) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "serialize_portable",
+       "overloads": [
+        {
+         "signature": "def serialize_portable(self) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "portable_size",
+       "overloads": [
+        {
+         "signature": "def portable_size(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "deserialize_portable",
+       "overloads": [
+        {
+         "signature": "def deserialize_portable[origin: Origin[mut=origin.mut], //](data: Span[UInt8, origin]) -> Self"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "roaring.bitmap64",
+   "summary": "`Bitmap64` — a Roaring bitmap over `UInt64` values, per the \"extension for 64-bit implementations\": a sorted map from a 32-bit high key to a full `Bitmap32` over the low 32 bits. This is the shape Apache Iceberg uses for deletion vectors (row positions are `UInt64`).",
+   "structs": [
+    {
+     "name": "Bitmap64",
+     "signature": "struct Bitmap64",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "maps",
+       "type": "Dict[UInt32, Bitmap32]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "add",
+       "overloads": [
+        {
+         "signature": "def add(mut self, v: UInt64)"
+        }
+       ]
+      },
+      {
+       "name": "add_range",
+       "overloads": [
+        {
+         "signature": "def add_range(mut self, start: UInt64, stop: UInt64)",
+         "summary": "Add every value in `[start, stop)`."
+        }
+       ]
+      },
+      {
+       "name": "remove",
+       "overloads": [
+        {
+         "signature": "def remove(mut self, v: UInt64)"
+        }
+       ]
+      },
+      {
+       "name": "run_optimize",
+       "overloads": [
+        {
+         "signature": "def run_optimize(mut self)"
+        }
+       ]
+      },
+      {
+       "name": "contains",
+       "overloads": [
+        {
+         "signature": "def contains(self, v: UInt64) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "cardinality",
+       "overloads": [
+        {
+         "signature": "def cardinality(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "is_empty",
+       "overloads": [
+        {
+         "signature": "def is_empty(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "min",
+       "overloads": [
+        {
+         "signature": "def min(self) -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "max",
+       "overloads": [
+        {
+         "signature": "def max(self) -> UInt64"
+        }
+       ]
+      },
+      {
+       "name": "to_list",
+       "overloads": [
+        {
+         "signature": "def to_list(self) -> List[UInt64]"
+        }
+       ]
+      },
+      {
+       "name": "or_",
+       "overloads": [
+        {
+         "signature": "def or_(a, b: Self) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "and_",
+       "overloads": [
+        {
+         "signature": "def and_(a, b: Self) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "and_not",
+       "overloads": [
+        {
+         "signature": "def and_not(a, b: Self) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "xor",
+       "overloads": [
+        {
+         "signature": "def xor(a, b: Self) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "serialize_portable",
+       "overloads": [
+        {
+         "signature": "def serialize_portable(self) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "portable_size",
+       "overloads": [
+        {
+         "signature": "def portable_size(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "deserialize_portable",
+       "overloads": [
+        {
+         "signature": "def deserialize_portable[origin: Origin[mut=origin.mut], //](data: Span[UInt8, origin]) -> Self"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "roaring.container",
+   "summary": "A single Roaring container, keyed externally by a 16-bit high key and holding up to 65536 low-16-bit values in one of three representations.",
+   "description": "- **array**: a sorted `List[UInt16]`, used while cardinality <= 4096.\n  - **bitset**: a fixed 1024-word (65536-bit) bitset, used above that.\n  - **run**: sorted (start, length) runs, used only after `run_optimize()`\n    finds it strictly smaller than the array/bitset encoding.\n\nAll three representations round-trip through the portable per-container byte\nlayout described in `portable.mojo`.",
+   "aliases": [
+    {
+     "name": "CONTAINER_ARRAY",
+     "value": "UInt8(0)"
+    },
+    {
+     "name": "CONTAINER_BITSET",
+     "value": "UInt8(1)"
+    },
+    {
+     "name": "CONTAINER_RUN",
+     "value": "UInt8(2)"
+    }
+   ],
+   "structs": [
+    {
+     "name": "Container",
+     "signature": "struct Container",
+     "traits": [
+      "Copyable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "kind",
+       "type": "UInt8"
+      },
+      {
+       "name": "arr",
+       "type": "List[UInt16]"
+      },
+      {
+       "name": "bits",
+       "type": "List[UInt64]"
+      },
+      {
+       "name": "run_start",
+       "type": "List[UInt16]"
+      },
+      {
+       "name": "run_len",
+       "type": "List[UInt16]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "cardinality",
+       "overloads": [
+        {
+         "signature": "def cardinality(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "contains",
+       "overloads": [
+        {
+         "signature": "def contains(self, v: UInt16) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "min_value",
+       "overloads": [
+        {
+         "signature": "def min_value(self) -> UInt16"
+        }
+       ]
+      },
+      {
+       "name": "max_value",
+       "overloads": [
+        {
+         "signature": "def max_value(self) -> UInt16"
+        }
+       ]
+      },
+      {
+       "name": "to_sorted_list",
+       "overloads": [
+        {
+         "signature": "def to_sorted_list(self) -> List[UInt16]"
+        }
+       ]
+      },
+      {
+       "name": "to_bitset_words",
+       "overloads": [
+        {
+         "signature": "def to_bitset_words(self) -> List[UInt64]"
+        }
+       ]
+      },
+      {
+       "name": "add",
+       "overloads": [
+        {
+         "signature": "def add(mut self, v: UInt16)"
+        }
+       ]
+      },
+      {
+       "name": "remove",
+       "overloads": [
+        {
+         "signature": "def remove(mut self, v: UInt16)"
+        }
+       ]
+      },
+      {
+       "name": "run_optimize",
+       "overloads": [
+        {
+         "signature": "def run_optimize(mut self)"
+        }
+       ]
+      },
+      {
+       "name": "from_bitset_words",
+       "overloads": [
+        {
+         "signature": "def from_bitset_words(var words: List[UInt64]) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "or_",
+       "overloads": [
+        {
+         "signature": "def or_(a, b: Self) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "and_",
+       "overloads": [
+        {
+         "signature": "def and_(a, b: Self) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "and_not",
+       "overloads": [
+        {
+         "signature": "def and_not(a, b: Self) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "xor",
+       "overloads": [
+        {
+         "signature": "def xor(a, b: Self) -> Self"
+        }
+       ]
+      },
+      {
+       "name": "serialized_body_size",
+       "overloads": [
+        {
+         "signature": "def serialized_body_size(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "serialize_body",
+       "overloads": [
+        {
+         "signature": "def serialize_body(self, mut buf: List[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "deserialize_body",
+       "overloads": [
+        {
+         "signature": "def deserialize_body[origin: Origin[mut=origin.mut], //](kind: UInt8, cardinality: Int, data: Span[UInt8, origin], pos: Int) -> Self"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "roaring.crc32",
+   "summary": "A plain, from-scratch CRC-32 (the IEEE 802.3 / zlib / gzip variant: poly 0xEDB88320 reflected, init 0xFFFFFFFF, final XOR 0xFFFFFFFF) — no dependencies, used to checksum Iceberg deletion-vector blobs.",
+   "functions": [
+    {
+     "name": "crc32",
+     "overloads": [
+      {
+       "signature": "def crc32[origin: Origin[mut=origin.mut], //](data: Span[UInt8, origin]) -> UInt32",
+       "summary": "Standard CRC-32 checksum of `data` (same algorithm as gzip/zlib)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "roaring.iceberg_dv",
+   "summary": "Apache Iceberg \"deletion vector v1\" blob framing (https://iceberg.apache.org/puffin-spec/#deletion-vector-v1-blob-type).",
+   "description": "4 bytes            length of (magic + vector), big-endian\n    4 bytes            magic: D1 D3 39 64\n    <length - 4> bytes the 64-bit portable Roaring vector\n    4 bytes            CRC-32 (standard, as in gzip) over (magic + vector),\n                       big-endian\n\nRow positions in a data file are `UInt64`, so the vector is a `Bitmap64`.",
+   "functions": [
+    {
+     "name": "encode_iceberg_dv",
+     "overloads": [
+      {
+       "signature": "def encode_iceberg_dv(bitmap: Bitmap64) -> List[UInt8]",
+       "summary": "Encode `bitmap` as a framed Iceberg deletion-vector v1 blob."
+      }
+     ]
+    },
+    {
+     "name": "decode_iceberg_dv",
+     "overloads": [
+      {
+       "signature": "def decode_iceberg_dv[origin: Origin[mut=origin.mut], //](data: Span[UInt8, origin]) -> Bitmap64",
+       "summary": "Decode and verify a framed Iceberg deletion-vector v1 blob, raising on a length, magic, or CRC-32 mismatch."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "path": "roaring.portable",
+   "summary": "Shared constants and little-endian byte helpers for the Roaring \"portable\" serialization format (RoaringFormatSpec) — used by both the 32-bit container layer and the `Bitmap32`/`Bitmap64` assemblers.",
+   "description": "Format recap (see https://github.com/RoaringBitmap/RoaringFormatSpec):\n  - No run containers: 4-byte LE cookie `SERIAL_COOKIE_NO_RUNCONTAINER`\n    (12346), 4-byte LE container count N, N x (2-byte LE key, 2-byte LE\n    cardinality-1), N x 4-byte LE offset (always present), then container\n    bodies back to back.\n  - Has run containers: 4-byte LE value combining cookie `SERIAL_COOKIE`\n    (12347) in the low 16 bits and (N-1) in the high 16 bits, a\n    ceil(N/8)-byte bitset marking which containers are run containers, N x\n    (2-byte LE key, 2-byte LE cardinality-1), then N x 4-byte LE offset\n    UNLESS N < `NO_OFFSET_THRESHOLD` (in which case offsets are omitted),\n    then container bodies.\n\nContainer promotion: an array container holds up to `ARRAY_MAX_CARDINALITY`\n(4096) sorted UInt16 values (2 bytes each); above that it becomes a bitset\ncontainer (fixed `BITSET_BYTES` = 8192 bytes = 65536 bits). A run container\nstores a 2-byte run count followed by that many (2-byte LE start, 2-byte LE\nlength-1) pairs, and is used only when `run_optimize()` finds it smaller.",
+   "aliases": [
+    {
+     "name": "SERIAL_COOKIE_NO_RUNCONTAINER",
+     "value": "UInt32(12346)"
+    },
+    {
+     "name": "SERIAL_COOKIE",
+     "value": "UInt32(12347)"
+    },
+    {
+     "name": "NO_OFFSET_THRESHOLD",
+     "value": "Int(4)"
+    },
+    {
+     "name": "ARRAY_MAX_CARDINALITY",
+     "value": "Int(4096)"
+    },
+    {
+     "name": "BITSET_WORDS",
+     "value": "Int(1024)"
+    },
+    {
+     "name": "BITSET_BYTES",
+     "value": "Int(8192)"
+    }
+   ],
+   "functions": [
+    {
+     "name": "write_u16_le",
+     "overloads": [
+      {
+       "signature": "def write_u16_le(mut buf: List[UInt8], v: UInt16)"
+      }
+     ]
+    },
+    {
+     "name": "write_u32_le",
+     "overloads": [
+      {
+       "signature": "def write_u32_le(mut buf: List[UInt8], v: UInt32)"
+      }
+     ]
+    },
+    {
+     "name": "write_u64_le",
+     "overloads": [
+      {
+       "signature": "def write_u64_le(mut buf: List[UInt8], v: UInt64)"
+      }
+     ]
+    },
+    {
+     "name": "read_u16_le",
+     "overloads": [
+      {
+       "signature": "def read_u16_le[origin: Origin[mut=origin.mut], //](data: Span[UInt8, origin], pos: Int) -> UInt16"
+      }
+     ]
+    },
+    {
+     "name": "read_u32_le",
+     "overloads": [
+      {
+       "signature": "def read_u32_le[origin: Origin[mut=origin.mut], //](data: Span[UInt8, origin], pos: Int) -> UInt32"
+      }
+     ]
+    },
+    {
+     "name": "read_u64_le",
+     "overloads": [
+      {
+       "signature": "def read_u64_le[origin: Origin[mut=origin.mut], //](data: Span[UInt8, origin], pos: Int) -> UInt64"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
