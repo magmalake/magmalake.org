@@ -1,7 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
 import StackDiagram from "../components/StackDiagram.astro";
-import CodeTabs from "../components/CodeTabs.astro";
 import TakeATinCta from "../components/TakeATinCta.astro";
 import { tins, statusOf } from "../data/tins";
 
@@ -111,12 +110,8 @@ const description =
     </div>
   </section>
 
-  <!-- ========================== one example per layer ===================== -->
-  <section class="section section--alt" id="examples">
+  <section class="section section--alt" id="take">
     <div class="wrap wrap--wide">
-      <p class="eyebrow">In code</p>
-      <h2 class="section-title">One example per layer</h2>
-      <CodeTabs />
       <TakeATinCta />
     </div>
   </section>
