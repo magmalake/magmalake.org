@@ -9,7 +9,26 @@ export const DISTA_REPO = "https://github.com/magmalake/dista.mojo";
 export const distaLinks = [
   { href: "/s/dista", label: "Overview" },
   { href: "/s/dista/docs", label: "Docs" },
+  { href: "/s/dista/docs/tasks", label: "Tasks" },
+  { href: "/s/dista/docs/shuffles", label: "Shuffles" },
+  { href: "/s/dista/docs/actors", label: "Actors" },
+  { href: "/s/dista/docs/cluster", label: "Cluster" },
+  { href: "/s/dista/docs/cli", label: "CLI" },
+  { href: "/s/dista/docs/failures", label: "Failures" },
+  { href: "/s/dista/docs/tuning", label: "Tuning" },
   { href: "/s/dista/performance", label: "Performance" },
+];
+
+/** The docs' pages, in reading order: the strip atop each and its pager. */
+export const distaDocs = [
+  { href: "/s/dista/docs", label: "Start", title: "Using Dista" },
+  { href: "/s/dista/docs/tasks", label: "Tasks", title: "Tasks and results" },
+  { href: "/s/dista/docs/shuffles", label: "Shuffles", title: "Shuffles" },
+  { href: "/s/dista/docs/actors", label: "Actors", title: "Actors and checkpoints" },
+  { href: "/s/dista/docs/cluster", label: "Cluster", title: "Running a cluster" },
+  { href: "/s/dista/docs/cli", label: "CLI", title: "The dista command" },
+  { href: "/s/dista/docs/failures", label: "Failures", title: "Failure and recovery" },
+  { href: "/s/dista/docs/tuning", label: "Tuning", title: "Tuning" },
 ];
 export const RESULTS = `${DISTA_REPO}/tree/main/bench/cloud/results`;
 

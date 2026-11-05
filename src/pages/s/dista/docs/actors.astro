@@ -1,0 +1,121 @@
+---
+import DistaDocs from "../../../../components/DistaDocs.astro";
+import CodeBlock from "../../../../components/CodeBlock.astro";
+
+const description =
+  "Dista's actors: state on a worker of its own with methods called in order, handles passed to tasks and other actors, restarts when a worker dies, checkpoints to a directory or S3, and actors moving off a draining worker.";
+---
+
+<DistaDocs href="/s/dista/docs/actors" description={description}>
+  <p class="eyebrow">Docs</p>
+  <h1 class="section-title">Actors and checkpoints</h1>
+  <p class="lede">
+    An actor is state that lives on one worker between calls. Its methods run one at a
+    time, in the order they were made, from the driver, from tasks or from other actors.
+    Checkpoints let it come back with its state when its worker goes away.
+  </p>
+
+  <nav class="docs-toc" aria-label="On this page">
+    <a href="#actors">Actors</a>
+    <a href="#handles">Calling from tasks</a>
+    <a href="#restarts">Restarts</a>
+    <a href="#checkpoints">Checkpoints</a>
+    <a href="#moving">Draining an actor's worker</a>
+  </nav>
+
+  <h2 id="actors">Actors</h2>
+  <p>
+    An actor is a state type, the function that builds it, and methods that take it
+    <code>mut</code>. Actors and methods go in <code>Runtime[...]</code> with the tasks:
+  </p>
+  <CodeBlock label="Mojo" code={`from dista import Actor, Method, Runtime
+
+@fieldwise_init
+struct Counter(Movable):
+    var total: Int
+
+def new_counter(start: Int) -> Counter:
+    return Counter(start)
+
+def add(mut c: Counter, n: Int) -> Int:
+    c.total += n
+    return c.total
+
+comptime CounterActor = Actor[Counter, Int, new_counter]
+comptime Add = Method[CounterActor, Int, Int, add]
+
+var rt = Runtime[CounterActor, Add, Square](workers=2)
+var c = rt.create[CounterActor](0)
+var n = rt.call[Add](c, 5)            # ObjectRef[Int]
+print(rt.take(rt.remote[Square](n)))  # 25
+rt.kill(c)                            # after its earlier calls; frees the worker`} />
+  <p>
+    <code>create</code> returns at once; calls made before the actor is up wait for it,
+    and if its constructor raises, every call fails with that error. Each actor gets a
+    worker of its own, which runs no tasks while it hosts it. An actor created when every
+    worker already hosts one waits for a worker to join or another actor to be killed. A
+    method's result is an <code>ObjectRef</code> like a task's, so a task can take it as
+    input. Calling a method on the wrong actor's handle is a compile error.
+  </p>
+
+  <h2 id="handles">Calling from tasks</h2>
+  <p>
+    A handle is a value, so a task or another actor can call the actor too. Declare the
+    task with <code>CtxTask</code>, or the method with <code>CtxMethod</code>, and its
+    function gets a <code>Client</code> to call through. A <code>CtxMethod</code>'s
+    function takes the state, then the client, then its argument.
+  </p>
+  <CodeBlock label="Mojo" code={`from dista import ActorHandle, Client, CtxTask
+
+def bump(mut c: Client, h: ActorHandle[CounterActor]) raises -> Int:
+    return c.take(c.call[Add](h, 1))
+
+comptime Bump = CtxTask[ActorHandle[CounterActor], Int, bump]
+var n = rt.remote[Bump](c)   # a task calling the actor`} />
+  <p>
+    Calls from tasks go through the head, which keeps their order. A call blocks the task
+    or actor making it until the answer comes. Tasks never run on an actor's worker, so a
+    task can't wait on itself, but a cycle of actor calls, one actor calling another that
+    calls it back before answering, deadlocks.
+  </p>
+
+  <h2 id="restarts">Restarts</h2>
+  <p>
+    When an actor's worker goes away, the head places the actor on another worker,
+    builds it again from its last checkpoint, or its constructor if it has none, and runs
+    every call since then again, in order. Each call is answered once. A call may run
+    twice on the actor's state, so a method should be safe to repeat; that's the price of
+    not losing calls.
+  </p>
+
+  <h2 id="checkpoints">Checkpoints</h2>
+  <p>
+    A checkpoint is the actor's state through the codec, written to
+    <code>DISTA_CHECKPOINT_URI</code>: a local directory, a <code>file://</code> one, or
+    anything objectstore writes to, such as <code>s3://bucket/prefix</code>. A local
+    directory only helps if the node that restarts the actor sees it too, so a cluster
+    needs a shared volume or object storage. Without the variable, checkpoints fail. Ask
+    for one every so many calls, or when it suits:
+  </p>
+  <CodeBlock label="Mojo" code={`var c = rt.create[CounterActor](0, checkpoint_every=100)
+...
+var calls = rt.take(rt.checkpoint(c))   # written; covers this many calls`} />
+  <p>
+    A restart then replays only the calls since the checkpoint, and the head stops keeping
+    the ones it covers. A state type that implements <code>Codec</code> decides what it
+    saves: a cache can save nothing, a loaded model its path. Checkpoints also carry an
+    actor across a head restart: the new head restores it from its newest checkpoint, and
+    its callers send again the calls no checkpoint includes. Killing an actor deletes its
+    checkpoints.
+  </p>
+
+  <h2 id="moving">Draining an actor's worker</h2>
+  <p>
+    A worker that <a href="/s/dista/docs/cluster#draining">drains</a> moves its actor
+    rather than losing it. The head holds the actor's new calls, asks its worker for a
+    checkpoint, restores the actor on another worker from it, and sends it the held
+    calls: no call runs twice, and it doesn't count as a restart. Without
+    <code>DISTA_CHECKPOINT_URI</code> that checkpoint fails, and the actor restarts when
+    the worker leaves, replaying its calls, as when a worker dies.
+  </p>
+</DistaDocs>
