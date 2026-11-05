@@ -34,6 +34,8 @@ npx wrangler deploy      # or: npm run deploy
 src/
   data/tins.ts          the tins: description, oracle, version, repo
   data/api/*.json       each tin's API, from scripts/api-docs.mjs (see API reference)
+  data/install.ts       install tabs: mojoshelf and plain pixi (see Install tabs)
+  data/tincommits.json  each tin's published commit, from scripts/tin-commits.mjs
   data/perf.ts          benchmark rows and the four optimisation passes
   data/site.ts          site-wide constants (currently: the PostHog project key)
   layouts/Base.astro    <head>, fonts, theme bootstrap, nav + footer, PostHog snippet
@@ -142,6 +144,24 @@ whose repository holds more than one package names the one to document with `api
 are `EXTRA` in the script: threads' compat module, and json_mlake's GPU parser, which needs
 MAX. A file with a top-level `main()` is a program, not API, and is left out, since
 `mojo doc` refuses a package that holds one.
+## Install tabs
+
+Every `pixi shelf add <tin>` on a tin's overview, in its tindocs Markdown, in Orca's and
+Dista's docs and in getting started has a second tab beside it: the same install with
+plain pixi, as a git dependency at the commit the tin's version was published from. Both
+tabs come from `installTabs` in `src/data/install.ts`. In the tindocs Markdown a remark
+plugin, `src/integrations/install-tabs.mjs`, turns any `sh` block holding
+`pixi shelf add` into the tabs, and links the first mention of mojoshelf before it to
+`MOJOSHELF_INSTALL`, mojoshelf's getting-started page. In a Markdown twin both tabs
+show, each under its name.
+
+The commits are `src/data/tincommits.json`, from the registry's API. After bumping a
+version in `tins.ts`, regenerate it; the build fails while the two disagree:
+
+```bash
+node scripts/tin-commits.mjs
+```
+
 ## Search
 
 `npm run build` runs `astro build` and then `pagefind --site dist`. [Pagefind](https://pagefind.app)

@@ -1,0 +1,111 @@
+{
+  "orca-mojo": {
+    "version": "0.3.2",
+    "commit": "1db5de9aab671bf1b4de0ff1f9525535b9810b1a"
+  },
+  "dista-mojo": {
+    "version": "0.2.1",
+    "commit": "9e4839937d82f36893285301bf9ce4338dcb14ec"
+  },
+  "iceberg-mojo": {
+    "version": "0.8.6",
+    "commit": "ec4f4e07605b687a2ea9e2fda5dfd4a01aa6ba97"
+  },
+  "parquet-mojo": {
+    "version": "0.11.7",
+    "commit": "c15f51aee06ccf73102810e7de143745abba6c90"
+  },
+  "parquet-full-mojo": {
+    "version": "0.1.8",
+    "commit": "c15f51aee06ccf73102810e7de143745abba6c90",
+    "subdirectory": "full"
+  },
+  "avro-mojo": {
+    "version": "0.4.4",
+    "commit": "db833d86ddbd7cbaba4dbd79377b0a06009181ec"
+  },
+  "objectstore-mojo": {
+    "version": "0.4.1",
+    "commit": "41fac2800882e5a64da09729262dfa22bbd4ad13"
+  },
+  "sqlite-mojo": {
+    "version": "0.3.5",
+    "commit": "0d76aa7b672c85580f4d8c5de855772bc972d535"
+  },
+  "postgres-mojo": {
+    "version": "0.3.3",
+    "commit": "324b2bb61e2e80327654abecf70fd4b2defbc50d"
+  },
+  "arrow-mlake-mojo": {
+    "version": "0.2.1",
+    "commit": "178aae6e0da0dbe105f9cb02632a51cfd35b9dda"
+  },
+  "roaring-mojo": {
+    "version": "0.1.3",
+    "commit": "a90a7bd30cf1c21403a29059282072e93fbeeee2"
+  },
+  "thrift-mojo": {
+    "version": "0.1.3",
+    "commit": "21cdbce67d22d72e88e88a60e2f168b05b4ef9fa"
+  },
+  "zstd-mojo": {
+    "version": "0.1.5",
+    "commit": "76190bb31012cd2d2f6712c4e1724a66474215db"
+  },
+  "lz4-mojo": {
+    "version": "0.1.4",
+    "commit": "23cd6e54967d7e41573371507228ca5c958ca685"
+  },
+  "brotli-mojo": {
+    "version": "0.1.4",
+    "commit": "dcbf840d22e3deaf24c587d12d28570a9a882b7f"
+  },
+  "snappy-mojo": {
+    "version": "0.1.4",
+    "commit": "b8172ed0a4ef13911cc225d46e26676a5b8f1ccd"
+  },
+  "deflate-mojo": {
+    "version": "0.1.3",
+    "commit": "6639b18c58fad0e009f4224ec9f792cd919398b4"
+  },
+  "hashes-mojo": {
+    "version": "0.1.3",
+    "commit": "395aca597f9410bd0511df44d972f14b10a8b01d"
+  },
+  "memory-region-mojo": {
+    "version": "0.1.1",
+    "commit": "40068c4f95ea659e9b78aa91ced45420b07e3e6e"
+  },
+  "restate-mojo": {
+    "version": "0.4.1",
+    "commit": "e391b04b0de1f0c1f5f1b5ab736d43d171e4d1f8"
+  },
+  "threads-mojo": {
+    "version": "0.6.1",
+    "commit": "f45e780a8de77278c140cee36904e46e93e0ca1c"
+  },
+  "lint-mojo": {
+    "version": "0.1.4",
+    "commit": "5799cd56eca15ad142a9c8ba300ad45c5eca96f4"
+  },
+  "k8s-mojo": {
+    "version": "0.1.2",
+    "commit": "6cb83ce08e02234873f2d09c7501208eedb5589f"
+  },
+  "iceberg-rs-mojo": {
+    "version": "0.1.3",
+    "commit": "096434e40a0d707b733ac3ead05121684007096b"
+  },
+  "json_mlake": {
+    "version": "0.4.3",
+    "commit": "bcaa7161e757748a1310a213e123bf8810ff7e96"
+  },
+  "flare_mlake": {
+    "version": "0.13.2",
+    "commit": "b1371866a7844afefe86b25eb8af58aaa9d3fa6c"
+  },
+  "mozz_mlake": {
+    "version": "0.2.2",
+    "commit": "bd84a1f1e376912414a3ddcf0f4151ed65435a44"
+  }
+}

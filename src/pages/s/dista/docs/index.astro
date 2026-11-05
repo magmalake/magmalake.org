@@ -1,6 +1,8 @@
 ---
 import DistaDocs from "../../../../components/DistaDocs.astro";
 import CodeBlock from "../../../../components/CodeBlock.astro";
+import CodeTabs from "../../../../components/CodeTabs.astro";
+import { installTabs, MOJOSHELF_INSTALL } from "../../../../data/install";
 import { DISTA_REPO, distaDocs } from "../../../../data/dista";
 
 const description =
@@ -43,14 +45,15 @@ const about: Record<string, string> = {
 
   <h2 id="install">Install it</h2>
   <p>
-    Dista is the mojoshelf tin <code>dista-mojo</code>, version 0.2.2. With pixi and
-    mojoshelf's <code>pixi shelf</code> installed, a new project adds it, and the tins it
-    needs (arrow-mlake, memory-region and objectstore) come with it:
+    Dista is the <a href={MOJOSHELF_INSTALL} rel="noopener">mojoshelf</a> tin
+    <code>dista-mojo</code>, version 0.2.2. With pixi and mojoshelf's <code>pixi shelf</code>
+    installed, a new project adds it, and the tins it needs (arrow-mlake, memory-region and
+    objectstore) come with it. Plain pixi can add it from its repository instead:
   </p>
-  <CodeBlock label="shell" code={`pixi init -c https://conda.modular.com/max-nightly -c conda-forge app && cd app
+  <CodeTabs label="Install" copy tabs={installTabs("install", `pixi init -c https://conda.modular.com/max-nightly -c conda-forge app && cd app
 sed -i.bak 's/^\\[workspace\\]/[workspace]\\npreview = ["pixi-build"]/' pixi.toml   # tins build with pixi-build
 pixi add "mojo-compiler==1.2.0"
-pixi shelf add dista-mojo`} />
+pixi shelf add dista-mojo`)} />
   <p>
     It targets Mojo 1.2.0, and its CI also runs on the 1.3 nightly. Reading Parquet and
     Iceberg tables in tasks uses magmalake's <code>parquet-mojo</code> and
