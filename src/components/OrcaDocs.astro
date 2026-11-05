@@ -1,0 +1,120 @@
+---
+/**
+ * One page of Orca's docs (/s/orca/docs and the pages under it): Orca's
+ * header and footer, the strip of docs pages atop it, previous and next
+ * links below it, and the docs' styles. The page's own text is the slot.
+ */
+import Base from "../layouts/Base.astro";
+import OrcaNav from "./OrcaNav.astro";
+import OrcaFooter from "./OrcaFooter.astro";
+import { orcaDocs } from "../data/orca";
+
+interface Props {
+  /** The page's href in orcaDocs. */
+  href: string;
+  description: string;
+}
+const { href, description } = Astro.props;
+const i = orcaDocs.findIndex((d) => d.href === href);
+const page = orcaDocs[i];
+const prev = i > 0 ? orcaDocs[i - 1] : undefined;
+const next = i + 1 < orcaDocs.length ? orcaDocs[i + 1] : undefined;
+---
+
+<Base title={i === 0 ? "Docs · Orca" : `${page.title} · Orca docs`} description={description} bare chrome={false}>
+  <OrcaNav />
+
+  <section class="section section--flush">
+    <div class="wrap wrap--wide docs orca-docs">
+      <nav class="orca-docs__pages" aria-label="Orca docs">
+        {orcaDocs.map((d) => (
+          <a href={d.href} aria-current={d.href === href ? "page" : undefined}>{d.title}</a>
+        ))}
+      </nav>
+      <slot />
+      <nav class="orca-docs__pager" aria-label="Previous and next">
+        {prev && (
+          <a href={prev.href} rel="prev"><span>← Previous</span>{prev.title}</a>
+        )}
+        {next && (
+          <a class="orca-docs__next" href={next.href} rel="next"><span>Next →</span>{next.title}</a>
+        )}
+      </nav>
+    </div>
+  </section>
+  <OrcaFooter />
+</Base>
+
+<style is:global>
+  .orca-docs h2 {
+    font-size: 1.35rem;
+    margin: 2.75rem 0 0.8rem;
+    scroll-margin-top: 5rem;
+  }
+  .orca-docs h3 {
+    font-size: 1.05rem;
+    margin: 1.8rem 0 0.6rem;
+    scroll-margin-top: 5rem;
+  }
+  .orca-docs p,
+  .orca-docs .table-scroll,
+  .orca-docs .docs-list {
+    max-width: var(--measure);
+  }
+  .orca-docs p + p { margin-top: 0.6rem; }
+  .orca-docs .table-scroll { margin: 1rem 0 1.1rem; }
+  .orca-docs table { min-width: 0; }
+  .orca-docs .docs-list {
+    margin: 0.8rem 0 1rem;
+    padding-left: 1.2rem;
+    display: grid;
+    gap: 0.35rem;
+  }
+  .orca-docs .docs-toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    margin-top: 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+  .orca-docs__pages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.25rem;
+    margin-bottom: 2rem;
+    padding-bottom: 0.9rem;
+    border-bottom: 1px solid var(--rule);
+    font-size: 0.875rem;
+  }
+  .orca-docs__pages a {
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+  .orca-docs__pages a:hover { color: var(--text); }
+  .orca-docs__pages a[aria-current="page"] {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .orca-docs__pager {
+    display: flex;
+    gap: 1rem;
+    margin-top: 3.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--rule);
+    max-width: var(--measure);
+  }
+  .orca-docs__pager a {
+    display: grid;
+    gap: 0.2rem;
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .orca-docs__pager span {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--text-faint);
+  }
+  .orca-docs__next { margin-left: auto; text-align: right; }
+</style>

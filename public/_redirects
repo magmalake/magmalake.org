@@ -8,3 +8,7 @@
 # evidence and status now live on its own page, reached from /tins.
 /correctness  /tins  302
 /status       /tins  302
+
+# Orca's roadmap page is gone; its docs say what works, DESIGN.md what's next.
+/s/orca/roadmap  /s/orca/docs  302
+/s/orca/roadmap/  /s/orca/docs  302

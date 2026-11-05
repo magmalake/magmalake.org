@@ -1,0 +1,255 @@
+---
+import OrcaDocs from "../../../../components/OrcaDocs.astro";
+import CodeBlock from "../../../../components/CodeBlock.astro";
+import { ORCA_PRS } from "../../../../data/orca";
+
+const description =
+  "Scheduling and running Orca pipelines: the scheduler and its fires, retries and limits, runs on this machine, on Kubernetes or on EC2, runs recorded and resumed in Postgres, logs and machine metrics, lineage and rebuilds, every environment variable, and what happens when things fail.";
+
+const env = [
+  ["ORCA_DATABASE_URL", "the Postgres database runs are recorded in; unset, a pipeline's run runs in memory", "unset"],
+  ["ORCA_STALE_SECONDS", "how old a run's heartbeat must be before another process may resume it", "30"],
+  ["ORCA_WORKERS", "the local Dista workers a run forks", "4"],
+  ["ORCA_LOGS", "where attempts' logs, timelines, driver logs, instance logs and metrics go: a directory or s3://bucket/prefix", "unset"],
+  ["ORCA_LOG_STAGE", "where a log bound for object storage is written until it's complete", "$TMPDIR/orca-logs"],
+  ["ORCA_WAREHOUSE", "the root of the filesystem catalog datasets are found in, a directory or s3://; ns.table is <warehouse>/ns/table", "unset"],
+  ["ORCA_RETRY_SECONDS", "the scheduler's first wait before retrying a failed run, doubled with each start", "60"],
+  ["ORCA_SENSE_SECONDS", "how often the scheduler asks a sensor's binary for its datasets' current snapshots", "60"],
+  ["ORCA_SAMPLE_SECONDS", "how often a run's sampler writes a line of machine metrics; 0 turns it off", "5"],
+  ["ORCA_RUNNER", "where the scheduler starts runs: local, kubernetes or ec2", "local"],
+  ["ORCA_VCPU_BUDGET", "the vCPUs all live runs' pods or instances may use together; a run that would go over waits", "no limit"],
+  ["ORCA_RUN_ENV", "the scheduler's variables, by name and comma-separated, copied to every run's pods or instances", "unset"],
+  ["ORCA_RUN_DEADLINE", "seconds after which a run's pods or instances are removed whatever their state", "86400"],
+  ["ORCA_IMAGE", "the image a run's binary is in, recorded with its version; the runners set it", "unset"],
+  ["ORCA_EC2_HEAD_TYPE", "the head instance's type, unless registration gave one", "c7g.large"],
+  ["ORCA_EC2_WORKER_TYPE", "the worker instances' type, unless registration gave one", "c7g.xlarge"],
+  ["ORCA_EC2_AMI", "the image run instances boot", "unset"],
+  ["ORCA_EC2_SUBNET, ORCA_EC2_SECURITY_GROUP, ORCA_EC2_PROFILE", "where run instances go, their security group, and their instance profile", "unset"],
+  ["ORCA_EC2_DATABASE_URL", "the database URL run instances use, such as the control instance's private address", "ORCA_DATABASE_URL"],
+  ["ORCA_EC2_PREAMBLE", "shell run on each instance before the pipeline, such as an ECR login", "unset"],
+  ["ORCA_EC2_MODE", "docker runs the image on the instance; direct runs the binary, for the tests' stand-in EC2", "docker"],
+  ["ORCA_CLUSTER_LOG_SECONDS", "how often a run instance uploads its head's or worker's log", "30"],
+  ["ORCA_RUNS_NAMESPACE", "the Kubernetes namespace runs' pods go in", "orca-runs"],
+  ["ORCA_UI_ADDR", "host:port orca ui listens on", "127.0.0.1:8270"],
+  ["ORCA_UI_LOGIN", "required makes the UI's actions need a login even before any user exists", "on once a user exists"],
+  ["ORCA_UI_SESSION_HOURS", "how long a login lasts", "12"],
+  ["ORCA_UI_SECURE_COOKIES", "1 marks the session cookie Secure, for a UI behind HTTPS", "unset"],
+  ["ORCA_UI_TRUST_PROXY", "1 takes a request's address from X-Forwarded-For, behind a proxy you run", "unset"],
+  ["ORCA_UI_URL", "the UI's public address, for the Open in Perfetto link", "unset"],
+  ["ORCA_DOCS_URL", "where the UI's Docs links point", "https://mlake.dev/s/orca/docs/"],
+  ["ORCA_NOW", "fixes the clock of fires and the scheduler, as 2024-03-10T07:00Z or epoch seconds, for tests", "the clock"],
+  ["ORCA_ZONEINFO", "where time zones' TZif files are read from", "/usr/share/zoneinfo"],
+  ["DISTA_ROLE", "head or worker: the binary runs as that Dista process instead", "unset"],
+  ["DISTA_HEAD", "host:port of a Dista head to join instead of forking workers", "local mode"],
+];
+---
+
+<OrcaDocs href="/s/orca/docs/run" description={description}>
+  <p class="eyebrow">Docs</p>
+  <h1 class="section-title">Scheduling and running</h1>
+  <p class="lede">
+    The scheduler starts runs when they're due, retries the ones that fail, and starts
+    each on this machine or on a cluster of its own. Every run is recorded in Postgres,
+    so any of them can be resumed, and its tables say what made them.
+  </p>
+
+  <nav class="docs-toc" aria-label="On this page">
+    <a href="#scheduler">The scheduler</a>
+    <a href="#runners">On Kubernetes and EC2</a>
+    <a href="#state">Runs in Postgres</a>
+    <a href="#logs">Logs</a>
+    <a href="#metrics">Machine metrics</a>
+    <a href="#lineage">Lineage</a>
+    <a href="#rebuilds">Rebuilds</a>
+    <a href="#env">Environment</a>
+    <a href="#failures">When things fail</a>
+  </nav>
+
+  <h2 id="scheduler">The scheduler</h2>
+  <p>
+    <code>orca scheduler</code> links no pipeline. It knows one by the
+    <code>describe</code> that <code>orca register</code> recorded, and starts its runs as
+    <code>&lt;binary&gt; resume &lt;run&gt;</code>, so a run records its own progress
+    exactly as a run started by hand does. It needs <code>ORCA_DATABASE_URL</code>;
+    <a href="/s/orca/docs/cli#orca">the command line</a> lists its commands.
+  </p>
+  <CodeBlock label="shell" code={`./build/orca register ./build/gharchive
+./build/orca backfill gharchive 2025-01-01..2025-01-31
+./build/orca scheduler`} />
+  <p>
+    Each fire is a row with a unique (pipeline, time), inserted with its queued run in one
+    transaction, so two schedulers ticking at once, or one killed mid-tick, never fire
+    twice. Fires missed while it was down are made on its next tick, once each. A queued
+    run starts only while fewer than <code>max_runs</code> of the pipeline's runs are live,
+    counted under a lock on the pipeline's row, and none start while it's paused. A
+    scheduled, backfilled or sensed run that fails is started again after
+    <code>ORCA_RETRY_SECONDS</code>, doubled with each start, plus up to a tenth as jitter,
+    up to <code>run_retries</code> times; one whose process died is started again as soon
+    as its heartbeat is stale. A run you started by hand, or from the UI, isn't retried.
+    The scheduler holds nothing in memory, so it can be stopped and restarted at any time.
+    Registering a new build moves the pipeline's queued runs to the new code.
+  </p>
+
+  <h2 id="runners">On Kubernetes and EC2</h2>
+  <p>
+    By default the scheduler starts a run as a process on its own machine, and the run
+    forks its Dista workers there. <code>ORCA_RUNNER</code> starts each run on a
+    cluster of its own instead, from the image the pipeline was registered with:
+  </p>
+  <CodeBlock label="shell" code={`./build/orca register --image 123456789012.dkr.ecr.us-east-2.amazonaws.com/orca:data \\
+    --head-type c7g.large --worker-type c7g.2xlarge --workers 3 ./build/taxi
+ORCA_RUNNER=ec2 ./build/orca scheduler`} />
+  <p>
+    <strong><code>ORCA_RUNNER=ec2</code></strong> starts a head instance, on demand,
+    running the Dista head and the driver (<code>&lt;binary&gt; resume &lt;run&gt;</code>),
+    and <code>--workers</code> worker instances pointed at it; <code>--spot</code> makes
+    the workers Spot instances, where the account allows them, and
+    <code>--workers MIN..MAX</code> starts <code>MIN</code> and adds or drains workers up
+    to <code>MAX</code> as the head's demand changes. Each instance is tagged with its
+    run, told to terminate when it shuts down, and recorded with its type, when it
+    started and ended, and why it ended (it shut itself down, it was terminated, or a
+    Spot interruption). <strong><code>ORCA_RUNNER=kubernetes</code></strong> creates a
+    driver Job, a head Pod and Service and the worker Pods in
+    <code>ORCA_RUNS_NAMESPACE</code>, all labelled with the run and owned by the Job.
+    A pipeline without Dista tasks gets only its driver.
+  </p>
+  <p>
+    Both clean up in layers. A run's instances or pods end when it does; every tick the
+    scheduler removes those of runs that aren't running any more and those older than
+    <code>ORCA_RUN_DEADLINE</code>, so nothing a killed scheduler left behind keeps
+    running. A run whose head goes is started again on new instances. Before making a
+    cluster, the scheduler adds up the vCPUs of every live run's pods or instances, and
+    a run that would take them past <code>ORCA_VCPU_BUDGET</code> waits.
+  </p>
+  <p>
+    <code>orca aws up</code> makes all of this on AWS as one stack: a control instance
+    running the scheduler with <code>ORCA_RUNNER=ec2</code>, Postgres and the UI, and
+    what run instances need (<a href="/s/orca/docs/cli#aws">orca aws</a>,
+    <a href="/s/orca/docs/cli#where">local or AWS?</a>).
+  </p>
+
+  <h2 id="state">Runs in Postgres</h2>
+  <p>
+    With <code>ORCA_DATABASE_URL</code> set, the binary creates and migrates an
+    <code>orca</code> schema at start-up and records every run, every step of every
+    partition, and every attempt, with the inputs and outputs of each. Each change of
+    state is one transaction.
+  </p>
+  <CodeBlock label="shell" code={`export ORCA_DATABASE_URL=postgresql:///orca
+./build/gharchive run --partitions 2025-01-01..2025-01-03
+./build/gharchive status 7        # run 7's steps and attempts
+./build/gharchive resume 7`} />
+  <p>
+    <code>resume</code> reruns every step that hasn't succeeded, in order, with its
+    recorded input; steps that succeeded are read back, not run again. A run started by a
+    binary with a different registry hash is refused unless
+    <code>--allow-new-code</code> is passed.
+  </p>
+  <p>
+    One process owns a run at a time. It holds the run with a heartbeat, written from a
+    thread with its own connection, and <code>resume</code> refuses a run whose heartbeat
+    is younger than <code>ORCA_STALE_SECONDS</code>. A run whose process was killed goes
+    stale and can be resumed; a run that ended can be resumed at once. Each attempt also
+    checks that its process still owns the run, so a process that lost its run stops at
+    its next step rather than racing the new owner. <code>tests/kill.sh</code> kills a
+    run at a random step with <code>kill -9</code>, resumes it, and checks every step
+    ran to success exactly once.
+  </p>
+  <p>
+    Postgres must keep <code>synchronous_commit</code> on: with it off, an immediate
+    restart of the server can lose commits it already acknowledged. The chaos test from
+    <a href={`${ORCA_PRS}/6`} rel="noopener">PR #6</a> found this when a run's row
+    vanished.
+  </p>
+
+  <h2 id="logs">Logs</h2>
+  <p>
+    With <code>ORCA_LOGS</code> set to a directory, each attempt writes
+    <code>&lt;pipeline&gt;/&lt;run&gt;/&lt;step&gt;/&lt;partition&gt;/&lt;attempt&gt;.log</code>:
+    its start, its end, its error, and its <code>ctx.log</code> lines with UTC
+    timestamps. The path is recorded with the attempt and shown by
+    <code>status &lt;run&gt;</code>. A run with Dista tasks writes the runtime's timeline
+    beside them as <code>timeline.json</code>, in Chrome's trace format, which Perfetto
+    opens. The scheduler keeps a run's driver output as <code>driver.log</code>, and an
+    EC2 run's head and workers upload theirs to
+    <code>cluster/&lt;role&gt;-&lt;instance&gt;.log</code> every
+    <code>ORCA_CLUSTER_LOG_SECONDS</code> while they run, as an instance can go without
+    notice.
+  </p>
+  <p>
+    <code>ORCA_LOGS</code> and <code>ORCA_WAREHOUSE</code> can be locations in object
+    storage, <code>s3://bucket/prefix</code>, configured from the <code>AWS_*</code>
+    environment or the instance's role. An object can't be appended to, so a log is
+    written to a file under <code>ORCA_LOG_STAGE</code> and uploaded when it's complete:
+    an attempt's when the attempt ends, a timeline when the run does. The UI reads them
+    back from wherever they are.
+  </p>
+
+  <h2 id="metrics">Machine metrics</h2>
+  <p>
+    Beside every process doing a run's work, the runner starts
+    <code>&lt;binary&gt; sample</code>, which writes a JSON line of the machine's CPU,
+    memory, disk, disk I/O and network every <code>ORCA_SAMPLE_SECONDS</code> to
+    <code>&lt;pipeline&gt;/&lt;run&gt;/metrics/&lt;instance&gt;.jsonl</code> under
+    <code>ORCA_LOGS</code>. A run's page draws them as its Machines section, on the same
+    time axis as its steps, and marks the stretches where memory use or a disk was over 90%
+    or CPU steal over 20%, which explain most slow or failed runs.
+  </p>
+
+  <h2 id="lineage">Lineage</h2>
+  <p>
+    Every read and commit a step makes is recorded with its
+    <a href="/s/orca/docs/build#datasets">dataset</a>, so lineage is two walks over them.
+    Back from a snapshot: the run, step, partition and code that made it, the snapshots
+    that attempt read, what made each of those, and so on, to sources no Orca run made.
+    Forward: everything made from it. Both stop after 20 steps.
+  </p>
+  <CodeBlock label="output" code={`$ ./build/orca lineage lake.report
+lake.report@3141592653
+made from:
+  0 lake.report@3141592653 by report run 9 report code 0x5e1f... from lake.clean@2718281828
+  1 lake.clean@2718281828 by clean run 8 clean 2024-02 code 0x9a0c... from lake.raw@1618033988
+  2 lake.raw@1618033988 by ingest run 6 load 2024-02 code 0x77d2...
+made from it:
+  nothing`} />
+
+  <h2 id="rebuilds">Rebuilds</h2>
+  <CodeBlock label="output" code={`$ ./build/orca rebuild raw.events 2024-03
+rebuild 1
+  level 0 clean 2024-03
+  level 1 report 2024-03`} />
+  <p>
+    A rebuild runs every pipeline downstream of a dataset, a
+    <a href="/s/orca/docs/build#sensors">sensor</a> or not, over the partitions given.
+    Each pipeline is placed at its longest distance from the dataset, so one that reads
+    two rebuilt datasets runs after both, and the scheduler queues a level once every run
+    before it has succeeded. A run that fails stops the rebuild; resuming it from the UI
+    carries on. The rebuild's own commits don't also start the sensors it reruns, so each
+    pipeline runs once.
+  </p>
+
+  <h2 id="env">Environment</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Variable</th><th>What it sets</th><th>Default</th></tr></thead>
+      <tbody>
+        {env.map(([k, v, d]) => (
+          <tr><td><code>{k}</code></td><td>{v}</td><td class="ref">{d}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="failures">When things fail</h2>
+  <p>
+    <strong>A step that raises</strong> is retried up to its <code>retries</code>, then
+    fails. The steps downstream of it are skipped, while other partitions' steps that
+    don't depend on it carry on, so one bad month doesn't stop the others; the run ends
+    failed and can be resumed. <strong>A process that dies</strong> leaves its run
+    running with a stale heartbeat; <code>resume</code> marks the interrupted attempt
+    failed and continues from there. <strong>A commit that landed before the crash</strong>
+    is found by the retry rather than made again. Fuzzing, and a chaos test that kills
+    runs, restarts Postgres and races two resumes over many seeds, run in
+    <a href={`${ORCA_PRS}/6`} rel="noopener">CI</a>.
+  </p>
+</OrcaDocs>
