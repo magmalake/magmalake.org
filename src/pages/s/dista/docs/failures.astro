@@ -1,0 +1,124 @@
+---
+import DistaDocs from "../../../../components/DistaDocs.astro";
+
+const description =
+  "What Dista does when things fail: a task that raises, a worker that dies or goes silent, a peer that can't be reached, a task that runs too long, a driver that leaves, and a head that restarts; and how it's tested.";
+---
+
+<DistaDocs href="/s/dista/docs/failures" description={description}>
+  <p class="eyebrow">Docs</p>
+  <h1 class="section-title">Failure and recovery</h1>
+  <p class="lede">
+    Dista runs a dead worker's tasks again and rebuilds a restarted head from its peers. It
+    doesn't rebuild results lost with a worker: a job that needs one fails, naming it, and
+    is run again, by <a href="/s/orca">Orca</a> or by hand. Tasks may run more than once,
+    so they should be safe to repeat, as a pure function is.
+  </p>
+
+  <nav class="docs-toc" aria-label="On this page">
+    <a href="#errors">A task that raises</a>
+    <a href="#workers">A worker that dies</a>
+    <a href="#silent">A silent peer</a>
+    <a href="#peers">An unreachable peer</a>
+    <a href="#timeouts">A task that runs too long</a>
+    <a href="#drivers">A driver that leaves</a>
+    <a href="#head">A head that restarts</a>
+    <a href="#tests">How it's tested</a>
+  </nav>
+
+  <h2 id="errors">A task that raises</h2>
+  <p>
+    A task that raises fails its <code>ObjectRef</code> with the error, which
+    <code>get</code> and <code>take</code> raise in the driver, and every task that depends
+    on it fails with the same error. The worker carries on.
+  </p>
+
+  <h2 id="workers">A worker that dies</h2>
+  <p>
+    The tasks a dead worker was running go back in the queue for another worker, up to
+    <code>DISTA_TASK_RETRIES</code> times (default 3). Past that they fail with
+    <code>worker lost while running this task</code>, as they do at once if an input they
+    read from that worker went with it, or if a <code>TaskMany</code> had answered some of
+    its results.
+  </p>
+  <p>
+    The results it held are lost. Dista doesn't rebuild them by running again the tasks
+    that made them, so a task that needs one fails, saying the result was lost with its
+    worker and that the job should be run again. A task on another worker that was
+    fetching one fails with <code>input lost: the worker holding it (&lt;ip:port&gt;) went
+    away</code>, and its worker drops the connection and carries on. In local mode, where
+    nothing replaces a dead worker, tasks fail with <code>no workers left</code> once every
+    worker is gone, rather than waiting.
+  </p>
+  <p>
+    A worker that's stopped, rather than killed, <a href="/s/dista/docs/cluster#draining">drains</a>
+    first: it loses nothing if it finishes within <code>DISTA_DRAIN_SECONDS</code>.
+  </p>
+
+  <h2 id="silent">A silent peer</h2>
+  <p>
+    A host that freezes, loses its network or is hard-stopped never closes its
+    connections. Every Dista socket has TCP keepalive: after
+    <code>DISTA_KEEPALIVE_SECONDS</code> of silence (default 10; 0 turns it off) the
+    kernel probes, and after 3 unanswered probes, about 25 s in all, the connection fails.
+    The head then drops the worker and its tasks run again; a worker whose head went away
+    rejoins <code>DISTA_HEAD</code>, a replacement head included; and a driver resumes
+    with the new head. The kernel answers probes for a process that's only busy, so a long
+    task doesn't trip it. With data unacknowledged on the connection, the kernel's
+    retransmission limit applies instead, about 15 minutes on Linux.
+  </p>
+
+  <h2 id="peers">An unreachable peer</h2>
+  <p>
+    A worker connects to the workers it fetches inputs from inside its event loop, so it
+    keeps running tasks and serving fetches meanwhile. After
+    <code>DISTA_PEER_CONNECT_TIMEOUT</code> seconds (default 5, fractions allowed) it fails
+    the tasks waiting on that peer, with <code>input lost: cannot reach the worker holding
+    it</code>. A driver's fetch waits the same time. A closed port fails at once; the
+    timeout bounds an address that never answers, which the kernel would otherwise retry
+    for about two minutes.
+  </p>
+
+  <h2 id="timeouts">A task that runs too long</h2>
+  <p>
+    <code>DISTA_TASK_TIMEOUT</code> (seconds; unset, no limit) covers what keepalive can't
+    see, such as a hung task or a stopped process. The head fails a task still running
+    that long after it sent it, with <code>timed out: ran longer than
+    DISTA_TASK_TIMEOUT</code>. It isn't retried, its worker isn't stopped, and a late
+    result is dropped. <code>dista_tasks_timed_out_total</code> counts them. To stop
+    waiting without failing the task, use
+    <a href="/s/dista/docs/tasks#giving-up"><code>get</code> with a timeout</a>.
+  </p>
+
+  <h2 id="drivers">A driver that leaves</h2>
+  <p>
+    When a driver's connection drops, the head deletes its tasks still queued or waiting
+    for inputs, rather than run them for nobody. Tasks already running finish, and their
+    results are dropped.
+  </p>
+
+  <h2 id="head">A head that restarts</h2>
+  <p>
+    Nothing the head holds is written to disk; a new head is rebuilt from its peers.
+    Workers rejoin and report what they hold, and drivers reconnect under their old number
+    and resubmit what they still need. A task running at that moment may run twice.
+    Actors come back too, from their <a href="/s/dista/docs/actors#checkpoints">checkpoints</a>.
+  </p>
+  <p>
+    A head numbers new drivers from a random start and gives an epoch in its welcome, so
+    only a driver resuming under its old number claims the results workers report, and a
+    new driver can't be handed another job's. Results no driver comes back for are freed
+    after <code>DISTA_ORPHAN_SECONDS</code> (default 120). That covers a head restart, not
+    a head lost for good together with its driver.
+  </p>
+
+  <h2 id="tests">How it's tested</h2>
+  <p>
+    A chaos test kills the head at random under a random task graph and checks every
+    answer. Fuzzers cover the head's frames, the codec and the scaling policy. Other tests
+    kill a worker while two others fetch from it, fetch from a worker that stopped
+    answering, drain a worker mid-job, and restart the head once an actor has a
+    checkpoint. On kind, a worker pod is killed during the taxi queries and the actor's
+    pod is deleted mid-run, and every answer and the actor's count must come out exact.
+  </p>
+</DistaDocs>

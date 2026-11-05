@@ -1,0 +1,23 @@
+---
+/**
+ * One page of Dista's docs (/s/dista/docs and the pages under it): SectionDocs
+ * with Dista's header, footer and docs pages. The page's own text is the slot.
+ */
+import SectionDocs from "./SectionDocs.astro";
+import DistaNav from "./DistaNav.astro";
+import DistaFooter from "./DistaFooter.astro";
+import { distaDocs } from "../data/dista";
+
+interface Props {
+  /** The page's href in distaDocs. */
+  href: string;
+  description: string;
+}
+const { href, description } = Astro.props;
+---
+
+<SectionDocs name="Dista" docs={distaDocs} href={href} description={description}>
+  <DistaNav slot="nav" />
+  <slot />
+  <DistaFooter slot="footer" />
+</SectionDocs>
