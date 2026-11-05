@@ -5,17 +5,11 @@
 
 export const DISTA_REPO = "https://github.com/magmalake/dista.mojo";
 
-/** The section's pages, in its header and (after the first) its footer. */
+/** The section's pages, in its header and (after the first) its footer. The
+ * docs' own pages are reached from the strip atop every docs page. */
 export const distaLinks = [
   { href: "/s/dista", label: "Overview" },
   { href: "/s/dista/docs", label: "Docs" },
-  { href: "/s/dista/docs/tasks", label: "Tasks" },
-  { href: "/s/dista/docs/shuffles", label: "Shuffles" },
-  { href: "/s/dista/docs/actors", label: "Actors" },
-  { href: "/s/dista/docs/cluster", label: "Cluster" },
-  { href: "/s/dista/docs/cli", label: "CLI" },
-  { href: "/s/dista/docs/failures", label: "Failures" },
-  { href: "/s/dista/docs/tuning", label: "Tuning" },
   { href: "/s/dista/performance", label: "Performance" },
 ];
 

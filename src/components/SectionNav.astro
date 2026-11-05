@@ -17,6 +17,10 @@ export interface Props {
 }
 const { name, home, links, repo, tin } = Astro.props;
 const path = Astro.url.pathname.replace(/\/$/, "");
+// A link is current on its own page and, but for the section's first page,
+// on the pages under it: Docs on every docs page, API on every module's.
+const current = (href: string) =>
+  path === href ? "page" : href !== home && path.startsWith(`${href}/`) ? "true" : undefined;
 ---
 
 <header class="snav">
@@ -29,7 +33,7 @@ const path = Astro.url.pathname.replace(/\/$/, "");
     <nav class="snav__links" aria-label={name}>
       {
         links.map((l) => (
-          <a class="snav__link" href={l.href} aria-current={path === l.href ? "page" : undefined}>
+          <a class="snav__link" href={l.href} aria-current={current(l.href)}>
             {l.label}
           </a>
         ))
@@ -112,12 +116,12 @@ const path = Astro.url.pathname.replace(/\/$/, "");
   }
   .snav__search { display: inline-flex; align-items: center; }
   .snav__link:hover { color: var(--text); border-bottom-color: var(--ember); }
-  .snav__link[aria-current="page"] {
+  .snav__link[aria-current] {
     color: var(--text);
     border-bottom-color: var(--ember);
   }
   @media (max-width: 640px) {
     .snav__inner { padding-block: 0.6rem; gap: 0.5rem 1rem; }
-    .snav__links { margin-left: 0; gap: 0.5rem 1rem; flex-wrap: wrap; }
+    .snav__links { margin-left: 0; gap: 0.5rem 0.8rem; flex-wrap: wrap; }
   }
 </style>

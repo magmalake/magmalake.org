@@ -5,14 +5,11 @@
 
 export const ORCA_REPO = "https://github.com/magmalake/orca.mojo";
 
-/** The section's pages, in its header and (after the first) its footer. */
+/** The section's pages, in its header and (after the first) its footer. The
+ * docs' own pages are reached from the strip atop every docs page. */
 export const orcaLinks = [
   { href: "/s/orca", label: "Overview" },
   { href: "/s/orca/docs", label: "Docs" },
-  { href: "/s/orca/docs/build", label: "Build" },
-  { href: "/s/orca/docs/cli", label: "CLI" },
-  { href: "/s/orca/docs/run", label: "Run" },
-  { href: "/s/orca/docs/ui", label: "UI" },
 ];
 
 /** The docs' pages, in reading order: the strip atop each and its pager. */
