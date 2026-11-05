@@ -1,0 +1,23 @@
+---
+/**
+ * One page of Orca's docs (/s/orca/docs and the pages under it): SectionDocs
+ * with Orca's header, footer and docs pages. The page's own text is the slot.
+ */
+import SectionDocs from "./SectionDocs.astro";
+import OrcaNav from "./OrcaNav.astro";
+import OrcaFooter from "./OrcaFooter.astro";
+import { orcaDocs } from "../data/orca";
+
+interface Props {
+  /** The page's href in orcaDocs. */
+  href: string;
+  description: string;
+}
+const { href, description } = Astro.props;
+---
+
+<SectionDocs name="Orca" docs={orcaDocs} href={href} description={description}>
+  <OrcaNav slot="nav" />
+  <slot />
+  <OrcaFooter slot="footer" />
+</SectionDocs>

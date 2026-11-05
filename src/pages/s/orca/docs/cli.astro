@@ -1,0 +1,235 @@
+---
+import OrcaDocs from "../../../../components/OrcaDocs.astro";
+import CodeBlock from "../../../../components/CodeBlock.astro";
+
+const description =
+  "Orca's command line: the two binaries you run, a pipeline's own and the orca command; the commands you type on each; the commands orca runs for you and you'll see in its logs; exit codes; and how the same binary acts on this machine or on AWS through its environment.";
+
+const pipelineCmds = [
+  ["run --partitions KEYS [--allow-new-code]", "starts a run over the keys and runs it here, printing a line per step and partition, then the run's status. Without ORCA_DATABASE_URL it runs in memory and records nothing. --allow-new-code runs code that isn't the registered build's; the run then counts as that code's, not the pipeline's"],
+  ["resume <run> [--allow-new-code]", "continues a run at what hasn't succeeded, once its heartbeat is stale or it has ended; --allow-new-code lets a different build carry on a run another one started"],
+  ["status [<run>]", "the latest runs, or one run's steps, attempts and log paths"],
+  ["describe", "the pipeline as JSON: its steps, DAG, datasets, partitions, schedule, limits and Dista tasks"],
+  ["fires [<count>] [--after <time>]", "a scheduled pipeline's next fires (5 by default) after now or after a time such as 2025-01-01T00:00Z, each with its UTC time, wall-clock time and the partition it fills"],
+];
+
+const orcaCmds = [
+  ["register [options] <binary>...", "runs each binary's describe and records it, its path, its schedule and its limits, as a new version if its code or commit changed; queued runs move to the new build. --image, --head-type, --worker-type, --workers N or MIN..MAX (autoscaling on EC2), --spot and --secret NAME=ID (a Secrets Manager secret as the run's NAME) say how its runs run on Kubernetes or EC2"],
+  ["backfill [--rerun] <pipeline> KEYS", "queues runs for the keys that haven't succeeded and aren't in a queued or running run, and says on standard error which it left out and why; --rerun queues the done ones too. A keyed pipeline takes names, @all or @file:<path>"],
+  ["pause <pipeline>, unpause <pipeline>", "the scheduler starts none of the pipeline's runs while it's paused; fires, sensors, retries and backfills still queue theirs, and runs already going go on"],
+  ["cancel <pipeline> KEYS|@all", "cancels its queued, running and retrying runs over those keys; a running one stops before its next attempt"],
+  ["scheduler", "a tick every second until it's stopped: fires what's due, senses datasets, starts queued runs and retries"],
+  ["tick", "one tick, then exits"],
+  ["ui", "the web UI, on ORCA_UI_ADDR (127.0.0.1:8270)"],
+  ["user add <name>, user remove <name>, user list", "the UI's users; add reads the password from standard input, and on an existing user changes it and ends their sessions"],
+  ["lineage <dataset> [<snapshot>]", "what a snapshot (the latest, without one) was made from, and what was made from it"],
+  ["rebuild <dataset> KEYS", "reruns every pipeline downstream of the dataset over the keys, level by level"],
+  ["locate <binary>... [--root <dir>]", "finds each step's function, each Dista task and the pipeline in the source, and writes <binary>.source.json for the UI's links to the code"],
+];
+
+const awsCmds = [
+  ["aws up --email <addr> [--hostname H] [--console-hostname H] [--budget N] [--zone AZ]", "creates or updates the CloudFormation stack: a VPC, the control instance with the scheduler, Postgres and the UI, buckets for the warehouse and logs, the image's repository, and a Budgets alert to the address"],
+  ["aws push [--tag T]", "builds the project's image, its orca and every pipeline compiled in, and pushes it to the stack's repository"],
+  ["aws register [--tag T] [register options] <pipeline>...", "on the control instance: moves the scheduler and the UI to the image, then registers each /opt/orca/pipelines/<pipeline>"],
+  ["aws app <name> [--host H] [--port 8080] [--tag T]", "on the control instance: runs the image's /opt/orca/bin/<name> beside the UI, at https://<host>"],
+  ["aws status", "the stack's outputs, such as ControlInstance and Repository"],
+  ["aws down --yes", "deletes the stack, which fails while its buckets hold objects"],
+];
+
+const forYou = [
+  ["<binary> describe", "orca register and orca locate", "reads the pipeline's shape; the scheduler never links a pipeline"],
+  ["<binary> resume <run> [--allow-new-code]", "the scheduler, to start every queued run: a process here, a Kubernetes Job, or the head instance on EC2", "a scheduled, backfilled or UI run is a queued run resumed, so it records its progress as a run you started does"],
+  ["<binary> sense", "the scheduler, every ORCA_SENSE_SECONDS, for a sensor; and register, to record what's already there", "prints each dataset it reads with its current snapshot"],
+  ["<binary> keys", "the scheduler, for a keyed pipeline's backfills and sensor", "prints the keys dataset's snapshot, then its keys, one per line"],
+  ["<binary> dista-status <head>, <binary> dista-drain <head> <worker>", "the scheduler, for a run registered with --workers MIN..MAX on EC2", "reads the Dista head's demand, and drains a worker it's removing"],
+  ["<binary> sample --out <location> ...", "every runner, beside each process doing a run's work", "a line of machine metrics every few seconds, for the UI's Machines section"],
+  ["<binary> put-log <file> <location>, <binary> keep-log <file> <location> <start>", "each EC2 instance's script", "uploads a head's or worker's log, and appends the driver's output to the run's driver.log"],
+  ["DISTA_ROLE=head|worker <binary>", "the runners, on Kubernetes and EC2", "the binary serves as the run's Dista head or a worker instead"],
+];
+
+const where = [
+  ["ORCA_DATABASE_URL", "postgresql:///orca?host=$PWD/build&user=postgres", "postgresql://orca:…@postgres:5432/orca"],
+  ["ORCA_WAREHOUSE", "$PWD/build/warehouse", "s3://<public bucket>/warehouse"],
+  ["ORCA_LOGS", "$PWD/build/logs", "s3://<bucket>/logs"],
+  ["ORCA_RUNNER", "unset, so local", "ec2"],
+];
+
+const exits = [
+  ["0", "the run succeeded, or the command did"],
+  ["1", "a pipeline's run: a step didn't succeed, or the run deferred or was cancelled"],
+  ["2", "a usage error"],
+  ["3", "anything else: the database, a run that can't be resumed"],
+];
+---
+
+<OrcaDocs href="/s/orca/docs/cli" description={description}>
+  <p class="eyebrow">Docs</p>
+  <h1 class="section-title">The command line</h1>
+  <p class="lede">
+    You run two kinds of binary, both built in your project. Each pipeline is a Mojo file
+    you compile into a binary of its own, and that binary is its command line:
+  </p>
+  <CodeBlock label="shell" code={`pixi run mojo build -I src pipelines/gharchive.mojo -o build/gharchive
+./build/gharchive run --partitions 2025-01-01..2025-01-07`} />
+  <p>
+    <code>orca</code> is the project's own two-line <code>bin/scheduler.mojo</code>,
+    built to <code>build/orca</code>; it registers pipelines, schedules their runs and
+    serves the UI (<a href="/s/orca/docs/build#binaries">Building the binaries</a>).
+    Neither is installed globally. <code>orca aws push</code> compiles both into the
+    image, at <code>/opt/orca/bin/orca</code> and
+    <code>/opt/orca/pipelines/&lt;name&gt;</code>.
+  </p>
+
+  <nav class="docs-toc" aria-label="On this page">
+    <a href="#pipeline">A pipeline's commands</a>
+    <a href="#orca">The orca command</a>
+    <a href="#aws">orca aws</a>
+    <a href="#for-you">Commands orca runs for you</a>
+    <a href="#where">Local or AWS?</a>
+    <a href="#exits">Exit codes</a>
+  </nav>
+
+  <h2 id="pipeline">A pipeline's commands</h2>
+  <p>
+    Every pipeline binary has the same commands. <code>KEYS</code> are partition keys of
+    the pipeline's kind, months (<code>2024-01</code>) or days
+    (<code>2024-01-31</code>), and ranges of them (<code>2024-01..2024-03</code>),
+    separated by commas, or a <a href="/s/orca/docs/build#keyed">keyed</a> pipeline's
+    names.
+  </p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>./build/&lt;pipeline&gt; …</th><th>What it does</th></tr></thead>
+      <tbody>
+        {pipelineCmds.map(([k, v]) => (
+          <tr><td><code>{k}</code></td><td>{v}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <CodeBlock label="shell" code={`./build/gharchive describe
+./build/gharchive run --partitions 2025-01-01..2025-01-07
+./build/gharchive status          # the latest runs
+./build/gharchive status 7        # run 7's steps and attempts
+./build/gharchive resume 7
+./build/gharchive fires 3`} />
+  <p>
+    <code>resume</code> and <code>status</code> need <code>ORCA_DATABASE_URL</code>.
+    A run you start by hand runs in your shell, not under the scheduler, and isn't
+    retried if it fails; resume it yourself.
+  </p>
+
+  <h2 id="orca">The orca command</h2>
+  <p>
+    Everything but <code>locate</code>, <code>aws</code> and <code>sample</code> needs
+    <code>ORCA_DATABASE_URL</code>. The
+    scheduler and the UI hold no state of their own, so either can be stopped and
+    started again at any time, and an action from the UI or the command line is a row
+    the scheduler acts on at its next tick.
+  </p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>./build/orca …</th><th>What it does</th></tr></thead>
+      <tbody>
+        {orcaCmds.map(([k, v]) => (
+          <tr><td><code>{k}</code></td><td>{v}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <CodeBlock label="shell" code={`./build/orca register ./build/gharchive
+./build/orca backfill gharchive 2025-01-01..2025-01-31
+./build/orca backfill --rerun gharchive 2025-01-02     # again, though it succeeded
+./build/orca pause gharchive
+./build/orca cancel gharchive @all
+./build/orca scheduler
+./build/orca ui                  # http://127.0.0.1:8270`} />
+
+  <h2 id="aws">orca aws</h2>
+  <p>
+    <code>orca aws</code> deploys the project with the <code>aws</code> and
+    <code>docker</code> commands you already have, signed in with <code>aws login</code>
+    or <code>AWS_PROFILE</code>. Each takes <code>--stack</code> (default
+    <code>orca</code>) and <code>--region</code>.
+  </p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>./build/orca …</th><th>What it does</th></tr></thead>
+      <tbody>
+        {awsCmds.map(([k, v]) => (
+          <tr><td><code>{k}</code></td><td>{v}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="for-you">Commands orca runs for you</h2>
+  <p>
+    The scheduler links no pipeline, so it learns about one and starts its runs by
+    running the pipeline's binary with commands of its own. You don't need to type
+    these, but you'll see them in the scheduler's output, in a run's logs and in
+    <code>ps</code>:
+  </p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Command</th><th>Run by</th><th>What it's for</th></tr></thead>
+      <tbody>
+        {forYou.map(([k, by, v]) => (
+          <tr><td><code>{k}</code></td><td>{by}</td><td>{v}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <p>
+    <code>sample</code> is also <code>orca sample</code>, the same command from the
+    <code>orca</code> binary. <code>keys</code>, <code>sense</code> and
+    <code>describe</code> are safe to run yourself; they only read.
+  </p>
+
+  <h2 id="where">Local or AWS?</h2>
+  <p>
+    The commands don't know where they are. They read <code>ORCA_DATABASE_URL</code>,
+    <code>ORCA_WAREHOUSE</code>, <code>ORCA_LOGS</code> and <code>ORCA_RUNNER</code>, so
+    the same binary acts on whatever those point at. Locally, mojo-census sets them in
+    <code>scripts/env.sh</code>; on AWS, the stack writes them to
+    <code>/etc/orca.env</code> on the control instance, which its scheduler and UI
+    containers read:
+  </p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Variable</th><th>Local (scripts/env.sh)</th><th>AWS (/etc/orca.env)</th></tr></thead>
+      <tbody>
+        {where.map(([k, l, a]) => (
+          <tr><td><code>{k}</code></td><td><code>{l}</code></td><td><code>{a}</code></td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <p>
+    On AWS today, you run them on the control instance, inside the scheduler's container,
+    where that environment and the image's binaries are:
+  </p>
+  <CodeBlock label="shell" code={`aws ssm start-session --target <ControlInstance>      # from orca aws status
+sudo docker exec scheduler orca backfill gharchive 2025-01-01..2025-01-31
+sudo docker exec scheduler gharchive status
+sudo docker exec -i scheduler orca user add alice       # reads the password from stdin`} />
+  <p>
+    <code>orca aws register</code> and <code>orca aws app</code> do this for you
+    through SSM. Running the rest from your own machine against the deployed UI is
+    planned, in <a href="https://github.com/magmalake/orca.mojo/issues/111" rel="noopener">orca
+    issue #111</a>. The <a href="/s/orca/docs/run#env">full list of variables</a> is with
+    the scheduler.
+  </p>
+
+  <h2 id="exits">Exit codes</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Exit</th><th>When</th></tr></thead>
+      <tbody>
+        {exits.map(([k, v]) => (
+          <tr><td><code>{k}</code></td><td>{v}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</OrcaDocs>

@@ -1,362 +1,132 @@
 ---
-import Base from "../../../../layouts/Base.astro";
-import DistaNav from "../../../../components/DistaNav.astro";
-import DistaFooter from "../../../../components/DistaFooter.astro";
-import { DISTA_REPO } from "../../../../data/dista";
+import DistaDocs from "../../../../components/DistaDocs.astro";
+import CodeBlock from "../../../../components/CodeBlock.astro";
 import CodeTabs from "../../../../components/CodeTabs.astro";
-import { installTabs, PREREQS, MOJOSHELF_INSTALL } from "../../../../data/install";
+import { installTabs, MOJOSHELF_INSTALL } from "../../../../data/install";
+import { DISTA_REPO, distaDocs } from "../../../../data/dista";
 
 const description =
-  "How to use Dista: tasks and actors, passing results between them, shuffles, checkpoints, running locally and on Kubernetes, and watching a cluster.";
+  "How to use Dista: installing it and a first program, then tasks and results, shuffles, actors, running a cluster, the dista command, failure and recovery, and tuning, each on a page of its own.";
 
-const env = [
-  ["DISTA_ROLE", "head or worker; unset, the process is a driver", "driver"],
-  ["DISTA_HEAD", "host:port of the head, for a driver or a worker in a cluster", "local mode"],
-  ["DISTA_PORT", "the port a head listens on", "6390"],
-  ["DISTA_CONNECT_TIMEOUT", "seconds a driver or worker keeps retrying the head", "60"],
-  ["DISTA_ADVERTISE", "the address a worker gives peers to fetch its results from", "its outgoing IP"],
-  ["DISTA_STORE_DIR", "where a worker writes large results for its host to map", "/dev/shm, else $TMPDIR"],
-  ["DISTA_SHM", "0 keeps large results in the worker's memory instead", "on"],
-  ["DISTA_CHECKPOINT_URI", "where actor checkpoints go: a directory, file://, or s3://bucket/prefix", "none: checkpoints fail"],
-  ["DISTA_METRICS_PORT", "the port a head or worker serves Prometheus metrics on, at /metrics", "off"],
-  ["DISTA_DEBUG", "1 logs each task's inputs as a worker assembles them", "off"],
-];
+const about: Record<string, string> = {
+  "/s/dista/docs/tasks":
+    "Declaring tasks, where results live and how they're freed, tasks on other tasks' results, cancelling and timeouts, and what crosses the wire.",
+  "/s/dista/docs/shuffles":
+    "Tasks with several results, tasks taking a value beside results, placement by data location, and spilling.",
+  "/s/dista/docs/actors":
+    "State on a worker of its own, handles passed to tasks, restarts, checkpoints, and actors moving off a draining worker.",
+  "/s/dista/docs/cluster":
+    "Roles from the environment, the generic head, Kubernetes and EC2, draining a worker, and autoscaling.",
+  "/s/dista/docs/cli":
+    "dista head, status, drain, scale, timeline and stop; Prometheus metrics; the task timeline.",
+  "/s/dista/docs/failures":
+    "What happens when a task raises, a worker dies or goes silent, a task hangs, a driver leaves, or the head restarts.",
+  "/s/dista/docs/tuning":
+    "Tasks in flight per worker, backpressure, the node store and spilling, memory held for drivers, and large results.",
+};
 ---
 
-<Base title="Docs · Dista" description={description} bare chrome={false}>
-  <DistaNav />
+<DistaDocs href="/s/dista/docs" description={description}>
+  <p class="eyebrow">Docs</p>
+  <h1 class="section-title">Using Dista</h1>
+  <p class="lede">
+    Dista turns ordinary Mojo functions into tasks that run across a cluster. One binary
+    runs as the driver, the head and every worker, on a laptop or on Kubernetes. This page
+    installs it and runs a first program; the pages below cover the rest. How it works is
+    in the repository's <a href={`${DISTA_REPO}/blob/main/DESIGN.md`} rel="noopener">DESIGN.md</a>.
+  </p>
 
-  <section class="section section--flush">
-    <div class="wrap wrap--wide docs">
-      <p class="eyebrow">Docs</p>
-      <h1 class="section-title">Using Dista</h1>
-      <p class="lede">
-        Dista turns ordinary Mojo functions into tasks that run across a cluster. This page
-        covers what a program needs: declaring tasks and actors, passing results around,
-        and running the same binary locally and on Kubernetes. The design itself is in the
-        repository's <a href={`${DISTA_REPO}/blob/main/DESIGN.md`} rel="noopener">DESIGN.md</a>.
-      </p>
+  <h2 id="pages">The docs</h2>
+  <ul class="docs-list">
+    {distaDocs.slice(1).map((d) => (
+      <li><a href={d.href}><strong>{d.title}</strong></a>: {about[d.href]}</li>
+    ))}
+  </ul>
 
-      <nav class="docs-toc" aria-label="On this page">
-        <a href="#install">Install</a>
-        <a href="#tasks">Tasks</a>
-        <a href="#results">Results</a>
-        <a href="#graphs">Tasks on results</a>
-        <a href="#shuffles">Shuffles</a>
-        <a href="#types">What crosses the wire</a>
-        <a href="#actors">Actors</a>
-        <a href="#checkpoints">Checkpoints</a>
-        <a href="#running">Running it</a>
-        <a href="#watching">Watching a cluster</a>
-        <a href="#timeline">The timeline</a>
-        <a href="#failures">When things fail</a>
-      </nav>
+  <h2 id="install">Install it</h2>
+  <p>
+    Dista is the <a href={MOJOSHELF_INSTALL} rel="noopener">mojoshelf</a> tin
+    <code>dista-mojo</code>, version 0.2.2. With pixi and mojoshelf's <code>pixi shelf</code>
+    installed, a new project adds it, and the tins it needs (arrow-mlake, memory-region and
+    objectstore) come with it. Plain pixi can add it from its repository instead:
+  </p>
+  <CodeTabs label="Install" copy tabs={installTabs("install", `pixi init -c https://conda.modular.com/max-nightly -c conda-forge app && cd app
+sed -i.bak 's/^\\[workspace\\]/[workspace]\\npreview = ["pixi-build"]/' pixi.toml   # tins build with pixi-build
+pixi add "mojo-compiler==1.2.0"
+pixi shelf add dista-mojo`)} />
+  <p>
+    It targets Mojo 1.2.0, and its CI also runs on the 1.3 nightly. Reading Parquet and
+    Iceberg tables in tasks uses magmalake's <code>parquet-mojo</code> and
+    <code>iceberg-mojo</code> beside it.
+  </p>
 
-      <h2 id="install">Install</h2>
-      <p>
-        Dista is the <a href={MOJOSHELF_INSTALL} rel="noopener">mojoshelf</a> tin
-        <code>dista-mojo</code>. A new project needs Modular's channel, pixi's build preview
-        and the compiler before it, and plain pixi can add it from its repository instead:
-      </p>
-      <CodeTabs label="Install" copy tabs={installTabs("install", [...PREREQS, "pixi shelf add dista-mojo"].join("\n"))} />
-      <p>
-        It targets Mojo 1.2 and tracks the nightly toolchain. Reading Parquet and Iceberg
-        tables uses magmalake's <code>parquet-mojo</code> and <code>iceberg-mojo</code>
-        alongside it.
-      </p>
-
-      <h2 id="tasks">Tasks</h2>
-      <p>
-        A task is a top-level <code>def</code> taking one argument, declared once with its
-        argument and result types, and registered in the runtime's parameter list:
-      </p>
-      <pre><code>{`from dista import Runtime, Task
+  <h2 id="first">A first program</h2>
+  <p>
+    A task is a top-level <code>def</code>, declared once with its argument and result
+    types, and registered in the runtime's parameter list:
+  </p>
+  <CodeBlock label="Mojo" code={`from dista import ObjectRef, Runtime, Task
 
 def square(x: Int) -> Int:
     return x * x
 
-def describe(x: Int) raises -> String:
-    if x < 0:
-        raise Error("negative")
-    return String("x = ", x)
-
 comptime Square = Task[Int, Int, square]
-comptime Describe = Task[Int, String, describe]
 
 def main() raises:
-    var rt = Runtime[Square, Describe](workers=4)
-    var r = rt.remote[Square](7)
-    print(rt.get(r))  # 49`}</code></pre>
-      <p>
-        <code>rt.remote</code> returns at once with an <code>ObjectRef</code>;
-        <code>rt.get</code> waits for the result, or raises the task's error.
-        <code>rt.ready(r)</code> asks without waiting. Every process in a cluster runs the
-        same binary, so tasks are named on the wire by a hash of the function, and a process
-        built with different tasks is refused when it connects.
-      </p>
+    var rt = Runtime[Square](workers=4)
+    var refs = List[ObjectRef[Int]]()
+    for i in range(1000):
+        refs.append(rt.remote[Square](i))
+    var total = 0
+    for r in refs:
+        total += rt.take(r)  # get and release: read once, then freed
+    print(total)  # 332833500`} />
+  <p>
+    Build it with <code>mojo build</code> and run it. With nothing set in its environment,
+    it forks a head and four workers on this machine and drives them. Point the same
+    binary at a head and it joins a cluster instead:
+  </p>
+  <CodeBlock label="shell" code={`DISTA_ROLE=head DISTA_PORT=6390 ./app                  # the head
+DISTA_ROLE=worker DISTA_HEAD=headhost:6390 ./app       # once per worker
+DISTA_HEAD=headhost:6390 ./app                         # the driver`} />
+  <p>
+    <a href="/s/dista/docs/tasks">Tasks and results</a> says what a task can take and
+    return, and <a href="/s/dista/docs/cluster">Running a cluster</a> how the roles fit
+    together.
+  </p>
 
-      <h2 id="results">Results</h2>
-      <p>
-        A small result (up to 64 KB) comes back to the driver through the head. A larger one
-        stays on the worker that computed it: in a shared-memory file on that host, which a
-        reader on the same host maps without copying, or in the worker's memory, which a
-        reader elsewhere fetches from that worker directly. <code>rt.location(r)</code> says
-        where a result lives.
-      </p>
-      <p>
-        The head counts references to every result: the driver's own, until
-        <code>rt.release(r)</code>, and one for every pending task that takes it as input.
-        At zero the result is deleted wherever it is. <code>rt.stats()</code> reports what
-        the head holds.
-      </p>
+  <h2 id="source">From source</h2>
+  <p>
+    The repository builds and tests with pixi. <code>pixi run cli</code> builds the
+    <code>dista</code> command to <code>build/dista</code>.
+  </p>
+  <CodeBlock label="shell" code={`git clone ${DISTA_REPO} && cd dista.mojo
+pixi run test               # codec, frame, runtime and cluster tests, Mojo 1.2.0
+pixi run -e nightly test    # the same on the 1.3 nightly
+pixi run -e data test-data  # tasks over Parquet and Iceberg; needs those tins checked out next door
+pixi run bench              # task throughput
+pixi run test-kind          # the smoke test on a kind cluster (needs docker, kind, kubectl)`} />
+  <p>
+    What each release changed is in
+    <a href={`${DISTA_REPO}/blob/main/CHANGELOG.md`} rel="noopener">CHANGELOG.md</a>, and
+    what Dista is for, with its phases, in
+    <a href={`${DISTA_REPO}/blob/main/VISION.md`} rel="noopener">VISION.md</a>.
+  </p>
+</DistaDocs>
 
-      <h2 id="graphs">Tasks on results</h2>
-      <p>
-        A task can take another task's result instead of a value. The head runs it once the
-        input exists, and the worker running it fetches the input from wherever it lives. A
-        list of refs is gathered, in order, into a <code>Seq</code>:
-      </p>
-      <pre><code>{`from dista import Seq
-
-def total(xs: Seq[Int]) -> Int:
-    var t = 0
-    for i in range(len(xs)):
-        t += xs[i]
-    return t
-
-comptime Total = Task[Seq[Int], Int, total]
-
-var squares = List[ObjectRef[Int]]()
-for i in range(100):
-    squares.append(rt.remote[Square](i))
-var sum = rt.remote[Total](squares)   # runs once all 100 exist
-var next = rt.remote[Square](sum)     # a task on a task's result`}</code></pre>
-      <p>If an input fails, every task that depends on it fails with that error.</p>
-
-      <h2 id="shuffles">Shuffles</h2>
-      <p>
-        A shuffle moves data between two sets of tasks: map tasks each split their output
-        by key, and each reduce task takes its share from every map task. Two kinds of task
-        make that work. A <code>TaskMany</code> returns several results, each an object of
-        its own, stored, fetched and freed separately, like Ray's <code>num_returns</code>.
-        A <code>TaskWith</code> takes a value beside a list of other tasks' results:
-      </p>
-      <pre><code>{`from dista import TaskMany, TaskWith
-
-def map_rows(m: Int) -> Seq[Seq[Pair]]:          # one partition per reducer
-    ...
-def reduce_part(j: Int, parts: Seq[Seq[Pair]]) -> Seq[Pair]:
-    ...
-
-comptime MapRows = TaskMany[Int, Seq[Pair], map_rows]
-comptime ReducePart = TaskWith[Int, Seq[Pair], Seq[Pair], reduce_part]
-
-var outputs = List[List[ObjectRef[Seq[Pair]]]]()
-for m in range(8):
-    outputs.append(rt.remote_many[MapRows](m, 4))   # 4 results each
-for j in range(4):
-    var mine = List[ObjectRef[Seq[Pair]]]()
-    for m in range(8):
-        mine.append(outputs[m][j])
-    var r = rt.remote[ReducePart](j, mine)          # partition j of every map`}</code></pre>
-      <p>
-        A <code>TaskMany</code> must return exactly as many values as asked for, or every
-        one of its results fails. Each large partition stays on the worker that made it,
-        and the reducer fetches it from there.
-      </p>
-
-      <h2 id="types">What crosses the wire</h2>
-      <p>
-        Arguments and results are encoded by type, at compile time. Scalars,
-        <code>Bool</code> and <code>String</code> have fixed encodings. Any struct is
-        encoded field by field. Arrow <code>RecordBatch</code>es travel as Arrow IPC, so
-        columnar data keeps its format between tasks. A type that needs its own encoding
-        implements the <code>Codec</code> trait. A bare <code>List</code> doesn't encode:
-        send <code>Seq</code>, a struct, or Arrow instead.
-      </p>
-
-      <h2 id="actors">Actors</h2>
-      <p>
-        An actor is state that lives on one worker between calls: a type, the function that
-        builds it, and methods that take it <code>mut</code>. Each actor gets a worker of its
-        own, and its calls run one at a time, in the order they were made. A method's
-        result is an <code>ObjectRef</code> like a task's, so a task can take it as input.
-      </p>
-      <pre><code>{`from dista import Actor, Method
-
-@fieldwise_init
-struct Counter(Movable):
-    var total: Int
-
-def new_counter(start: Int) -> Counter:
-    return Counter(start)
-
-def add(mut c: Counter, n: Int) -> Int:
-    c.total += n
-    return c.total
-
-comptime CounterActor = Actor[Counter, Int, new_counter]
-comptime Add = Method[CounterActor, Int, Int, add]
-
-var rt = Runtime[CounterActor, Add, Square](workers=2)
-var c = rt.create[CounterActor](0)
-var n = rt.call[Add](c, 5)            # ObjectRef[Int]
-print(rt.get(rt.remote[Square](n)))   # 25
-rt.kill(c)                             # after its earlier calls; frees the worker`}</code></pre>
-      <p>
-        Calling a method on the wrong actor's handle is a compile error. A handle is a
-        value, so a task or another actor can call the actor too: declare it with
-        <code>CtxTask</code> or <code>CtxMethod</code>, and its function gets a
-        <code>Client</code> to call through:
-      </p>
-      <pre><code>{`from dista import Client, CtxTask
-
-def bump(mut c: Client, h: ActorHandle[CounterActor]) raises -> Int:
-    return c.get(c.call[Add](h, 1))
-
-comptime Bump = CtxTask[ActorHandle[CounterActor], Int, bump]
-var n = rt.remote[Bump](c)   # a task calling the actor`}</code></pre>
-      <p>
-        <strong>When an actor's worker goes away</strong>, the head places the actor on
-        another worker, builds it again from its last checkpoint, or its constructor if it
-        has none, and runs every call since then again, in order. Each call is answered
-        once. A call may run twice on the actor's state, so a method should be safe to
-        repeat; that's the price of not losing calls.
-      </p>
-
-      <h2 id="checkpoints">Checkpoints</h2>
-      <p>
-        A checkpoint is the actor's state through the codec, written to
-        <code>DISTA_CHECKPOINT_URI</code>: a directory every node sees, or
-        <code>s3://bucket/prefix</code>. Ask for one every so many calls, or when it
-        suits:
-      </p>
-      <pre><code>{`var c = rt.create[CounterActor](0, checkpoint_every=100)
-...
-var calls = rt.get(rt.checkpoint(c))   # written; covers this many calls`}</code></pre>
-      <p>
-        A restart then replays only the calls since the checkpoint, and the head stops
-        keeping the ones it covers. A state type that implements <code>Codec</code> decides
-        what it saves: a cache can save nothing, a loaded model its path. Checkpoints also
-        carry an actor across a head restart: the new head restores it from its newest
-        checkpoint, and its callers send again the calls no checkpoint includes. Killing an
-        actor deletes its checkpoints.
-      </p>
-
-      <h2 id="running">Running it</h2>
-      <p>
-        <strong>Locally,</strong> <code>Runtime(workers=n)</code> forks a head and
-        <code>n</code> workers and drives them from the same process, which is how tests
-        and laptops run. <strong>On a cluster,</strong> the same binary takes its role from
-        the environment: one head, any number of workers, and drivers that connect to the
-        head.
-      </p>
-      <div class="table-scroll">
-        <table>
-          <thead><tr><th>Variable</th><th>What it sets</th><th>Default</th></tr></thead>
-          <tbody>
-            {env.map(([k, v, d]) => (
-              <tr><td><code>{k}</code></td><td>{v}</td><td class="ref">{d}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p>
-        The head doesn't run your code, so it can be the generic one: <code>dista
-        head</code>, from the <code>dista</code> command (<code>pixi run cli</code>). It
-        serves drivers and workers built from any program, several at once, and gives each
-        driver's tasks and actors only to workers built from the same program. A head built
-        into your program, <code>DISTA_ROLE=head</code>, serves only that program.
-      </p>
-      <p>
-        The repository's <code>deploy/</code> folder builds one image for every role, with
-        your program at <code>/opt/dista/bin/app</code> and the command at
-        <code>/opt/dista/bin/dista</code>; the manifests run the head as <code>dista
-        head</code>. <code>tests/kind.sh</code> runs a cluster on kind, and
-        <code>bench/cloud/</code> runs one on EC2 with k3s. Give the workers'
-        <code>/dev/shm</code> room for the large results they keep. A deleted pod's process
-        exits on its SIGTERM.
-      </p>
-      <p>
-        <code>Runtime(pipeline=n)</code> sets how many tasks the head keeps in flight per
-        worker (default 2).
-      </p>
-
-      <h2 id="watching">Watching a cluster</h2>
-      <p>
-        <code>dista status</code> prints the head's view: workers, with the program each
-        was built from and what it's running or hosting; drivers; and actors, with their
-        worker, calls and last checkpoint. <code>dista timeline -o trace.json</code> writes
-        every driver's finished tasks, and <code>dista stop</code> shuts the head and its
-        workers down. Each takes <code>--head host:port</code>, or reads
-        <code>DISTA_HEAD</code>.
-      </p>
-      <p>
-        With <code>DISTA_METRICS_PORT</code> set, the head and every worker serve
-        Prometheus metrics at <code>/metrics</code>: tasks submitted and finished by
-        outcome, task durations as a histogram, queue depth, objects and bytes held,
-        workers, drivers, actors, restarts and checkpoints. The kind manifests turn it on
-        at port 9090, for Kubernetes monitoring to scrape.
-      </p>
-
-      <h2 id="timeline">The timeline</h2>
-      <p>
-        The head stamps each task's submission, dispatch and completion, and the worker its
-        start and end. <code>rt.timeline(path)</code> writes every finished task, in
-        Chrome's trace format, which <a href="https://ui.perfetto.dev" rel="noopener">Perfetto</a>
-        and the browser's trace viewer open. Each worker is a track, with a second track for
-        time spent waiting for inputs. The driver can add its own work, so a gap between
-        tasks says what it was:
-      </p>
-      <pre><code>{`var t = rt.clock()
-var tasks = scan.plan_files()
-rt.span("plan", t)          # from t to now, on the driver's track
-...
-_ = rt.timeline("trace.json")`}</code></pre>
-
-      <h2 id="failures">When things fail</h2>
-      <p>
-        <strong>A task that raises</strong> fails its <code>ObjectRef</code> with the error,
-        and the tasks that depend on it. <strong>A worker that dies</strong> has the tasks it
-        was running sent to another worker, up to <code>DISTA_TASK_RETRIES</code> times
-        (default 3). The results it held are lost: Dista doesn't rebuild them by re-running
-        the tasks that made them, so a task that needs one fails, naming it, and the job is
-        run again, by <a href="/s/orca">Orca</a> or by hand. In local mode, where nothing
-        replaces a dead worker, tasks fail with <code>no workers left</code> once every worker
-        is gone, rather than waiting. <strong>A head that dies</strong> is
-        rebuilt from its peers when it comes back: workers rejoin and report what they hold,
-        and drivers reconnect under their old number and resubmit what they still need. A
-        task running at that moment may run twice, so tasks should be safe to repeat, as a
-        pure function is. Actors come back too, from their checkpoints (see above). A chaos
-        test kills the head at random throughout a run and checks every answer, and on kind
-        the actor's pod is deleted mid-run and its count must come out exact.
-      </p>
-    </div>
-  </section>
-  <DistaFooter />
-</Base>
-
-<style>
-  .docs h2 {
-    font-size: 1.35rem;
-    margin: 2.75rem 0 0.8rem;
-    scroll-margin-top: 5rem;
-  }
-  .docs p,
-  .docs pre,
-  .docs .table-scroll {
-    max-width: var(--measure);
-  }
-  .docs p + p { margin-top: 0.6rem; }
-  .docs pre { margin: 1rem 0 1.1rem; }
-  .docs .table-scroll { margin: 1rem 0 1.1rem; }
-  .docs table { min-width: 0; }
-  .docs-toc {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem 1.1rem;
-    margin-top: 1.5rem;
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
-  }
-</style>
+<script is:inline>
+  // This page used to hold every section. Old links go to the section's new page.
+  (function () {
+    var to = {
+      tasks: "tasks#tasks", results: "tasks#results", graphs: "tasks#graphs",
+      types: "tasks#types",
+      shuffles: "shuffles",
+      actors: "actors", checkpoints: "actors#checkpoints",
+      running: "cluster",
+      watching: "cli", timeline: "cli#timeline",
+      failures: "failures",
+    };
+    var h = location.hash.slice(1);
+    if (Object.prototype.hasOwnProperty.call(to, h)) location.replace("/s/dista/docs/" + to[h]);
+  })();
+</script>

@@ -5,182 +5,24 @@
 
 export const ORCA_REPO = "https://github.com/magmalake/orca.mojo";
 
-/** The section's pages, in its header and (after the first) its footer. */
+/** The section's pages, in its header and (after the first) its footer. The
+ * docs' own pages are reached from the strip atop every docs page. */
 export const orcaLinks = [
   { href: "/s/orca", label: "Overview" },
   { href: "/s/orca/docs", label: "Docs" },
-  { href: "/s/orca/roadmap", label: "Roadmap" },
+];
+
+/** The docs' pages, in reading order: the strip atop each and its pager. */
+export const orcaDocs = [
+  { href: "/s/orca/docs", label: "Start", title: "Using Orca" },
+  { href: "/s/orca/docs/build", label: "Build", title: "Writing a pipeline" },
+  { href: "/s/orca/docs/cli", label: "CLI", title: "The command line" },
+  { href: "/s/orca/docs/run", label: "Run", title: "Scheduling and running" },
+  { href: "/s/orca/docs/ui", label: "UI", title: "The UI" },
+  { href: "/s/orca/docs/debug", label: "Debug", title: "Debugging failures" },
 ];
 export const ORCA_PRS = `${ORCA_REPO}/pull`;
 export const DISTA_SECTION = "/s/dista";
-
-export const asOf = "2 November 2026";
-
-export type PrState = "merged" | "review" | "planned";
-export type Pr = { n: number; title: string; gate: string; state: PrState; pr?: number };
-
-/** Phase 1, as DESIGN.md splits it into pull requests. */
-export const phase1Prs: Pr[] = [
-  {
-    n: 1,
-    title: "The design",
-    gate: "Agreed.",
-    state: "merged",
-    pr: 1,
-  },
-  {
-    n: 2,
-    title: "Steps and pipelines: compile-time edges, describe, an in-memory run",
-    gate: "A three-step pipeline runs over three partitions in order; the compile-fail tests are rejected.",
-    state: "merged",
-    pr: 2,
-  },
-  {
-    n: 3,
-    title: "State in Postgres: runs, steps and attempts, heartbeats, run, resume and status",
-    gate: "tests/kill.sh on the toy pipeline: killed at a random step, resumed, every step ran to success exactly once.",
-    state: "merged",
-    pr: 3,
-  },
-  {
-    n: 4,
-    title: "Pinned reads and recognised commits over Iceberg tables",
-    gate: "A step killed right after its commit, then resumed, leaves one snapshot, not two; a resumed step reads its pinned snapshot after another commit lands.",
-    state: "merged",
-    pr: 4,
-  },
-  {
-    n: 5,
-    title: "Dista inside steps, per-attempt logs and the run's timeline",
-    gate: "A step fans 100 Dista tasks over 4 workers; each attempt's log is where status says.",
-    state: "merged",
-    pr: 5,
-  },
-  {
-    n: 6,
-    title: "The taxi pipeline: download, load and compact each month of NYC taxi trips",
-    gate: "2023–2024 loads to 79,478,796 rows, the same as taxibench's table, and a run killed during the load resumes at the failed month.",
-    state: "merged",
-    pr: 8,
-  },
-];
-
-/** Phase 2, as DESIGN.md splits it into pull requests. */
-export const phase2Prs: Pr[] = [
-  {
-    n: 1,
-    title: "Partition keys and sets: Month and Day, Monthly and Daily, partitions= on the pipeline",
-    gate: "A daily pipeline runs over a range of days; a pipeline whose first step takes a Month under Daily doesn't compile.",
-    state: "merged",
-    pr: 10,
-  },
-  {
-    n: 2,
-    title: "Cron and time zones: next fires, a TZif reader with POSIX TZ rules, schedule= on the pipeline",
-    gate: "Next fires match a table of known ones across both daylight-saving transitions in New York and London; the parsers are fuzzed.",
-    state: "merged",
-    pr: 11,
-  },
-  {
-    n: 3,
-    title: "The scheduler: register, tick, scheduler and backfill; max_runs, retries with backoff, missed fires",
-    gate: "With the clock stepped month by month, partitions fill once each; racing ticks fire nothing twice; a backfill never has more than max_runs running.",
-    state: "merged",
-    pr: 12,
-  },
-  {
-    n: 4,
-    title: "The taxi backfill: every month from 2011, on a monthly schedule",
-    gate: "orca backfill taxi 2011-01..2024-12 with max_runs=4 loads every month once, and the schedule then fills the next month when it falls due.",
-    state: "merged",
-    pr: 13,
-  },
-];
-
-/** Phase 3, as DESIGN.md splits it into pull requests. */
-export const phase3Prs: Pr[] = [
-  {
-    n: 1,
-    title: "Read-only pages and their JSON: orca ui on flare, an escaping HTML writer, pipelines and runs",
-    gate: "Every page answers HTML and JSON; a run's JSON agrees with status; a step's error with <script> in it comes out as text.",
-    state: "merged",
-    pr: 16,
-  },
-  {
-    n: 2,
-    title: "Logs, the DAG and live updates: attempt pages, the DAG as SVG, polled fragments, the Dista timeline",
-    gate: "A running run's page follows it to succeeded and stops polling; the DAG has a box per step and an edge per after.",
-    state: "merged",
-    pr: 17,
-  },
-  {
-    n: 3,
-    title: "Actions: start, resume, rerun from a step, backfill and cancel, as rows the scheduler acts on",
-    gate: "Phase 3's gate, over HTTP only: a failed step found, its log read, the run resumed and succeeding under the scheduler.",
-    state: "merged",
-    pr: 18,
-  },
-];
-
-/** What phase 3's gate checks, in tests/actions.sh on PR #18. */
-export const phase3Gate = [
-  "A toy run fails a step; the test finds it on /runs, reads the failed attempt's log and posts resume, and with the scheduler running the run succeeds, the failed step on its second attempt and nothing else run again.",
-  "A rerun from measure copies days from the old run and runs measure and total; a cancelled running run stops before its next step and ends cancelled; a resume onto new code waits for confirmation.",
-  "A POST from another site's page, or with neither Origin nor Referer, is refused and changes nothing.",
-];
-
-/** Phase 4, as DESIGN.md splits it into pull requests. */
-export const phase4Prs: Pr[] = [
-  {
-    n: 1,
-    title: "Datasets on steps: reads= and writes=, checked when a step touches a table, and the cycle check at registration",
-    gate: "A step that scans a dataset it didn't declare fails naming both; registering a pipeline that closes a cycle is refused.",
-    state: "merged",
-    pr: 21,
-  },
-  {
-    n: 2,
-    title: "Lineage: back from a snapshot and forward from it, orca lineage, and the dataset pages with their graph",
-    gate: "Over ingest, clean and report, lineage back from a report snapshot names its run, its code and its inputs, and agrees with the snapshots' own summaries.",
-    state: "merged",
-    pr: 23,
-  },
-  {
-    n: 3,
-    title: "Sensors and rebuild: sensor=True, <binary> sense, one run per snapshot, orca rebuild and the UI's form",
-    gate: "Phase 4's gate: a snapshot committed outside Orca starts clean, whose commit starts report, and nothing else; a rebuild reruns both in order.",
-    state: "merged",
-    pr: 24,
-  },
-];
-
-/** What phase 4's gate checks, in tests/sensors.sh on PR #24. */
-export const phase4Gate = [
-  "With the scheduler running, a program that isn't an Orca pipeline commits to raw.events: the sensor clean runs for the partition the snapshot holds, its commit starts the sensor report, and a sensor over an unrelated dataset never runs.",
-  "Each snapshot starts one run, however many ticks see it, three of them racing the scheduler; what the tables held when the sensors were registered starts nothing.",
-  "orca rebuild raw.events 2024-03 reruns clean, then report once clean has ended, and its commits start no sensor: six runs in all.",
-  "Testing found two bugs: two writers creating a table at once could livelock retrying their commits, now retried with jittered backoff, and fuzzing the metadata reader found a read past the end of the text.",
-];
-
-/** What phase 1's gate measured. */
-export const phase1Gate = [
-  "The 24 months of 2023–2024 load to 79,478,796 rows, and every column's sum equals taxibench's table.",
-  "A run killed with kill -9 while loading 2023-10, then resumed, loads each month once: 25 commits, one per month and the compaction.",
-];
-
-/** Alongside phase 1: testing that isn't one of the design's PRs. */
-export const testingPr = {
-  pr: 6,
-  title: "Fuzzing and chaos testing, as Dista does",
-  body: [
-    "Fuzzing with mozz: month lists, step inputs read back from Postgres, JSON quoting, and matching a snapshot's orca.* summary against a reference. Phase 2 adds the cron parser, the POSIX TZ parser and day ranges.",
-    "Chaos: a run driven to the end through kill -9s, immediate Postgres restarts, two resumes racing and flaky steps, then checked: every step succeeded by exactly one attempt, no two owners overlapping, the same total as an uninterrupted run. 25 seeds pass locally, 3 run in CI.",
-  ],
-  found: [
-    "A summary missing a key matched an empty value (a gather step's partition). Matching now requires every key.",
-    "With synchronous_commit=off, an immediate Postgres restart loses commits it had acknowledged: a run's row vanished. A deployment must keep it on.",
-  ],
-};
 
 export type Phase = {
   n: number;
@@ -262,13 +104,6 @@ export const worksToday = [
 ];
 
 export const inReview: string[] = [];
-
-/** What phase 2's gate measured, by hand, on PR #13. */
-export const phase2Gate = [
-  "orca backfill taxi 2011-01..2024-12: all 168 months loaded on their first start, never more than 4 at once, in 11 minutes on one 10-core Mac, to 1,438,321,685 rows, one file per month.",
-  "With the clock set to 2 February 2025, a tick at 05:59 fired nothing; at 06:00 it fired once, for January, which downloaded from the TLC and loaded its 3,475,204 rows.",
-  "It found a bug: iceberg never seeds its random snapshot IDs, so concurrent pipeline processes drew the same ones and overwrote each other's manifest lists. Orca now seeds each process, and iceberg's fix takes them from the OS.",
-];
 
 export const notYet = [
   "Runs on Kubernetes, and logs in S3 (phase 5)",
