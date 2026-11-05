@@ -19,6 +19,7 @@ export const orcaDocs = [
   { href: "/s/orca/docs/cli", label: "CLI", title: "The command line" },
   { href: "/s/orca/docs/run", label: "Run", title: "Scheduling and running" },
   { href: "/s/orca/docs/ui", label: "UI", title: "The UI" },
+  { href: "/s/orca/docs/debug", label: "Debug", title: "Debugging failures" },
 ];
 export const ORCA_PRS = `${ORCA_REPO}/pull`;
 export const DISTA_SECTION = "/s/dista";

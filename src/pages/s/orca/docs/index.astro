@@ -4,7 +4,7 @@ import CodeBlock from "../../../../components/CodeBlock.astro";
 import { ORCA_REPO, orcaDocs } from "../../../../data/orca";
 
 const description =
-  "How to use Orca: installing it, then writing a pipeline, its command line, scheduling and running it here or on Kubernetes or EC2, and the web UI, each on a page of its own.";
+  "How to use Orca: installing it, then writing a pipeline, its command line, scheduling and running it here or on Kubernetes or EC2, the web UI, and debugging failed runs, each on a page of its own.";
 
 const about: Record<string, string> = {
   "/s/orca/docs/build":
@@ -15,6 +15,8 @@ const about: Record<string, string> = {
     "The scheduler, runs on Kubernetes and EC2, runs in Postgres, logs and machine metrics, lineage and rebuilds, the environment, and what happens when things fail.",
   "/s/orca/docs/ui":
     "The pages and their JSON, the actions, logins, timelines and links to the code.",
+  "/s/orca/docs/debug":
+    "Where a failed run's errors and logs are, adding context to errors, symbolized crash dumps, reproducing a partition locally, and resuming it.",
 };
 ---
 

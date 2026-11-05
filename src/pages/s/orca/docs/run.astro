@@ -247,7 +247,9 @@ rebuild 1
     don't depend on it carry on, so one bad month doesn't stop the others; the run ends
     failed and can be resumed. <strong>A process that dies</strong> leaves its run
     running with a stale heartbeat; <code>resume</code> marks the interrupted attempt
-    failed and continues from there. <strong>A commit that landed before the crash</strong>
+    failed and continues from there. One that crashed has its attempts failed with its
+    stack dump's first frames as soon as its runner sees it end
+    (<a href="/s/orca/docs/debug#crashes">Debugging failures</a>). <strong>A commit that landed before the crash</strong>
     is found by the retry rather than made again. Fuzzing, and a chaos test that kills
     runs, restarts Postgres and races two resumes over many seeds, run in
     <a href={`${ORCA_PRS}/6`} rel="noopener">CI</a>.
