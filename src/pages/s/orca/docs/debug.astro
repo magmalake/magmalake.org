@@ -1,0 +1,204 @@
+---
+import OrcaDocs from "../../../../components/OrcaDocs.astro";
+import CodeBlock from "../../../../components/CodeBlock.astro";
+
+const description =
+  "Debugging a failed Orca run: where its errors and logs are, in the UI and in S3, what a raised error carries and how to add context to it, crash stack dumps and how the image symbolizes them, reproducing a partition locally, and resuming or rerunning it.";
+
+const logFiles = [
+  ["driver.log", "everything the run's process printed, each start after a --- start <n> line: the step lines, the run's status, a crash's stack dump"],
+  ["<step>/<partition>/<attempt>.log", "one attempt's start, end, error and ctx.log lines, with UTC timestamps; the partition is _run for a gather step, and a key's / is written %2F"],
+  ["cluster/<role>-<instance>.log", "an EC2 run's head or worker output, uploaded every ORCA_CLUSTER_LOG_SECONDS while it runs, so a Dista task that crashed on a worker is here"],
+  ["metrics/<instance>.jsonl", "the machine's CPU, memory, disk and network while the run went on"],
+  ["timeline.json", "the run's Dista tasks, for Perfetto"],
+];
+---
+
+<OrcaDocs href="/s/orca/docs/debug" description={description}>
+  <p class="eyebrow">Docs</p>
+  <h1 class="section-title">Debugging failures</h1>
+  <p class="lede">
+    A run that fails leaves an error on each step that didn't succeed, a log for each
+    attempt, and its process's output as <code>driver.log</code>. This page says where
+    each of them is, what they can and can't tell you, and how to run the failing
+    partition again, here or on the cluster.
+  </p>
+
+  <nav class="docs-toc" aria-label="On this page">
+    <a href="#where">Where failures show</a>
+    <a href="#errors">Raised errors</a>
+    <a href="#crashes">Crashes</a>
+    <a href="#locally">Reproducing it locally</a>
+    <a href="#again">Resuming and rerunning</a>
+  </nav>
+
+  <h2 id="where">Where failures show</h2>
+  <p>
+    In <a href="/s/orca/docs/ui">the UI</a>, <code>/runs?status=failed</code> lists the
+    failed runs, newest first (the Status filter on the Runs page), and
+    <code>?pipeline=</code> narrows it to one pipeline. A run's page has the run's own
+    Error when it ended without a step saying why, such as
+    <code>interrupted: its process stopped</code>, and its Steps table has an Error for
+    each step and partition, with a link to its latest attempt, whose page shows its log
+    (the last MiB of it) and its error. The run's page links its
+    <code>driver.log</code>, and on EC2 each instance's log. Every page
+    is JSON too, so the same is a <code>curl</code> away:
+  </p>
+  <CodeBlock label="shell" code={`curl -s 'https://orca.example.com/runs?status=failed&format=json'
+curl -s 'https://orca.example.com/runs/73?format=json'      # its steps, with "error" and "log"
+curl -s https://orca.example.com/runs/73/driver.log`} />
+  <p>
+    On the command line, <code>&lt;binary&gt; status &lt;run&gt;</code> prints the run's
+    steps, their attempts, and where each attempt's log is. The logs
+    themselves are under <code>ORCA_LOGS</code>, a directory or a prefix in object
+    storage; on the stack <code>orca aws up</code> makes it is
+    <code>s3://orca-&lt;account&gt;-&lt;region&gt;/logs</code>, whose objects expire after
+    30 days. Each run's are under <code>&lt;pipeline&gt;/&lt;run&gt;/</code>:
+  </p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>File</th><th>What's in it</th></tr></thead>
+      <tbody>
+        {logFiles.map(([k, v]) => (
+          <tr><td><code>{k}</code></td><td>{v}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <CodeBlock label="shell" code={`aws s3 ls s3://orca-123456789012-us-east-2/logs/mojo_history/73/ --recursive
+aws s3 cp s3://orca-123456789012-us-east-2/logs/mojo_history/73/driver.log -`} />
+  <p>
+    An attempt's log is uploaded when the attempt ends, so an attempt whose process died
+    may have none; its lines went to the process's output as well, tagged
+    <code>[step partition]</code>, and so are in <code>driver.log</code>. A run whose
+    machine ran out of memory or disk shows it on its page, in the Machines section.
+  </p>
+
+  <h2 id="errors">Raised errors</h2>
+  <p>
+    A step fails when it raises. Orca records the <code>Error</code>'s message as the
+    attempt's error, against the step, the partition and the attempt's number, retries it
+    up to the step's <code>retries</code>, and skips what depends on it. The message is
+    all there is: Mojo's <code>Error</code> carries no stack trace today (its
+    <code>get_stack_trace()</code> is empty even with
+    <code>MOJO_ENABLE_STACK_TRACE_ON_ERROR</code> set), so a bare
+    <code>HTTP 404</code> or <code>unexpected end of input</code> from deep in a library
+    says nothing about where it came from.
+  </p>
+  <p>
+    So add what you were doing where you catch it, and raise it again. Name the key and
+    the operation, not the step or the partition, which Orca records already, and keep
+    the original message last:
+  </p>
+  <CodeBlock label="mojo" code={`def hour_task(day: String, hour: Int) raises -> DataFiles:
+    try:
+        return fetch_hour(day, hour, load_dataset(EVENTS))
+    except e:
+        raise Error(day, " hour ", hour, ": ", e)`} />
+  <p>
+    That gives <code>2025-01-01 hour 7: GET https://data.gharchive.org/2025-01-01-7.json.gz:
+    HTTP 404</code>. Do it at a step's boundaries rather than around every call: where
+    one step handles many keys (a repository, a file, an hour), where it calls a
+    library whose errors don't say what they were reading, and where a task's error
+    comes back from a Dista worker. Orca does the same at its own: a table that can't be
+    loaded, written or committed names its dataset
+    (<code>orca: can't commit to lake.events (9 tries): ...</code>). Leave a
+    <code>defer</code> out of it: Orca reads the wait it asks for from the start of its
+    message, so a <code>defer</code> wrapped in another message is just a failure. A
+    step that handles many keys and
+    shouldn't fail for one bad key can log the key's error with <code>ctx.log</code> and
+    carry on, as <code>mojo_history</code> does for a repository it can't clone.
+  </p>
+
+  <h2 id="crashes">Crashes</h2>
+  <p>
+    A segfault, an <code>abort()</code> or a failed bounds check doesn't raise: it ends
+    the process, and every attempt it was running with it. Mojo's runtime prints a stack
+    dump to standard error first, which goes into <code>driver.log</code>. The runner
+    that sees the process end (the scheduler for a local run, the head instance's
+    script on EC2, the scheduler keeping the driver pod's log on Kubernetes) finds the
+    dump there and fails the attempts the process left running with its first frames,
+    so the step's Error on the run's page says where it crashed:
+  </p>
+  <CodeBlock label="output" code={`crashed: /src/project/pipelines/gharchive.mojo:52:14: the input is bad; at load_day
+/src/project/pipelines/gharchive.mojo:52:14, orca::step::Step::run src/orca/step.mojo:399:23,
+orca::cli::_resume src/orca/cli.mojo:381:23, orca_main src/orca/cli.mojo:133:27`} />
+  <p>
+    The part after <code>crashed:</code> is what <code>abort</code> or the failed
+    <code>debug_assert</code> said, when it said anything; a segfault has only the
+    frames. The run then goes the way a run whose process died does: a scheduled one is
+    started again within its retries, and one you started is failed with
+    <code>interrupted: its process stopped</code>, ready to resume. A process killed with
+    no dump, by <code>kill -9</code> or the kernel's out-of-memory killer, leaves
+    <code>interrupted: the process running it stopped</code> instead; its machine's
+    memory is on the run's page.
+  </p>
+  <p>
+    The dump names functions and lines only when two things hold. The runtime has to
+    find <code>llvm-symbolizer</code>, through <code>LLVM_SYMBOLIZER_PATH</code> or on
+    <code>PATH</code>; without it, it says
+    <code>Stack dump without symbol names</code> and prints addresses. And the binary
+    has to have line tables, from <code>mojo build -g1</code>; without them, the frames
+    inlined into <code>main</code> all come out as <code>main</code>. The image
+    <code>orca aws push</code> builds does both: it builds every binary with
+    <code>-g1</code> and compresses the line tables with <code>objcopy</code>, copies
+    the pixi environment's <code>llvm-symbolizer</code> to
+    <code>/opt/orca/libexec</code>, and sets <code>LLVM_SYMBOLIZER_PATH</code> to it.
+    Compressed, the line tables make a binary about half as big again (mojo-census's
+    <code>gharchive</code> goes from 4.2 MB to 6.5 MB; 25 MB uncompressed), and it
+    runs as fast as before. A project with a <code>Dockerfile.orca</code> of its own
+    should do the same:
+  </p>
+  <CodeBlock label="dockerfile" code={`# build stage: line tables, and the symbolizer with what it links
+RUN pixi run mojo build -g1 -I src pipelines/gharchive.mojo -o /out/pipelines/gharchive \
+    && objcopy --compress-debug-sections=zlib /out/pipelines/gharchive
+RUN mkdir -p /out/libexec && cp -L .pixi/envs/default/bin/llvm-symbolizer /out/libexec/
+# runtime stage
+COPY --from=build /out/libexec /opt/orca/libexec
+ENV LLVM_SYMBOLIZER_PATH=/opt/orca/libexec/llvm-symbolizer`} />
+  <p>
+    <code>llvm-symbolizer</code> links the pixi environment's
+    <code>libstdc++</code>, which the image's <code>/opt/orca/lib</code> has already for
+    the pipelines. Locally, <code>pixi run</code> puts it on <code>PATH</code>, so a
+    binary built with <code>-g1</code> crashes with its frames named; for a debugger,
+    build with <code>-g</code>, the full debug info.
+  </p>
+
+  <h2 id="locally">Reproducing it locally</h2>
+  <p>
+    A pipeline binary runs any partition by itself, with no scheduler, no database and
+    no cluster: without <code>ORCA_DATABASE_URL</code> it records the run in memory, and
+    it forks its Dista workers on this machine. Run the partition that failed, with
+    <code>ORCA_LOGS</code> for the attempts' logs and a warehouse of your own so nothing
+    shared is written:
+  </p>
+  <CodeBlock label="shell" code={`pixi run mojo build -g1 -I src pipelines/gharchive.mojo -o build/gharchive
+ORCA_WAREHOUSE=build/warehouse ORCA_LOGS=build/logs \\
+    pixi run ./build/gharchive run --partitions 2025-01-01
+cat build/logs/gharchive/0/load_day/2025-01-01/1.log`} />
+  <p>
+    A keyed pipeline takes the key's name, <code>--partitions owner/name</code>. To rule
+    out what differs on Linux, such as a library that won't load or a missing
+    command, run the same in the image the run used, which is on its page:
+  </p>
+  <CodeBlock label="shell" code={`docker run --rm --entrypoint sh -e ORCA_WAREHOUSE=/tmp/w <image> \\
+    -c 'gharchive run --partitions 2025-01-01'`} />
+
+  <h2 id="again">Resuming and rerunning</h2>
+  <p>
+    Once it's fixed, a failed run is resumed rather than started over: the steps that
+    succeeded are read back, and only the rest run, with their recorded inputs. The
+    run's Resume (or Retry, in a runs table) queues it for the scheduler;
+    <code>&lt;binary&gt; resume &lt;run&gt;</code> runs it here. A fix is new code,
+    which <code>resume</code> refuses unless told
+    (<code>--allow-new-code</code>, or the UI's confirmation), so register the new
+    build first and the pipeline's queued runs move to it. Rerun from here, on an
+    attempt's page, makes a new run from that step on, the steps before it copied from
+    the old run. To redo partitions that succeeded, <code>orca backfill --rerun</code>
+    queues them again. <a href="/s/orca/docs/run#failures">Scheduling and running</a>
+    says what the scheduler retries on its own.
+  </p>
+  <CodeBlock label="shell" code={`./build/orca register ./build/gharchive         # the fixed build
+./build/gharchive resume 73 --allow-new-code     # here, now
+./build/orca backfill --rerun gharchive 2025-01-01`} />
+</OrcaDocs>
