@@ -185,9 +185,9 @@ export ORCA_UI_ADDR=127.0.0.1:8275
         its value and limit (launches an hour, cost, idle CPU, failures, stuck runs, the
         control instance's load), and <code>orca watchdog snooze</code> silences one. Nothing
         local trips it, since there are no instances to launch. Per-pipeline placement
-        (<code>orca register --placement control</code>) is in
-        <a href={`${ORCA_REPO}/pull/152`} rel="noopener">a pull request</a> and not on main
-        yet.
+        (<code>orca register --placement control</code>,
+        <a href={`${ORCA_REPO}/pull/152`} rel="noopener">#152</a>) is on main and ships in
+        the next orca release.
       </p>
       <p>
         <code>orca login</code> and <code>--remote</code> work against the local UI exactly as
