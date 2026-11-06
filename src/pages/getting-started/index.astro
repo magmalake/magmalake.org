@@ -5,7 +5,7 @@ import PipelineDiagram from "../../components/PipelineDiagram.astro";
 import { GHARCHIVE_REPO, LIBS, ORCA_DEMO } from "../../data/gharchive";
 
 const description =
-  "Build a lake of GitHub activity on magmalake: see it running, then build it by handing a coding agent the skills and a prompt, or step by step from pixi and mojoshelf to Orca pipelines, a flare console, a local run and a deploy to AWS.";
+  "Build a lake of GitHub activity on magmalake: see it running, then build it by handing a coding agent the skills and a prompt, or step by step from pixi and mojoshelf to Orca pipelines, a flare console, a local run and a deploy to AWS. And how to develop the stack itself on a laptop.";
 
 const host = (u: string) => u.replace(/^https:\/\//, "");
 ---
@@ -58,7 +58,7 @@ const host = (u: string) => u.replace(/^https:\/\//, "");
       <PipelineDiagram />
 
       <h2 id="choose">Build it yourself</h2>
-      <p>Two ways, one project. Each page stands on its own.</p>
+      <p>Two ways, one project, and a guide to working on the stack itself. Each page stands on its own.</p>
       <div class="gs-cards">
         <a class="gs-card" href="/getting-started/agent">
           <span class="gs-card__title">Let an agent build it</span>
@@ -72,6 +72,14 @@ const host = (u: string) => u.replace(/^https:\/\//, "");
           <span class="gs-card__text">
             Install pixi and mojoshelf, create the project, read the code the agent wrote, run
             it locally, and deploy it to AWS. Or clone the example and run it as it is.
+          </span>
+        </a>
+        <a class="gs-card" href="/getting-started/develop">
+          <span class="gs-card__title">Develop locally</span>
+          <span class="gs-card__text">
+            Change Orca, Dista, Iceberg, Parquet or the example and run the change on a laptop
+            first: the checkouts to lay out, the test suites, a local lake, and testing a
+            library change inside the example before it is released.
           </span>
         </a>
       </div>
