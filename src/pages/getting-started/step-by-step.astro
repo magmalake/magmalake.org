@@ -200,6 +200,10 @@ for p in gharchive mojo_repos mojo_history; do ./build/orca locate build/$p --ro
         the UI with <code>kill</code> and Postgres with
         <code>pixi run pg_ctl -D build/pg stop</code>.
       </p>
+      <p>
+        To change Orca, Iceberg or Parquet and try the change in this project before it is
+        released, see <a href="/getting-started/develop">Develop locally</a>.
+      </p>
 
       <h2 id="aws">Deploy to AWS</h2>
       <p>
@@ -299,7 +303,7 @@ sudo docker exec scheduler orca backfill gharchive 2025-01-01..2025-01-31`} />
 
       <GettingStartedPager
         prev={{ href: "/getting-started/agent", label: "Let an agent build it" }}
-        next={{ href: "/getting-started", label: "Back to getting started" }}
+        next={{ href: "/getting-started/develop", label: "Develop locally" }}
       />
     </div>
   </section>
