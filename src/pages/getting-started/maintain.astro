@@ -266,13 +266,13 @@ npx wrangler deploy`} />
         <li>one server (CAX21: 4 ARM vCPU, 8 GB), rescaled CPU and RAM only to a CAX41 for the initial import and any full rebuild, then back;</li>
         <li>the <code>local</code> runner, with Dista threaded workers (<code>DISTA_WORKER_SLOTS</code>), so Orca launches no instances and spend cannot run away;</li>
         <li>the warehouse and logs on Hetzner Object Storage (S3-compatible, through <code>AWS_ENDPOINT_URL_S3</code>), Postgres in a container on a Volume with a nightly <code>pg_dump</code> to Object Storage;</li>
-        <li>no open ports but SSH: a Cloudflare Tunnel serves orca.mlake.dev and census.mlake.dev; secrets come from files through <code>ORCA_SECRET_FETCH</code>.</li>
+        <li>no open ports but SSH: a Cloudflare Tunnel serves orca.mojourney.dev and mojourney.dev; secrets come from files through <code>ORCA_SECRET_FETCH</code>.</li>
       </ul>
       <h3 id="cutover">Cutover checklist</h3>
       <p>From #166; the issue is the source if it has changed since.</p>
       <ol>
         <li>Prerequisites merged and released: orca #165, iceberg-mojo 0.11.1 (the fix for <a href={`${ORCA_REPO}/issues/164`} rel="noopener">#164</a>), then orca-mojo 0.10.0; mojo-census re-pinned to those commits (the <a href="#release">release steps</a>); the mojoshelf Worker deployed so shelf 0.7.0 installs (<a href="#cli">the CLI steps</a>).</li>
-        <li>Accounts and credentials, yours to create: a Hetzner Cloud project and read/write API token (for <code>hcloud</code> on the laptop only), an Object Storage bucket with S3 keys, a Cloudflare Tunnel and token with routes for orca.mlake.dev and census.mlake.dev, and a GitHub token for the census's mojo_repos.</li>
+        <li>Accounts and credentials, yours to create: a Hetzner Cloud project and read/write API token (for <code>hcloud</code> on the laptop only), an Object Storage bucket with S3 keys, a Cloudflare Tunnel and token with routes for orca.mojourney.dev and mojourney.dev, and a GitHub token for the census's mojo_repos.</li>
         <li><code>deploy/hetzner/up.sh</code> on the small server; the two hostnames move to the tunnel.</li>
         <li><code>orca user add &lt;name&gt;</code> (it reads the password from stdin), then register the census pipelines from its <code>orca.toml</code>.</li>
         <li><code>rescale.sh up</code>, let the fill run (the pipeline page's Fill line shows progress), then <code>rescale.sh down</code>.</li>
@@ -300,24 +300,24 @@ fill_max_runs = 1
       </p>
       <h3 id="operate">Operating</h3>
       <p>
-        The UI is at <a href="https://orca.mlake.dev" rel="noopener">orca.mlake.dev</a>:
+        The UI is at <a href="https://orca.mojourney.dev" rel="noopener">orca.mojourney.dev</a>:
         <strong>Ops &gt; Control</strong> for the scheduler host, <strong>Ops &gt; Fleet</strong>
         for launched instances (empty on the <code>local</code> runner, and its cost rules are
         off there), and the <strong>watchdog</strong> page for the rules, their values and
         active trips. Operations go through the UI or the remote CLI, which keep audit rows.
         Log in once, then pass <code>--remote</code>:
       </p>
-      <CodeBlock label="shell" code={`orca login https://orca.mlake.dev [--user NAME] [--days N] [--label L]
-orca --remote https://orca.mlake.dev status
-orca --remote https://orca.mlake.dev watchdog status
-orca --remote https://orca.mlake.dev watchdog snooze <rule> 2h        # 30m, 1d; "off" ends it
-orca --remote https://orca.mlake.dev pause gharchive
-orca --remote https://orca.mlake.dev unpause gharchive
-orca --remote https://orca.mlake.dev backfill --preview gharchive 2024-01-01..2024-01-31
-orca --remote https://orca.mlake.dev backfill gharchive 2024-01-01..2024-01-31
-orca --remote https://orca.mlake.dev backfill --rerun gharchive 2024-01-05   # done keys too
-orca --remote https://orca.mlake.dev cancel gharchive 2024-01-01..2024-01-31  # or: cancel <run>
-orca --remote https://orca.mlake.dev resume <run>                      # rerun <run> <step> starts from a step`} />
+      <CodeBlock label="shell" code={`orca login https://orca.mojourney.dev [--user NAME] [--days N] [--label L]
+orca --remote https://orca.mojourney.dev status
+orca --remote https://orca.mojourney.dev watchdog status
+orca --remote https://orca.mojourney.dev watchdog snooze <rule> 2h        # 30m, 1d; "off" ends it
+orca --remote https://orca.mojourney.dev pause gharchive
+orca --remote https://orca.mojourney.dev unpause gharchive
+orca --remote https://orca.mojourney.dev backfill --preview gharchive 2024-01-01..2024-01-31
+orca --remote https://orca.mojourney.dev backfill gharchive 2024-01-01..2024-01-31
+orca --remote https://orca.mojourney.dev backfill --rerun gharchive 2024-01-05   # done keys too
+orca --remote https://orca.mojourney.dev cancel gharchive 2024-01-01..2024-01-31  # or: cancel <run>
+orca --remote https://orca.mojourney.dev resume <run>                      # rerun <run> <step> starts from a step`} />
       <p>
         Without <code>--remote</code> the same commands act on the database named by
         <code>ORCA_DATABASE_URL</code> (or set <code>ORCA_REMOTE</code>). <code>backfill</code>
