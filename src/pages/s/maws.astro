@@ -1,4 +1,6 @@
 ---
+import { Code } from "astro:components";
+import { themes } from "../../integrations/shiki.mjs";
 import Base from "../../layouts/Base.astro";
 
 const description =
@@ -85,12 +87,12 @@ const script = "https://raw.githubusercontent.com/magmalake/maws/main/install.sh
         <code>~/.local/share/maws</code> and links <code>~/.local/bin/maws</code>. No sudo.
       </p>
       <div class="install__code">
-        <pre><code>curl -fsSL {script} | less</code></pre>
+        <Code lang="bash" themes={themes} defaultColor={false} wrap={null} code={`curl -fsSL ${script} | less`} />
         <button type="button" class="copy" aria-label="Copy command">Copy</button>
       </div>
       <p class="install__text">Once you have read it:</p>
       <div class="install__code">
-        <pre><code>curl -fsSL {script} | bash</code></pre>
+        <Code lang="bash" themes={themes} defaultColor={false} wrap={null} code={`curl -fsSL ${script} | bash`} />
         <button type="button" class="copy" aria-label="Copy command">Copy</button>
       </div>
       <p class="install__text">
@@ -196,7 +198,7 @@ const script = "https://raw.githubusercontent.com/magmalake/maws/main/install.sh
     border: 1px solid var(--border);
     border-radius: var(--radius);
   }
-  .install__code pre {
+  .install__code :global(pre) {
     flex: 1;
     min-width: 0;
     margin: 0;

@@ -8,6 +8,7 @@
  * path after the package's name with the dots as slashes.
  */
 import { Marked, type Tokens } from "marked";
+import { highlight } from "../integrations/shiki.mjs";
 
 export type Doc = { name: string; doc: string };
 export type Overload = {
@@ -99,6 +100,8 @@ export const anchorOf = (kind: string, name: string): string => `${kind}-${name}
 const md = new Marked({
   gfm: true,
   renderer: {
+    // Fences are coloured at build time (src/integrations/shiki.mjs).
+    code: ({ text, lang }: Tokens.Code) => highlight(text, (lang ?? "").split(/\s/)[0] || "text") + "\n",
     html: ({ text }: Tokens.HTML | Tokens.Tag) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;"),
     heading({ tokens, depth }: Tokens.Heading) {
       const d = Math.min(6, depth + 3);

@@ -1,4 +1,6 @@
 ---
+import { Code } from "astro:components";
+import { themes } from "../integrations/shiki.mjs";
 import Base from "../layouts/Base.astro";
 import StackDiagram from "../components/StackDiagram.astro";
 import TakeATinCta from "../components/TakeATinCta.astro";
@@ -91,7 +93,7 @@ const description =
             agent writing a data pipeline in Mojo starts with it. Each rule carries the
             measurement behind it.
           </p>
-          <pre class="callout__code"><code>npx skills add magmalake/skills</code></pre>
+          <Code class="callout__code" lang="bash" themes={themes} defaultColor={false} wrap={null} code="npx skills add magmalake/skills" />
           <p class="callout__fine">
             That installs it. In Claude Code you can instead run{" "}
             <code>/plugin marketplace add magmalake/skills</code> and then{" "}

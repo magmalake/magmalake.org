@@ -39,8 +39,6 @@
   overflow-x: auto;
 }
 .codetabs__panel code { color: var(--text); }
-.codetabs__panel .k { color: var(--ember); }
-.codetabs__panel .s { color: var(--lake); }
 .codetabs__note {
   margin: 0.75rem 0 0;
   font-size: 0.8125rem;

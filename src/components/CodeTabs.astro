@@ -4,10 +4,12 @@
  * src/data/examples.ts. With `tabs`, any set, such as a tin's install two
  * ways (src/data/install.ts). Without JavaScript the first tab shows and the
  * others stay hidden. In the Markdown twin every panel shows, each under its
- * tab's name. Mojo keywords and strings are coloured at build time, so the
- * examples stay plain text there.
+ * tab's name. Shiki colours them at build time, so the examples stay plain
+ * text there.
  */
+import { Code } from "astro:components";
 import "../styles/codetabs.css";
+import { themes } from "../integrations/shiki.mjs";
 import { examples } from "../data/examples";
 import type { Tab } from "../data/install";
 
@@ -24,19 +26,6 @@ const {
   copy = false,
 } = Astro.props;
 
-const KEYWORDS = new Set([
-  "from", "import", "def", "var", "comptime", "return", "for", "in", "raises", "mut",
-]);
-
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-function highlight(code: string): string {
-  return code.replace(/("[^"]*"|'[^']*'|[A-Za-z_]+|[^"'A-Za-z_]+)/g, (tok) => {
-    if (tok.startsWith('"') || tok.startsWith("'")) return `<span class="s">${esc(tok)}</span>`;
-    if (KEYWORDS.has(tok)) return `<span class="k">${tok}</span>`;
-    return esc(tok);
-  });
-}
 ---
 
 <div class="codetabs" data-codetabs>
@@ -72,7 +61,7 @@ function highlight(code: string): string {
             Copy
           </button>
         )}
-        <pre><code set:html={t.mojo ? highlight(t.code) : esc(t.code)} /></pre>
+        <Code code={t.code} lang={t.mojo ? "mojo" : "bash"} themes={themes} defaultColor={false} wrap={null} />
         {(t.note || t.href) && (
           <p class="codetabs__note">
             <Fragment set:html={t.note ?? ""} /> {t.href && <a href={t.href}>More</a>}

@@ -178,6 +178,16 @@ pre code {
   line-height: 1.7;
 }
 
+/* Syntax colours, from Shiki (src/integrations/shiki.mjs). Every token carries
+ * both themes' colours as --shiki-light and --shiki-dark; which one shows
+ * follows the same two signals as the palette above. The block's own
+ * background and text colour stay the site's. */
+:is(.astro-code, .shiki) span { color: var(--shiki-light); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) :is(.astro-code, .shiki) span { color: var(--shiki-dark); }
+}
+:root[data-theme="dark"] :is(.astro-code, .shiki) span { color: var(--shiki-dark); }
+
 hr {
   border: 0;
   border-top: 1px solid var(--rule);

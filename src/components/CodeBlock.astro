@@ -4,19 +4,30 @@
  * button needs JavaScript and the clipboard API; without them the code is
  * still there to select.
  */
+import { Code } from "astro:components";
+import { themes } from "../integrations/shiki.mjs";
+
 interface Props {
   code: string;
   /** What the code is, for screen readers: "shell", "Mojo", "output". */
   label?: string;
+  /** The language to colour it as; by default what the label says it is. */
+  lang?: string;
 }
-const { code, label = "code" } = Astro.props;
+const { code, label = "code", lang } = Astro.props;
+
+// Output that opens with a prompt is a terminal session; other output, the
+// Claude Code commands and the prompt to paste are text, left uncoloured.
+const LANG: Record<string, string> = { shell: "bash", mojo: "mojo", "orca.toml": "toml", dockerfile: "docker" };
+const language =
+  lang ?? LANG[label.toLowerCase()] ?? (label === "output" && code.startsWith("$ ") ? "shellsession" : "text");
 ---
 
 <div class="codeblock" data-codeblock>
   <button type="button" class="codeblock__copy" data-copy data-pagefind-ignore aria-label={`Copy the ${label}`}>
     Copy
   </button>
-  <pre><code>{code}</code></pre>
+  <Code code={code} lang={language} themes={themes} defaultColor={false} wrap={null} />
 </div>
 
 <script>
@@ -45,7 +56,7 @@ const { code, label = "code" } = Astro.props;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
   }
-  .codeblock pre {
+  .codeblock :global(pre) {
     padding: 0.85rem 1rem;
     padding-right: 4.75rem;
   }

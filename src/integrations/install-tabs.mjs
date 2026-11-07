@@ -11,6 +11,7 @@
  *      there too, so a page whose first mention is the block needs no more.
  */
 import { installTabs, MOJOSHELF_INSTALL } from "../data/install.ts";
+import { highlight } from "./shiki.mjs";
 
 /** @param {string} s */
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -30,7 +31,7 @@ function tabsHtml(tabs) {
         `<div class="codetabs__panel codetabs__panel--copy" role="tabpanel" id="panel-${t.id}" aria-labelledby="tab-${t.id}"${i === 0 ? "" : " hidden"}>` +
         `<p class="codetabs__twin">${esc(t.label)}:</p>` +
         `<button type="button" class="codeblock__copy" data-copy data-pagefind-ignore aria-label="Copy the code">Copy</button>` +
-        `<pre><code>${esc(t.code)}</code></pre>` +
+        highlight(t.code, "bash") +
         (t.note ? `<p class="codetabs__note">${t.note}</p>` : "") +
         `</div>`,
     )

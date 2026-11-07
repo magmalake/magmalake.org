@@ -1,4 +1,6 @@
 ---
+import { Code } from "astro:components";
+import { themes } from "../../../../integrations/shiki.mjs";
 import Base from "../../../../layouts/Base.astro";
 import DistaNav from "../../../../components/DistaNav.astro";
 import DistaFooter from "../../../../components/DistaFooter.astro";
@@ -235,11 +237,11 @@ const groups = [
           vCPU quota for the nodes. Each run brings its cluster up, runs, and tears it down,
           and writes a results folder with every log, the answers and the timeline.
         </p>
-        <pre class="callout__code"><code>{`bench/cloud/bench data load   # the table, once
+        <Code class="callout__code" lang="bash" themes={themes} defaultColor={false} wrap={null} code={`bench/cloud/bench data load   # the table, once
 bench/cloud/bench gate        # 3 nodes, ~15 minutes
 bench/cloud/bench local       # one process, 16 and 1 threads
 bench/cloud/bench matrix      # 3, 6 and 12 nodes
-JOB=shuffle bench/cloud/bench matrix   # the shuffle`}</code></pre>
+JOB=shuffle bench/cloud/bench matrix   # the shuffle`} />
         <p class="callout__fine">
           The benchmark's code, the Rust and Ray versions included, is in
           <a href={`${DISTA_REPO}/tree/main/bench`} rel="noopener"><code>bench/</code></a>.

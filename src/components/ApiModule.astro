@@ -3,6 +3,8 @@
  * One module of a tin's API reference: its structs, traits, functions and
  * aliases, each with its signature and docstrings, from src/data/api.
  */
+import { Code } from "astro:components";
+import { themes } from "../integrations/shiki.mjs";
 import ApiOverload from "./ApiOverload.astro";
 import { anchorOf, docHtml, inlineHtml, type Module, type Struct, type Fn, type Alias, type Doc } from "../data/apiref";
 
@@ -43,7 +45,7 @@ const aliasCode = (a: Alias) => `comptime ${a.name}${a.type ? `: ${a.type}` : ""
           {g.items.map((s) => (
             <article class="api__item" id={anchorOf(g.kind, s.name)}>
               <h3><code>{s.name}</code></h3>
-              <pre class="api__sig"><code>{s.signature}</code></pre>
+              <Code class="api__sig" code={s.signature ?? ""} lang="mojo" themes={themes} defaultColor={false} wrap={null} />
               {s.summary && <div class="api__doc" set:html={docHtml(s.summary)} />}
               {s.description && <div class="api__doc" set:html={docHtml(s.description)} />}
               {docList(s.parameters).length > 0 && (
@@ -70,7 +72,7 @@ const aliasCode = (a: Alias) => `comptime ${a.name}${a.type ? `: ${a.type}` : ""
               )}
               {(s.aliases ?? []).map((a) => (
                 <div class="api__member" id={anchorOf(`${s.name}-alias`, a.name)}>
-                  <pre class="api__sig"><code>{aliasCode(a)}</code></pre>
+                  <Code class="api__sig" code={aliasCode(a)} lang="mojo" themes={themes} defaultColor={false} wrap={null} />
                   {a.summary && <div class="api__doc" set:html={docHtml(a.summary)} />}
                 </div>
               ))}
@@ -111,7 +113,7 @@ const aliasCode = (a: Alias) => `comptime ${a.name}${a.type ? `: ${a.type}` : ""
       <h2>Aliases</h2>
       {aliases.map((a) => (
         <article class="api__item" id={anchorOf("alias", a.name)}>
-          <pre class="api__sig"><code>{aliasCode(a)}</code></pre>
+          <Code class="api__sig" code={aliasCode(a)} lang="mojo" themes={themes} defaultColor={false} wrap={null} />
           {a.summary && <div class="api__doc" set:html={docHtml(a.summary)} />}
           {a.description && <div class="api__doc" set:html={docHtml(a.description)} />}
         </article>
