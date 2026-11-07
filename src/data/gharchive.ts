@@ -25,5 +25,5 @@ export const CONSOLE_MAIN = "def main() raises:\n    var r = Router()\n    r.get
 export const CONSOLE_VERSIONS = "def versions(req: Request) raises -> Response:\n    try:\n        var rows = versions_by_month()\n        var h = String(\n            \"<h1>Mojo versions over time</h1><p class=mute>Each month, how many\",\n            \" libraries moved to each Mojo version (from their lock file, or\",\n            \" their manifest when there's no lock), in Mojo's own order across\",\n            \" the renumbering: 24.x, 25.x, 0.25.x, 0.26.x, 1.x.</p>\",\n            \"<table><tr><th>Month</th><th>Version</th><th class=num>Libraries</th></tr>\",\n        )\n        for ref r in rows:\n            h.write(\n                \"<tr><td>\", r.month, \"</td><td>\", html_escape(r.version),\n                \"</td><td class=num>\", r.repos, \"</td></tr>\",\n            )\n        h.write(\"</table>\")\n        return _page(\"Mojo versions\", h^)\n    except e:\n        return internal_error(String(e))";
 
 /** mojo-census deployed with `orca aws`: Orca's UI and the console. */
-export const ORCA_DEMO = "https://orca.mlake.dev";
-export const LIBS = "https://census.mlake.dev";
+export const ORCA_DEMO = "https://orca.mojourney.dev";
+export const LIBS = "https://mojourney.dev";
