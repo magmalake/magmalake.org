@@ -6,8 +6,8 @@ const description =
   "Orca's web UI: its pages and their JSON, the actions that start, backfill, resume, rerun and cancel runs, logins and sessions, a run's Dista timeline and instances, and links to the code.";
 
 const uiPages = [
-  ["/", "pipelines, with their schedules, next runs and last runs, and runs per day over the last 30 days"],
-  ["/pipelines/<name>", "a pipeline's DAG, partitions, schedule, next runs, versions and runs, its code, and the forms to start a run, backfill a range, cancel its runs and pause it; a keyed one's keys, done, live and failed"],
+  ["/", "pipelines, with their schedules, next runs and last runs; its Timeline tab draws each pipeline's runs over 1 h to 7 d, in dataset order, with what started what (/api/gantt)"],
+  ["/pipelines/<name>", "three tabs: Overview (the Progress, Config and Code cards, steps as a graph or a table, next runs), ?tab=runs (runs and versions) and ?tab=operate (the coverage calendar, Start runs and Stop runs); a keyed one's keys, done, live and failed"],
   ["/pipelines/<name>/keys/<key>", "one key of a keyed pipeline: its steps in every run it was in"],
   ["/runs", "runs, newest first; ?pipeline=, ?status=, ?trigger="],
   ["/runs/<id>", "a run's DAG in its steps' colours, its steps and partitions, attempts, errors, reads and commits, its source and code, its timeline, machines and instances, and resume, rerun from a step and cancel"],
@@ -19,6 +19,10 @@ const uiPages = [
   ["/datasets/<name>", "a dataset's place in that graph, its snapshots, its rebuilds and the form to start one"],
   ["/datasets/<name>/snapshots/<id>", "a snapshot's lineage, back and forward, as a graph and as tables"],
   ["/rebuilds/<id>", "a rebuild's pipelines by level, with their runs"],
+  ["/ops/control", "Ops › Control: the machine running the scheduler, the UI and Postgres: CPU, memory, disk, network, containers, and the alerts sent"],
+  ["/ops/fleet", "Ops › Fleet: the EC2 instances launched for runs, their cost an hour, runs and errors per hour; on the local runner, the fixed price"],
+  ["/ops/workers", "Ops › Workers: each remote worker's pool, image, last heartbeat and runs"],
+  ["/watchdog", "the watchdog's rules with each threshold and value, its trips and what each tripped on, and the form to snooze a rule"],
   ["/login, /logout", "a session for the actions, as a cookie"],
 ];
 
@@ -31,6 +35,7 @@ const uiActions = [
   ["Pause, Unpause", "on a pipeline's page: what orca pause and orca unpause do"],
   ["Cancel queued runs", "on a pipeline's page: what orca cancel does, over @all or the partitions entered"],
   ["Rebuild", "on a dataset's page: what orca rebuild does, over the partitions entered"],
+  ["Snooze, Keep paused", "on /watchdog and the trip banner: what orca watchdog snooze and orca watchdog ack do"],
 ];
 ---
 
@@ -69,8 +74,8 @@ curl -H 'Accept: application/json' http://127.0.0.1:8270/runs/7`} />
   <p>
     Every path also answers JSON, to <code>Accept: application/json</code> or
     <code>?format=json</code>, built from the same rows, so a script and a person see the
-    same thing. While a run or an attempt is going on, its page refreshes its DAG, steps
-    or log every two seconds, and stops once it has ended.
+    same thing. While a run is going on, its page refreshes every 5 seconds, and an
+    attempt's log every two; each stops once it has ended.
   </p>
 
   <h2 id="actions">Actions</h2>
@@ -113,14 +118,19 @@ curl -H 'Accept: application/json' http://127.0.0.1:8270/runs/7`} />
 
   <h2 id="runs">A run's page</h2>
   <p>
-    A run with Dista tasks draws its timeline: one lane per worker, each task a bar
-    coloured by its function. With <code>ORCA_UI_URL</code> set to the UI's public
+    A queued or running run's page refreshes itself every 5 seconds. It starts with the
+    run's duration, links the pipeline's previous and next run (the arrow keys follow
+    them), and shows the settings the run had, secrets by name only. A run with Dista
+    tasks draws its timeline in the page: a track per process, a lane per slot, spans
+    coloured by function, with a tooltip, and wheel or drag to zoom. With <code>ORCA_UI_URL</code> set to the UI's public
     address, an Open in Perfetto link opens the full trace there. Its
     <a href="/s/orca/docs/run#metrics">machine metrics</a> are drawn under its steps. A
     run on EC2 lists its instances, with the number of workers over the run, why each
     instance ended, and each one's log. The step names, the pipeline and its Dista tasks
     link to their code (<a href="/s/orca/docs/build#versions">versions and code
     links</a>), in a new tab, and the headings link to these docs
-    (<code>ORCA_DOCS_URL</code> changes where).
+    (<code>ORCA_DOCS_URL</code> changes where). The repository's
+    <a href="https://github.com/magmalake/orca.mojo/blob/main/docs/ui.md" rel="noopener">ui.md</a> has more on the pipeline page's cards,
+    the Ops pages and the anchors that link to one chart.
   </p>
 </OrcaDocs>

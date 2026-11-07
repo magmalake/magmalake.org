@@ -14,7 +14,9 @@ const pipelineCmds = [
 ];
 
 const orcaCmds = [
-  ["register [options] <binary>...", "runs each binary's describe and records it, its path, its schedule and its limits, as a new version if its code or commit changed; queued runs move to the new build. --image, --head-type, --worker-type, --workers N or MIN..MAX (autoscaling on EC2), --spot and --secret NAME=ID (a Secrets Manager secret as the run's NAME) say how its runs run on Kubernetes or EC2"],
+  ["register [options] [<binary>...]", "runs each binary's describe and records it, its path, its schedule and its limits, as a new version if its code or commit changed; queued runs move to the new build. How its runs run comes from ./orca.toml (ORCA_CONFIG, --config F, --no-config), with flags over it: --image, --head-type, --worker-type, --workers N or MIN..MAX (autoscaling on EC2), --worker-procs, --spot, --secret NAME=ID, --placement control|ec2|worker:<pool>|default and --max-runs. With no binaries it registers every [pipelines.<name>] of the file"],
+  ["config show [<pipeline>] [--json], config export [--out F|-]", "each pipeline's effective settings and where each came from (code default, orca.toml, flag, environment); export writes an orca.toml from what's registered"],
+  ["status [<pipeline>] [--json]", "the pipelines, or one pipeline's state and latest runs with how long each ran"],
   ["backfill [--rerun] <pipeline> KEYS", "queues runs for the keys that haven't succeeded and aren't in a queued or running run, and says on standard error which it left out and why; --rerun queues the done ones too. A keyed pipeline takes names, @all or @file:<path>"],
   ["pause <pipeline>, unpause <pipeline>", "the scheduler starts none of the pipeline's runs while it's paused; fires, sensors, retries and backfills still queue theirs, and runs already going go on"],
   ["cancel <pipeline> KEYS|@all", "cancels its queued, running and retrying runs over those keys; a running one stops before its next attempt"],
@@ -24,6 +26,11 @@ const orcaCmds = [
   ["user add <name>, user remove <name>, user list", "the UI's users; add reads the password from standard input, and on an existing user changes it and ends their sessions"],
   ["lineage <dataset> [<snapshot>]", "what a snapshot (the latest, without one) was made from, and what was made from it"],
   ["rebuild <dataset> KEYS", "reruns every pipeline downstream of the dataset over the keys, level by level"],
+  ["watchdog status [--json], watchdog snooze <rule> <duration>, watchdog ack [--all|<trip>]", "the watchdog's rules with each threshold and value, and its trips; snooze silences a rule (2h, 30m, 1d; off ends it); ack keeps a trip's pipelines paused and clears its banner"],
+  ["notify test, notify --kind K [--subject S] ... [message]", "a test push to ORCA_NOTIFY_URL, or an alert from a script, held back like the scheduler's"],
+  ["worker-token create --pool P [--days N] [--label L], worker-token list, worker-token revoke <id>", "the tokens remote workers use, each scoped to one pool"],
+  ["worker --pool P [--remote URL] [--max-runs N] ...", "on another machine: claims the pool's runs from orca ui over HTTPS and runs them there, with no database"],
+  ["login <url>, logout, --remote <url> <command>", "a token for a deployed UI, then backfill, start, cancel, pause, unpause, resume, rerun, rebuild, status, lineage and watchdog against it"],
   ["locate <binary>... [--root <dir>]", "finds each step's function, each Dista task and the pipeline in the source, and writes <binary>.source.json for the UI's links to the code"],
 ];
 
