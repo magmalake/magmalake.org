@@ -14,7 +14,7 @@ const about: Record<string, string> = {
   "/s/orca/docs/cli":
     "The commands you type, on a pipeline binary and on orca, the ones orca runs for you, and how the same binary acts locally or on AWS.",
   "/s/orca/docs/run":
-    "The scheduler, runs on Kubernetes and EC2, runs in Postgres, logs and machine metrics, lineage and rebuilds, the environment, and what happens when things fail.",
+    "The scheduler, runs on Kubernetes and EC2, placement and remote workers, fills, the watchdog and alerts, runs in Postgres, logs and machine metrics, lineage and rebuilds, the environment, and what happens when things fail.",
   "/s/orca/docs/ui":
     "The pages and their JSON, the actions, logins, timelines and links to the code.",
   "/s/orca/docs/debug":
@@ -98,6 +98,8 @@ pixi run playground          # then http://127.0.0.1:8270, log in as demo / demo
       scheduler: "run#scheduler", runners: "run#runners", state: "run#state",
       logs: "run#logs", metrics: "run#metrics", lineage: "run#lineage",
       rebuilds: "run#rebuilds", env: "run#env", failures: "run#failures",
+      placement: "run#placement", workers: "run#placement", fills: "run#fills",
+      watchdog: "run#watchdog", alerts: "run#alerts",
       ui: "ui",
     };
     var h = location.hash.slice(1);

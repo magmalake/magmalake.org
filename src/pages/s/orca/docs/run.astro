@@ -1,7 +1,9 @@
 ---
 import OrcaDocs from "../../../../components/OrcaDocs.astro";
 import CodeBlock from "../../../../components/CodeBlock.astro";
-import { ORCA_PRS } from "../../../../data/orca";
+import { ORCA_PRS, ORCA_REPO } from "../../../../data/orca";
+
+const DOCS = `${ORCA_REPO}/blob/main/docs`;
 
 const description =
   "Scheduling and running Orca pipelines: the scheduler and its fires, retries and limits, runs on this machine, on Kubernetes or on EC2, runs recorded and resumed in Postgres, logs and machine metrics, lineage and rebuilds, every environment variable, and what happens when things fail.";
@@ -17,6 +19,13 @@ const env = [
   ["ORCA_SENSE_SECONDS", "how often the scheduler asks a sensor's binary for its datasets' current snapshots", "60"],
   ["ORCA_SAMPLE_SECONDS", "how often a run's sampler writes a line of machine metrics; 0 turns it off", "5"],
   ["ORCA_RUNNER", "where the scheduler starts runs: local, kubernetes or ec2", "local"],
+  ["ORCA_CONFIG", "the orca.toml orca register reads, unless --config names another", "./orca.toml"],
+  ["ORCA_PIPELINES_DIR", "where orca register with no paths finds each [pipelines.<name>] binary", "pipelines/ next to the file"],
+  ["ORCA_CONTROL_MAX_RUNS, ORCA_CONTROL_MEMORY_MB, ORCA_CONTROL_NICE, ORCA_CONTROL_WORKERS", "the limits of control-placed runs: at once, resident memory, nice and local Dista workers", "2, 1024, 10, 1"],
+  ["ORCA_WATCHDOG_SECONDS", "how often the watchdog checks its rules; 0 turns it off. Each threshold has an ORCA_WATCHDOG_* variable of its own", "60"],
+  ["ORCA_NOTIFY_URL", "an ntfy topic URL alerts are pushed to; ORCA_NOTIFY_SECRET reads the topic from a secret instead", "unset: no alerts"],
+  ["ORCA_FIXED_COST", "on the local runner, what Ops › Fleet's Cost tile shows, such as €8.49/month", "unset"],
+  ["ORCA_WORKER_TOKEN", "a remote worker's token, from orca worker-token create", "unset"],
   ["ORCA_VCPU_BUDGET", "the vCPUs all live runs' pods or instances may use together; a run that would go over waits", "no limit"],
   ["ORCA_RUN_ENV", "the scheduler's variables, by name and comma-separated, copied to every run's pods or instances", "unset"],
   ["ORCA_RUN_DEADLINE", "seconds after which a run's pods or instances are removed whatever their state", "86400"],
@@ -35,7 +44,7 @@ const env = [
   ["ORCA_UI_SESSION_HOURS", "how long a login lasts", "12"],
   ["ORCA_UI_SECURE_COOKIES", "1 marks the session cookie Secure, for a UI behind HTTPS", "unset"],
   ["ORCA_UI_TRUST_PROXY", "1 takes a request's address from X-Forwarded-For, behind a proxy you run", "unset"],
-  ["ORCA_UI_URL", "the UI's public address, for the Open in Perfetto link", "unset"],
+  ["ORCA_UI_URL", "the UI's public address, for the Open in Perfetto link and the alerts' links", "unset"],
   ["ORCA_DOCS_URL", "where the UI's Docs links point", "https://mlake.dev/s/orca/docs/"],
   ["ORCA_NOW", "fixes the clock of fires and the scheduler, as 2024-03-10T07:00Z or epoch seconds, for tests", "the clock"],
   ["ORCA_ZONEINFO", "where time zones' TZif files are read from", "/usr/share/zoneinfo"],
@@ -56,6 +65,10 @@ const env = [
   <nav class="docs-toc" aria-label="On this page">
     <a href="#scheduler">The scheduler</a>
     <a href="#runners">On Kubernetes and EC2</a>
+    <a href="#placement">Placement and remote workers</a>
+    <a href="#fills">Fills</a>
+    <a href="#watchdog">The watchdog</a>
+    <a href="#alerts">Alerts</a>
     <a href="#state">Runs in Postgres</a>
     <a href="#logs">Logs</a>
     <a href="#metrics">Machine metrics</a>
@@ -126,6 +139,67 @@ ORCA_RUNNER=ec2 ./build/orca scheduler`} />
     running the scheduler with <code>ORCA_RUNNER=ec2</code>, Postgres and the UI, and
     what run instances need (<a href="/s/orca/docs/cli#aws">orca aws</a>,
     <a href="/s/orca/docs/cli#where">local or AWS?</a>).
+  </p>
+
+  <h2 id="placement">Placement and remote workers</h2>
+  <p>
+    A pipeline's placement says which machine starts its runs:
+    <code>default</code>, the scheduler's runner; <code>ec2</code>, instances of their
+    own; <code>control</code>, child processes of the scheduler on its own host, for
+    small runs that shouldn't wait for an instance, within memory, CPU and count limits;
+    or <code>worker:&lt;pool&gt;</code>, a remote worker of that pool. Set it in
+    <code>orca.toml</code> (<code>placement = "control"</code>) or with
+    <code>orca register --placement</code>
+    (<a href={`${DOCS}/placement.md`} rel="noopener">placement.md</a>).
+  </p>
+  <p>
+    A remote worker, such as a machine with spare CPU, runs
+    <code>orca worker --pool &lt;pool&gt; --remote &lt;url&gt;</code>. It claims its
+    pool's runs from <code>orca ui</code> over HTTPS and runs them on its own machine;
+    each run records its state through the UI's API instead of Postgres, so nothing on
+    the worker holds database credentials. Its token, from
+    <code>orca worker-token create --pool &lt;pool&gt;</code>, is scoped to the pool and
+    revocable, and a dead worker's runs are queued again
+    (<a href={`${DOCS}/workers.md`} rel="noopener">workers.md</a>).
+  </p>
+  <CodeBlock label="shell" code={`./build/orca register --placement worker:bgent ./build/toy
+./build/orca worker-token create --pool bgent        # on the server
+ORCA_WORKER_TOKEN=orca_... ./build/orca worker --pool bgent --remote https://orca.example.com`} />
+
+  <h2 id="fills">Fills</h2>
+  <p>
+    With <code>fills = "all"</code> in <code>orca.toml</code>, the scheduler fills a
+    pipeline's whole range by itself, one partition a run, in <code>fill_order</code>,
+    with at most <code>fill_max_runs</code> at once, within an estimated
+    <code>fill_budget_per_day</code> and in the UTC hours of <code>fill_window</code>. It
+    never reruns a done partition and stops while the pipeline is paused. The pipeline
+    page's Progress card shows done of total, rate, ETA and why a fill is idle
+    (<a href={`${DOCS}/orca-toml.md#fills`} rel="noopener">orca-toml.md#fills</a>).
+  </p>
+
+  <h2 id="watchdog">The watchdog</h2>
+  <p>
+    Every <code>ORCA_WATCHDOG_SECONDS</code> the scheduler checks instance launches,
+    estimated cost, idle workers, failing attempts, stuck runs and the control host's
+    memory and disk. A rule past one of its thresholds pauses its pipelines, shows a red
+    banner and sends an alert; it never resumes anything. Unpausing the pipelines clears
+    the trip, <code>orca watchdog ack</code> keeps them paused, and
+    <code>orca watchdog snooze &lt;rule&gt; 2h</code> silences a rule. On the local runner
+    the cost rule reads "fixed price" and never trips
+    (<a href={`${DOCS}/watchdog.md`} rel="noopener">watchdog.md</a>).
+  </p>
+  <CodeBlock label="shell" code={`./build/orca watchdog status
+control   memory 98.30 % (trips over 90.00, past), disk 10.60 % (trips over 85.00)  TRIPPED on memory`} />
+
+  <h2 id="alerts">Alerts</h2>
+  <p>
+    With <code>ORCA_NOTIFY_URL</code> set to an <a href="https://ntfy.sh" rel="noopener">ntfy</a>
+    topic, the scheduler pushes watchdog trips, runs that failed after their last retry,
+    stalled fills, a full control disk and lost workers to your phone, each at most once
+    per half hour, with a link into the UI. <code>orca notify test</code> checks it
+    (<a href={`${DOCS}/alerts.md`} rel="noopener">alerts.md</a>). For one server at a fixed
+    price, the <a href={`${DOCS}/hetzner.md`} rel="noopener">Hetzner runbook</a> sets all
+    of this up.
   </p>
 
   <h2 id="state">Runs in Postgres</h2>

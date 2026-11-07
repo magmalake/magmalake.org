@@ -101,11 +101,17 @@ export const worksToday = [
   "Lineage: from a snapshot back to the runs, code and snapshots it was made from, and forward to what was made from it, on the command line and as a graph in the UI",
   "Sensors: a pipeline that runs when a dataset it reads gets a snapshot, from Orca or from anything else, once per snapshot",
   "Rebuild every pipeline downstream of a dataset, in dependency order, from the command line or the browser",
+  "orca.toml: one checked-in file for where and how much each pipeline runs; orca config show says where each value came from",
+  "Fills: a pipeline fills its whole range by itself, within fill_max_runs, a daily budget and a window of hours",
+  "Placement: a run on EC2 instances of its own, on the scheduler's own host, or on a remote worker of a pool",
+  "Remote workers that talk to the orca API over HTTPS, with a token scoped to their pool and no database credentials",
+  "A watchdog that pauses pipelines on a launch storm, runaway cost, idle workers, failures, stuck runs or a full control host",
+  "Alerts to your phone through ntfy: watchdog trips, failed runs, stalled fills, a full disk, a lost worker",
+  "One Hetzner server as a fixed-price production setup, with deploys that pause, wait and resume by themselves",
 ];
 
 export const inReview: string[] = [];
 
 export const notYet = [
   "Runs on Kubernetes, and logs in S3 (phase 5)",
-  "A published package: Orca builds from source today",
 ];
