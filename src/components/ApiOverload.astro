@@ -1,6 +1,8 @@
 ---
 /** One overload of a function or method in an API reference: its signature,
  * its docstring, and what it says of each argument, the result and errors. */
+import { Code } from "astro:components";
+import { themes } from "../integrations/shiki.mjs";
 import { docHtml, inlineHtml, type Overload, type Doc } from "../data/apiref";
 
 interface Props {
@@ -20,7 +22,7 @@ const notes: [string, string | undefined][] = [
 ---
 
 <div class="api__overload">
-  <pre class="api__sig"><code>{o.signature}</code></pre>
+  <Code class="api__sig" code={o.signature ?? ""} lang="mojo" themes={themes} defaultColor={false} wrap={null} />
   {o.summary && <div class="api__doc" set:html={docHtml(o.summary)} />}
   {o.description && <div class="api__doc" set:html={docHtml(o.description)} />}
   {

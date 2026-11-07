@@ -1,4 +1,6 @@
 ---
+import { Code } from "astro:components";
+import { themes } from "../../../integrations/shiki.mjs";
 import Base from "../../../layouts/Base.astro";
 import OrcaNav from "../../../components/OrcaNav.astro";
 import OrcaFooter from "../../../components/OrcaFooter.astro";
@@ -28,7 +30,7 @@ const description =
 
       <div class="two-col orca-intro">
         <div class="prose">
-          <pre><code>{`from dista import Seq
+          <Code lang="mojo" themes={themes} defaultColor={false} wrap={null} code={`from dista import Seq
 from orca import Cron, Ctx, Gather, Mapped, Month, Monthly, Pipeline, Step, orca_main
 
 def size(mut ctx: Ctx, m: Month) raises -> Int:
@@ -50,7 +52,7 @@ comptime Sizes = Pipeline[
 ]
 
 def main() raises:
-    orca_main[Sizes]()`}</code></pre>
+    orca_main[Sizes]()`} />
           <p>
             <code>Size</code> runs once per month of the run; <code>Total</code> runs once and
             gets all of their outputs as a <code>Seq</code>. Declaring <code>Total</code> with
@@ -178,7 +180,7 @@ def main() raises:
 
 <style>
   .orca-intro { margin-top: 2rem; }
-  .orca-intro pre { margin-bottom: 1.25rem; }
+  .orca-intro :global(pre) { margin-bottom: 1.25rem; }
   .orca-points {
     margin-top: 2rem;
     display: grid;

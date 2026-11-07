@@ -1,4 +1,6 @@
 ---
+import { Code } from "astro:components";
+import { themes } from "../../../integrations/shiki.mjs";
 import Base from "../../../layouts/Base.astro";
 import DistaNav from "../../../components/DistaNav.astro";
 import DistaFooter from "../../../components/DistaFooter.astro";
@@ -25,7 +27,7 @@ const description =
 
       <div class="two-col dista-intro">
         <div class="prose">
-          <pre><code>{`from dista import Runtime, Task
+          <Code lang="mojo" themes={themes} defaultColor={false} wrap={null} code={`from dista import Runtime, Task
 
 def square(x: Int) -> Int:
     return x * x
@@ -35,7 +37,7 @@ comptime Square = Task[Int, Int, square]
 def main() raises:
     var rt = Runtime[Square](workers=4)
     var r = rt.remote[Square](7)   # an ObjectRef[Int]
-    print(rt.get(r))               # 49`}</code></pre>
+    print(rt.get(r))               # 49`} />
           <p>
             Results that are large stay on the worker that computed them. A task on the same
             host maps them from shared memory, and one elsewhere fetches them from that
@@ -144,7 +146,7 @@ def main() raises:
 
 <style>
   .dista-intro { margin-top: 2rem; }
-  .dista-intro pre { margin-bottom: 1.25rem; }
+  .dista-intro :global(pre) { margin-bottom: 1.25rem; }
   .dista-bars {
     margin-top: 2rem;
     display: grid;
