@@ -72,13 +72,31 @@ gh run rerun <run-id> --failed -R magmalake/orca.mojo`} />
       </p>
       <h3 id="changelog">CHANGELOG.md conflicts</h3>
       <p>
-        Every change adds a line under <code>## Unreleased</code>, so two open PRs conflict
-        there. Resolve by keeping both entries. If a release landed in between, the heading
-        is now the version (<code>## 0.10.0</code>): put your entry under a fresh
-        <code>## Unreleased</code> above it, not under the released version. The level of
-        bump <code>shelf release</code> picks comes from these headings, so keep them
-        spelled as the file already does. Changelog fragments to end the conflicts are
-        proposed in <a href={`${SHELF_REPO}/issues/36`} rel="noopener">mojoshelf #36</a>; not built yet.
+        A repository that has a <code>changes/</code> directory next to its CHANGELOG.md keeps
+        a changelog <em>fragment</em> per PR instead of editing the changelog, so two open
+        PRs never conflict there. Add yours with
+        <code>shelf changes new &lt;slug&gt;</code> (<code>--bump minor</code> for a new
+        feature); it writes <code>changes/&lt;slug&gt;.md</code>, which you fill in with the
+        entry as it should read. The level is the file name's suffix
+        (<code>155-fills.minor.md</code>) or a first line <code>bump: minor</code>:
+        <code>patch</code>, <code>minor</code>, <code>major</code> or <code>breaking</code>;
+        no level is a patch, and a <code>### Breaking</code> or <code>### Removed</code>
+        heading makes it breaking. In PR CI, <code>shelf changes check</code> fails a PR that
+        changes code without adding or editing a fragment. PRs that change only prose pass,
+        and so do PRs labelled <code>no-changelog</code> or <code>release</code>.
+      </p>
+      <CodeBlock label="shell" code={`shelf changes new fills --bump minor     # writes changes/fills.minor.md
+shelf changes check                      # what CI runs; compares HEAD with origin/main`} />
+      <p>
+        Two fragments never conflict, since each PR adds its own file. The repositories that
+        have not moved yet (orca.mojo among them) still use <code>## Unreleased</code>: every
+        change adds a line there, so two open PRs conflict. Resolve by keeping both entries.
+        If a release landed in between, the heading is now the version
+        (<code>## 0.10.0</code>): put your entry under a fresh <code>## Unreleased</code>
+        above it, not under the released version. The level of bump <code>shelf release</code>
+        picks comes from these headings, so keep them spelled as the file already does. The
+        design is in <a href={`${SHELF_REPO}/issues/36`} rel="noopener">mojoshelf #36</a>; it
+        needs <code>shelf</code> 0.8.0 or later.
       </p>
       <h3 id="migrations">Orca's database migrations</h3>
       <p>
@@ -110,7 +128,7 @@ gh run rerun <run-id> --failed -R magmalake/orca.mojo`} />
       <CodeBlock label="shell" code={`export TMPDIR=/Volumes/ExtNVMe/tmp
 cd /Volumes/ExtNVMe/dev/magmalake
 for r in dista.mojo parquet.mojo iceberg.mojo orca.mojo; do git -C $r pull --ff-only; done
-shelf --version                                  # 0.7.0 or later`} />
+shelf --version                                  # 0.8.0 or later`} />
       <p>
         Tin names are the registry's, which differ from the directory names. Check one with
         <code>curl -s https://mojoshelf.org/api/tins/&lt;name&gt;</code>: it lists each version
@@ -122,9 +140,11 @@ shelf --version                                  # 0.7.0 or later`} />
       <h3 id="plan">Plan, then apply</h3>
       <p>
         <code>plan</code> changes nothing: it prints the tins to release, in order, with their
-        versions and every pin that moves. Read it. A tin you did not name appears when it
-        depends on one you did. The default bump is patch, or what the CHANGELOG's
-        <code>Unreleased</code> headings say; override per tin:
+        versions and every pin that moves, and for each tin the changelog fragments it will
+        release with their levels. Read it. A tin you did not name appears when it depends on
+        one you did. A tin's bump is the highest of its fragments' levels (patch when there
+        are none); a repository still on <code>## Unreleased</code> gets it from that
+        section's headings instead. Override per tin:
       </p>
       <CodeBlock label="shell" code={`shelf release plan orca-mojo --bump orca-mojo=minor
 shelf release plan --changed                    # every checked-out tin with commits since its release`} />
@@ -134,6 +154,8 @@ shelf release plan --changed                    # every checked-out tin with com
         That cuts the branches, builds the release heads together (preflight), opens the PRs,
         polls their required checks (<code>--wait</code>), and merges and publishes each one
         once its pin on its parent is the parent's current release head (<code>--merge</code>).
+        In each release commit the fragments are written into CHANGELOG.md under
+        <code>## X.Y.Z - date</code> and deleted.
         State is kept in <code>.shelf-release.json</code>. Other flags worth knowing:
       </p>
       <ul>
@@ -194,16 +216,16 @@ pixi lock`} />
       <ol>
         <li>
           Bump the version in <strong>all four</strong> places: <code>crates/mojoshelf/Cargo.toml</code>,
-          <code>Cargo.lock</code> (the <code>mojoshelf</code> package entry),
+          <code>Cargo.lock</code> (<code>cargo update -p mojoshelf</code>),
           <code>pixi.toml</code> and <code>recipe.yaml</code>. recipe.yaml was missed once and
           the package built under the old version.
         </li>
         <li>Do not commit a stray <code>pixi.lock</code> that a local build produced.</li>
-        <li>Open a PR, wait for green, merge it.</li>
+        <li>Open a PR titled "Release CLI X.Y.Z", wait for green, merge it.</li>
         <li>
           Tag the merge commit and push the tag:
           <CodeBlock label="shell" code={`git checkout main && git pull --ff-only
-git tag cli-v0.7.1 && git push origin cli-v0.7.1`} />
+git tag cli-v0.8.1 && git push origin cli-v0.8.1`} />
         </li>
         <li>
           The <code>release-cli</code> workflow builds the package for three platforms,
@@ -212,8 +234,9 @@ git tag cli-v0.7.1 && git push origin cli-v0.7.1`} />
         </li>
         <li>
           The workflow's "Deploy Worker" step is <strong>skipped</strong> unless the
-          repository has a <code>CLOUDFLARE_API_TOKEN</code> secret. Without it, deploy by hand
-          from a checkout at the channel commit, with <code>wrangler</code> logged in to the
+          repository has a <code>CLOUDFLARE_API_TOKEN</code> secret (not set yet:
+          <a href={`${SHELF_REPO}/issues/39`} rel="noopener">mojoshelf #39</a>). Until it is, deploy by hand
+          from an up-to-date main, which has the channel commit, with <code>wrangler</code> logged in to the
           account that owns mojoshelf.org. If the release added a D1 migration, apply it
           first, because <code>wrangler deploy</code> does not (see <code>OPERATIONS.md</code>):
           <CodeBlock label="shell" code={`cd crates/shelf-worker
