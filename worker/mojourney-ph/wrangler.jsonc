@@ -1,0 +1,27 @@
+{
+  // First-party PostHog proxy for the mojourney.dev zone, and nothing else.
+  //
+  //   npx wrangler deploy -c worker/mojourney-ph/wrangler.jsonc
+  //
+  // mojourney.dev (the census console) and orca.mojourney.dev (the orca UI)
+  // are Mojo HTTP servers behind a Cloudflare Tunnel, so there is no Worker
+  // in front of them. These zone routes put this Worker on `/ph/*` only;
+  // every other request still goes straight through the tunnel to origin.
+  //
+  // Same proxy module as the website's own Worker (worker/posthog-proxy.js).
+  // No assets: this config is separate from ../../wrangler.jsonc, which a
+  // plain `npx wrangler deploy` / `npm run deploy` uses, so the website's
+  // build and deploy never touch it. Paths below resolve relative to this file.
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "mojourney-ph",
+  "compatibility_date": "2026-08-31",
+  "main": "index.js",
+  "workers_dev": false,
+  "routes": [
+    { "pattern": "mojourney.dev/ph/*", "zone_name": "mojourney.dev" },
+    { "pattern": "orca.mojourney.dev/ph/*", "zone_name": "mojourney.dev" }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
