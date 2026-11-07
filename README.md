@@ -46,6 +46,7 @@ src/
   styles/global.css     design tokens, light/dark palettes, layout primitives
 public/                 favicon, robots.txt
 worker/posthog-proxy.js first-party PostHog reverse proxy, served at /ph/* only
+worker/mojourney-ph/    the same proxy as its own Worker on the mojourney.dev zone
 ```
 
 Every tin gets its own small section at `/s/<tin>`, generated from `src/data/tins.ts`:
@@ -199,6 +200,11 @@ public client-side token mojoshelf.org uses — both sites share one PostHog pro
 `phc_` token, safe to embed: PostHog project keys are meant to be public. To disable
 analytics, clear `POSTHOG_KEY` to anything not starting with `phc_`; `src/layouts/Base.astro`
 omits the snippet entirely in that case.
+
+The same proxy also runs as a second, separate Worker on the mojourney.dev zone, for
+the census console and the orca UI, which have no Worker of their own:
+`worker/mojourney-ph/` (deploy with `npx wrangler deploy -c worker/mojourney-ph/wrangler.jsonc`;
+see its README). The site's own deploy does not include it.
 
 ## Conventions
 
