@@ -148,8 +148,18 @@ shelf --version                                  # 0.8.0 or later`} />
       </p>
       <CodeBlock label="shell" code={`shelf release plan orca-mojo --bump orca-mojo=minor
 shelf release plan --changed                    # every checked-out tin with commits since its release`} />
-      <p>When the plan is right, apply it with the same arguments:</p>
-      <CodeBlock label="shell" code={`shelf release apply orca-mojo --bump orca-mojo=minor --wait --merge`} />
+      <p>
+        <code>plan</code> saves the plan it printed to <code>.shelf-plan.json</code>, beside
+        <code>.shelf-release.json</code>. When the plan is right, apply it without repeating
+        the tins or the bumps:
+      </p>
+      <CodeBlock label="shell" code={`shelf release apply --wait --merge                # applies .shelf-plan.json`} />
+      <p>
+        <code>apply</code> says which plan it is applying. If any repository's main has moved
+        since the plan was made, it refuses: run <code>plan</code> again. This is new in
+        shelf 0.9; with an older shelf, repeat the arguments
+        (<code>shelf release apply orca-mojo --bump orca-mojo=minor --wait --merge</code>).
+      </p>
       <p>
         That cuts the branches, builds the release heads together (preflight), opens the PRs,
         polls their required checks (<code>--wait</code>), and merges and publishes each one
