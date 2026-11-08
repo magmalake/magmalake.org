@@ -125,6 +125,12 @@ port. Its token is scoped to one pool and can be revoked. If a worker dies,
 its runs are requeued once their heartbeats stop.
 [The workers page](/s/orca/docs/workers) has the details.
 
+<figure class="shot">
+  <img class="shot__light" src="/blog/introducing-orca/workers-light.webp" alt="The Workers page: one worker of pool bgent, last seen 1 s ago, running run 1331, with 8 CPUs and 11,933 MB" width="1280" height="300" loading="lazy" />
+  <img class="shot__dark" src="/blog/introducing-orca/workers-dark.webp" alt="The Workers page: one worker of pool bgent, last seen 1 s ago, running run 1331, with 8 CPUs and 11,933 MB" width="1280" height="300" loading="lazy" />
+  <figcaption>Ops › Workers on <a href="https://orca.mojourney.dev/ops/workers">orca.mojourney.dev</a>: the Mac of pool <code>bgent</code>, seen a second ago, in the middle of a run.</figcaption>
+</figure>
+
 ## orca.toml
 
 What a pipeline does stays in its code. Where it runs and with how much goes
@@ -174,10 +180,28 @@ function's signature and docstring from the code at that commit, what it
 reads and writes, and how long its attempts took. Run lists and run pages
 refresh by themselves while something is going.
 
+<figure class="shot">
+  <img class="shot__light" src="/blog/introducing-orca/run-light.webp" alt="Run 3948 of gharchive: Status, Partitions and trigger, Code, Resources and Settings cards" width="1280" height="740" loading="lazy" />
+  <img class="shot__dark" src="/blog/introducing-orca/run-dark.webp" alt="Run 3948 of gharchive: Status, Partitions and trigger, Code, Resources and Settings cards" width="1280" height="740" loading="lazy" />
+  <figcaption>A <code>gharchive</code> fill run: one day, 1 min 37 s, 685 MB at its peak. The Code card links each function at the commit that ran, and Settings shows the environment it ran with.</figcaption>
+</figure>
+
+<figure class="shot">
+  <img class="shot__light" src="/blog/introducing-orca/coverage-light.webp" alt="The gharchive coverage calendar in year view for 2024: all 366 days done" width="1112" height="594" loading="lazy" />
+  <img class="shot__dark" src="/blog/introducing-orca/coverage-dark.webp" alt="The gharchive coverage calendar in year view for 2024: all 366 days done" width="1112" height="594" loading="lazy" />
+  <figcaption>The coverage calendar in year view. All of 2024 is done; the strip below it is the whole range, month by month, with the backfill still working through it.</figcaption>
+</figure>
+
 Every minute a watchdog checks launches, cost, idle workers, failing
 attempts, stuck runs and the control host's memory and disk. A rule past its
 threshold pauses the pipelines involved. It never resumes anything. Alerts
 go to your phone through [ntfy](https://ntfy.sh).
+
+<figure class="shot">
+  <img class="shot__light" src="/blog/introducing-orca/control-light.webp" alt="Ops › Control: CPU 65%, memory 18% (1.5 of 8.1 GB), disk 12%, network 29 MB/s in, and memory by container" width="1280" height="650" loading="lazy" />
+  <img class="shot__dark" src="/blog/introducing-orca/control-dark.webp" alt="Ops › Control: CPU 65%, memory 18% (1.5 of 8.1 GB), disk 12%, network 29 MB/s in, and memory by container" width="1280" height="650" loading="lazy" />
+  <figcaption>Ops › Control: the one server running the scheduler, the UI, Postgres and the census site. Below the containers are 24 hours of CPU, memory, disk and network.</figcaption>
+</figure>
 
 This week showed how that works. A typo in the server's `orca.toml` placed
 two of the census pipelines on the control host, under its 1 GB cap. Every
@@ -200,13 +224,19 @@ Mojourney site and the GH Archive backfill. An Apple-silicon Mac is a remote
 worker of pool `bgent`. It runs `mojo_history` and `mojo_versions`, which
 clone every repository, and since this week `mojo_activity`.
 
-The backfill is `gharchive` with `fills = "all"`. Its Progress card says 659
+The backfill is `gharchive` with `fills = "all"`. Its Progress card says 1,111
 of 1,407 days are done. A day's raw events were 1.1 GB, 97% of the bucket,
 and the census only needs the index built from them. After it stopped writing
 them, an hour of GH Archive in flight took about 200 MB instead of 450 MB.
 With two fill runs at a time, the backfill went from about 22 days an hour
 to 63 in the last full hour before this was written. The card shows the
 current rate and an ETA.
+
+<figure class="shot">
+  <img class="shot__light" src="/blog/introducing-orca/gharchive-light.webp" alt="The gharchive pipeline page: Progress shows 1,111 of 1,407 days done at 61.8 an hour, ETA 4 h 47 m" width="1280" height="720" loading="lazy" />
+  <img class="shot__dark" src="/blog/introducing-orca/gharchive-dark.webp" alt="The gharchive pipeline page: Progress shows 1,111 of 1,407 days done at 61.8 an hour, ETA 4 h 47 m" width="1280" height="720" loading="lazy" />
+  <figcaption>The <code>gharchive</code> pipeline page. Progress has the fill, its rate and ETA; Resources has what its last 20 runs used, measured.</figcaption>
+</figure>
 
 The UI and the census site are both Mojo HTTP servers built on
 [flare](https://github.com/ehsanmok/flare), by Ehsan M. Kermani. The site

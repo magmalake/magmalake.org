@@ -88,6 +88,32 @@ const shown = post.data.date.toLocaleDateString("en-GB", {
     margin: 0 0 1.4rem;
   }
   /*
+   * Screenshots, written as raw HTML: a light and a dark capture of the same
+   * page, and the one shown follows the same two signals as the palette
+   * (global.css). The hidden one is display:none and lazy, so it never loads.
+   */
+  .post .shot { margin: 0.5rem 0 1.8rem; }
+  .post .shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .post .shot__dark { display: none !important; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .post .shot__light { display: none !important; }
+    :root:not([data-theme="light"]) .post .shot__dark { display: block !important; }
+  }
+  :root[data-theme="dark"] .post .shot__light { display: none !important; }
+  :root[data-theme="dark"] .post .shot__dark { display: block !important; }
+  .post .shot figcaption {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    line-height: 1.55;
+    margin-top: 0.6rem;
+  }
+  /*
    * Callouts. Written as raw HTML in the Markdown body, because a correction
    * has to sit above the thing it corrects and inline `code` has to survive.
    * `--correction` is the loud one: the post below it is wrong.
