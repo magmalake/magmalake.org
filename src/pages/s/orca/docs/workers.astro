@@ -7,7 +7,7 @@ import { GHARCHIVE_REPO } from "../../../../data/gharchive";
 const DOCS = `${ORCA_REPO}/blob/main/docs`;
 
 const description =
-  "Running some of Orca's pipelines on a second machine: what a remote worker is, a worker token, a placement, the worker container that needs only outbound HTTPS, the census as the example, and what doesn't run on workers yet.";
+  "Running some of Orca's pipelines on a second machine: what a remote worker is, a worker token, a placement, the worker container that needs only outbound HTTPS, fills on a pool, what happens when a worker dies, the census as the example, and the limits.";
 ---
 
 <OrcaDocs href="/s/orca/docs/workers" description={description}>
@@ -21,6 +21,7 @@ const description =
   <nav class="docs-toc" aria-label="On this page">
     <a href="#what">What it is</a>
     <a href="#setup">Setting one up</a>
+    <a href="#fills">Fills on a pool</a>
     <a href="#census">The census</a>
     <a href="#limits">Limits</a>
     <a href="#gotchas">Docker Desktop</a>
@@ -39,8 +40,11 @@ const description =
   <p>
     That is the reason to use one: a second machine with spare CPU, memory or disk
     without exposing Postgres to it, and the way to scale out when the first machine is
-    full. A worker holds a token scoped to its pool and nothing else. A worker that dies has its
-    runs queued again.
+    full. A worker holds a token scoped to its pool and nothing else. Since 0.15.0 a run whose
+    worker is gone (not seen for half <code>ORCA_STALE_SECONDS</code>, or restarted without
+    it) is queued again for the pool whatever started it, within its
+    <code>run_retries</code> starts, and resumes after its last step done; one claimed and
+    never started gets its start back.
   </p>
 
   <figure class="diagram">
@@ -124,18 +128,38 @@ env = { DISTA_WORKER_SLOTS = "3" }`} />
     --remote https://orca.example.com --token-file /etc/orca/w/token`} />
   <p>
     <code>--max-runs</code> is how many runs the worker takes at once. A worker with
-    <code>ORCA_DATABASE_URL</code> set refuses to start. Since a worker admits runs
-    against its own host, its log says what it can grant:
+    <code>ORCA_DATABASE_URL</code> set refuses to start. A worker admits the runs of
+    pipelines with a <a href="/s/orca/docs/run#resources">request</a> against its own
+    host, so its log says what it can grant:
     <code>grants up to 8 CPUs and 11421 MB</code>, less <code>ORCA_RESERVE_CPUS</code>
-    and <code>ORCA_RESERVE_MEMORY_MB</code>.
+    and <code>ORCA_RESERVE_MEMORY_MB</code> (0 and 512 on a worker). Since 0.15.0 it
+    also starts no new run while its own host's memory pressure is over
+    <code>ORCA_ADMIT_MEMORY_PRESSURE</code> (a waiting run says
+    <code>... on worker &lt;name&gt;</code>), gives each run a cgroup with a memory limit
+    where it can make one, and samples the machine beside each run, so the run's page has
+    its Machines card.
   </p>
 
   <h3>4. Check Ops</h3>
   <p>
-    Ops, then Workers, (<code>/api/workers</code> as JSON) lists each token with its pool,
-    the worker's name and image, its last heartbeat, its current runs, CPUs and memory.
-    A run's page says which worker ran it. <code>docker logs orca-worker</code> shows each
-    run it starts and how it exited.
+    Ops › Pools (<code>/ops/pools?kind=self-hosted</code>, and <code>/api/pools</code> as
+    JSON) has a row per worker token's machine, in pool <code>worker:&lt;pool&gt;</code>:
+    its state (<code>live</code>, or <code>gone</code>), image, CPUs, memory, current
+    runs and last heartbeat, and its token and label. The machine's page lists the runs
+    it claimed. <code>/api/workers</code> is still each token as JSON. A run's page says
+    which worker ran it. <code>docker logs orca-worker</code> shows each run it starts
+    and how it exited.
+  </p>
+
+  <h2 id="fills">Fills on a pool</h2>
+  <p>
+    Since 0.15.0 a pipeline placed on a pool with <code>fills = "all"</code> fills its
+    range as a local one does: the scheduler queues its fill runs in the same order and
+    window, and a worker of the pool claims them. <code>fill_max_runs</code> caps the
+    pipeline's fill runs across the whole pool, queued ones included, and each worker's
+    <code>--max-runs</code> and grants cap one machine. A worker's machine runs anyway, so
+    a pool's fill runs cost nothing against <code>fill_budget_per_day</code>
+    (<a href={`${DOCS}/workers.md#fills-on-a-pool`} rel="noopener">workers.md</a>).
   </p>
 
   <h2 id="census">The census</h2>
@@ -159,11 +183,6 @@ env = { DISTA_WORKER_SLOTS = "3" }`} />
   <h2 id="limits">Limits</h2>
   <ul class="docs-list">
     <li>
-      <strong>Fills.</strong> <code>fills = "all"</code> doesn't run on worker pools yet
-      (<a href={`${ORCA_REPO}/issues/177`} rel="noopener">orca #177</a>). Use
-      <code>orca backfill</code> for a pool's partitions.
-    </li>
-    <li>
       <strong>The same tag.</strong> The worker runs the code of its own image. Deploy the
       server first, then restart the worker on the same tag.
     </li>
@@ -171,6 +190,11 @@ env = { DISTA_WORKER_SLOTS = "3" }`} />
       <strong>Secrets.</strong> A pipeline with secrets needs
       <code>ORCA_SECRET_FETCH</code> on the worker, to read them there. The spec names
       the secrets and never carries their values.
+    </li>
+    <li>
+      <strong>Pools by hand.</strong> A worker is started by hand on each machine;
+      <code>[pools]</code> in orca.toml and <code>orca host join</code> are
+      <a href={`${ORCA_REPO}/issues/220`} rel="noopener">orca #220</a>.
     </li>
     <li>
       <strong>The UI's port.</strong> By default the worker API shares the UI's port, so a
@@ -194,7 +218,7 @@ env = { DISTA_WORKER_SLOTS = "3" }`} />
   <h2 id="more">More</h2>
   <p>
     <a href={`${DOCS}/workers.md`} rel="noopener">workers.md</a> in the Orca repository has
-    the flags, how a dead worker's runs are retried, the state calls and the network
+    the flags, how a dead worker's runs are queued again, the state calls and the network
     details. <a href="/s/orca/docs/run#placement">Scheduling and running</a> says where
     placement fits among the runners.
   </p>

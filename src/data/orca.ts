@@ -109,11 +109,19 @@ export const worksToday = [
   "Remote workers that talk to the orca API over HTTPS, with a token scoped to their pool and no database credentials",
   "A watchdog that pauses pipelines on a launch storm, runaway cost, idle workers, failures, stuck runs or a full control host",
   "Alerts to your phone through ntfy: watchdog trips, failed runs, stalled fills, a full disk, a lost worker",
-  "One Hetzner server as a fixed-price production setup, with deploys that pause, wait and resume by themselves",
+  "Runs sized to their share of the machine: cpus and memory_gb requests, admitted against what the host can grant",
+  "Each run's peak memory and CPU measured, on the run, its steps and the pipeline's Resources card",
+  "No new run starts while the machine stalls on memory (Linux's pressure stall information over 10%)",
+  "A cgroup per run where orca can make one: an out-of-memory kill hits that run alone, and its retry asks for 1.5× as much",
+  "Coverage in one number per pipeline: partitions or keys done of those so far, on the home page and the Progress card",
+  "orca login and --remote: backfill, pause, cancel, resume and rerun from a laptop against the deployed UI",
+  "One Hetzner server as a fixed-price production setup, with deploys that pause, wait, back up and resume by themselves, and roll back",
 ];
 
 export const inReview: string[] = [];
 
 export const notYet = [
-  "Runs on Kubernetes, and logs in S3 (phase 5)",
+  "Phase 5's gate on AWS: the taxi pipeline on a schedule, each run on a cluster of its own",
+  "Secrets for runs on Kubernetes (orca #206)",
+  "Requests on EC2 and Kubernetes, and requests learned from measured peaks (orca #171)",
 ];

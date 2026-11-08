@@ -2,14 +2,14 @@
 import OrcaDocs from "../../../../components/OrcaDocs.astro";
 
 const description =
-  "Orca's resource roadmap: measuring each run's memory and CPU, admitting runs by what they need, containing an overrun to its own run and adapting in-flight work inside a run, with the issues for each step and the papers behind them.";
+  "Orca's resource roadmap: measuring each run's memory and CPU, admitting runs by what they need, containing an overrun to its own run and adapting in-flight work inside a run, where runs run, deploys that keep runs going, with the issues for each step and the papers behind them.";
 
 const O = "https://github.com/magmalake/orca.mojo/issues";
 const D = "https://github.com/magmalake/dista.mojo/issues";
 
 const P = "https://github.com/magmalake/orca.mojo/pull";
 
-// As of orca 0.15.0. `today` is HTML once backticks become <code>, so it can link the PR that shipped it.
+// As of orca 0.16.0. `today` is HTML once backticks become <code>, so it can link the PR that shipped it.
 const layers: { layer: string; does: string; today: string; next: [string, string, string][] }[] = [
   {
     layer: "Measure",
@@ -29,13 +29,37 @@ const layers: { layer: string; does: string; today: string; next: [string, strin
     layer: "Contain",
     does: "An overrun hits only its own run",
     today: `A cgroup per run, at its grant: throttled there, killed alone 25% above it, retried 1.5\u00d7 bigger, and the pipeline remembers (<a href="${P}/226" rel="noopener">#226</a>). Used wherever orca can make cgroups (on the Hetzner stack, after \`orca-stack configure CGROUPS=1\`); otherwise \`first_to_go\` and the control cap`,
-    next: [["orca #201", `${O}/201`, "On by default, and each run's own memory pressure next to its limit"]],
+    next: [
+      ["orca #201", `${O}/201`, "On by default, and each run's own memory pressure next to its limit"],
+      ["orca #229", `${O}/229`, "CPU too: runs at a lower priority than the scheduler, the UI and Postgres"],
+    ],
   },
   {
     layer: "Back pressure inside a run",
     does: "A job adapts how much work it keeps in flight",
     today: `\`"auto"\` settings sized from the grant (\`orca.auto_count\`, \`DISTA_WORKER_SLOTS\`); every run can read the machine's pressure from \`ORCA_MEMORY_PRESSURE_FILE\`. dista's queue and store sizes are still hand-set`,
     next: [["dista #123", `${D}/123`, "Size in-flight work from the run's grant and live memory"]],
+  },
+];
+
+const deploys: { what: string; today: string; next: [string, string, string][] }[] = [
+  {
+    what: "Deploys",
+    today: `\`deploy.sh\` pauses the pipelines, waits for running runs, backs the database up first, applies the new tags and unpauses what it paused (the backup since 0.16.0)`,
+    next: [
+      ["orca #230", `${O}/230`, "Restart only the containers whose image or settings changed"],
+      ["orca #231", `${O}/231`, "Replace the UI and apps without downtime"],
+    ],
+  },
+  {
+    what: "Rollbacks",
+    today: `\`deploy.sh --rollback\` applies the tags the last deploy replaced and registers the pipelines again; an older orca runs on a newer schema whose migrations since are additive (schema floors, since 0.16.0, <a href="${P}/234" rel="noopener">#234</a>)`,
+    next: [],
+  },
+  {
+    what: "Restarts",
+    today: "Restarting the scheduler's container kills the runs going, so a deploy waits for them to end",
+    next: [["orca #232", `${O}/232`, "Runs that survive a scheduler restart: a runner process the scheduler adopts runs from"]],
   },
 ];
 
@@ -128,13 +152,14 @@ const refs: { cite: string; takes: string; url?: string }[] = [
     <a href="#layers">Four layers</a>
     <a href="#order">Order</a>
     <a href="#machines">Machines</a>
+    <a href="#deploys">Deployments</a>
     <a href="#prior-art">Prior art</a>
   </nav>
 
   <h2 id="layers">Four layers</h2>
   <div class="table-scroll">
     <table>
-      <thead><tr><th>Layer</th><th>What it does</th><th>Today (0.15.0)</th><th>Next</th></tr></thead>
+      <thead><tr><th>Layer</th><th>What it does</th><th>Today (0.16.0)</th><th>Next</th></tr></thead>
       <tbody>
         {layers.map((l) => (
           <tr>
@@ -169,13 +194,41 @@ const refs: { cite: string; takes: string; url?: string }[] = [
   <p>Where runs run, beside the scheduler's own host:</p>
   <div class="table-scroll">
     <table>
-      <thead><tr><th></th><th>Today (0.15.0)</th><th>Next</th></tr></thead>
+      <thead><tr><th></th><th>Today (0.16.0)</th><th>Next</th></tr></thead>
       <tbody>
         {machines.map((m) => (
           <tr>
             <td>{m.what}</td>
             <td set:html={code(m.today)} />
             <td>
+              {m.next.map(([ref, href, title], i) => (
+                <>
+                  {i > 0 && <br />}
+                  <a href={href} rel="noopener">{ref}</a> <span set:html={code(title)} />
+                </>
+              ))}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="deploys">Deployments</h2>
+  <p>
+    A deploy shouldn't cost a run, and a bad one should be easy to undo. On the Hetzner
+    stack (<a href="https://github.com/magmalake/orca.mojo/blob/main/docs/hetzner.md#rolling-back" rel="noopener">hetzner.md</a>):
+  </p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th></th><th>Today (0.16.0)</th><th>Next</th></tr></thead>
+      <tbody>
+        {deploys.map((m) => (
+          <tr>
+            <td>{m.what}</td>
+            <td set:html={code(m.today)} />
+            <td>
+              {m.next.length === 0 && "—"}
               {m.next.map(([ref, href, title], i) => (
                 <>
                   {i > 0 && <br />}

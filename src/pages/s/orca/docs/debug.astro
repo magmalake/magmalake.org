@@ -36,7 +36,9 @@ const logFiles = [
   <p>
     In <a href="/s/orca/docs/ui">the UI</a>, <code>/runs?status=failed</code> lists the
     failed runs, newest first (the Status filter on the Runs page), and
-    <code>?pipeline=</code> narrows it to one pipeline. A run's page has the run's own
+    <code>?pipeline=</code>, <code>?since=24h</code> or <code>?key=2025-01-*</code>
+    narrow it (<a href="/s/orca/docs/ui#lists">filters</a>). Since 0.16.0 hovering a
+    failed run in the list names the step that failed, linked to its function. A run's page has the run's own
     Error when it ended without a step saying why, such as
     <code>interrupted: its process stopped</code>, and its Steps table has an Error for
     each step and partition, with a link to its latest attempt, whose page shows its log
@@ -71,7 +73,9 @@ aws s3 cp s3://orca-123456789012-us-east-2/logs/mojo_history/73/driver.log -`} /
     An attempt's log is uploaded when the attempt ends, so an attempt whose process died
     may have none; its lines went to the process's output as well, tagged
     <code>[step partition]</code>, and so are in <code>driver.log</code>. A run whose
-    machine ran out of memory or disk shows it on its page, in the Machines section.
+    machine ran out of memory or disk shows it on its page, in the Machines section, and
+    the run's own peak memory and CPU, against its limit where it had one, are in its
+    Resources card and Steps table.
   </p>
 
   <h2 id="errors">Raised errors</h2>
@@ -131,7 +135,11 @@ orca::cli::_resume src/orca/cli.mojo:381:23, orca_main src/orca/cli.mojo:133:27`
     <code>interrupted: its process stopped</code>, ready to resume. A process killed with
     no dump, by <code>kill -9</code> or the kernel's out-of-memory killer, leaves
     <code>interrupted: the process running it stopped</code> instead; its machine's
-    memory is on the run's page.
+    memory is on the run's page. A run in a <a href="/s/orca/docs/run#resources">cgroup
+    of its own</a> (since 0.15.0) that the kernel killed for its memory says so instead:
+    its attempts fail <code>out of memory at &lt;limit&gt;: ...</code>, and the retry asks
+    for 1.5 times as much. A run on a remote worker whose worker went away is queued
+    again for the pool rather than failed.
   </p>
   <p>
     The dump names functions and lines only when two things hold. The runtime has to

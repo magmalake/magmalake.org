@@ -332,7 +332,9 @@ def main() raises:
     <code>orca locate</code> finds, in the source tree, the line of each step's
     function, each Dista task and the pipeline's own declaration, and writes them beside
     the binary, where <code>orca register</code> reads them; the UI then links each to
-    its line at the commit. A binary built without these just has no links. The image
+    its line at the commit. A binary built without these just has no links. The UI's code
+    cards lead with a docstring's first sentence (a pipeline without one uses its
+    module's), so make that sentence say what the step or pipeline is for. The image
     <code>orca aws push</code> builds passes the source and commit and runs
     <code>orca locate</code> for you.
   </p>

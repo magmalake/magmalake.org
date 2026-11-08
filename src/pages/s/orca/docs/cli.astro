@@ -3,34 +3,39 @@ import OrcaDocs from "../../../../components/OrcaDocs.astro";
 import CodeBlock from "../../../../components/CodeBlock.astro";
 
 const description =
-  "Orca's command line: the two binaries you run, a pipeline's own and the orca command; the commands you type on each; the commands orca runs for you and you'll see in its logs; exit codes; and how the same binary acts on this machine or on AWS through its environment.";
+  "Orca's command line: the two binaries you run, a pipeline's own and the orca command; the commands you type on each; running them from a laptop against the deployed UI with orca login and --remote; the commands orca runs for you and you'll see in its logs; exit codes; and how the same binary acts on this machine or on AWS through its environment.";
 
 const pipelineCmds = [
   ["run --partitions KEYS [--allow-new-code]", "starts a run over the keys and runs it here, printing a line per step and partition, then the run's status. Without ORCA_DATABASE_URL it runs in memory and records nothing. --allow-new-code runs code that isn't the registered build's; the run then counts as that code's, not the pipeline's"],
   ["resume <run> [--allow-new-code]", "continues a run at what hasn't succeeded, once its heartbeat is stale or it has ended; --allow-new-code lets a different build carry on a run another one started"],
-  ["status [<run>]", "the latest runs, or one run's steps, attempts and log paths"],
+  ["status [<run> | --before <run>] [--status S,...]", "the latest runs, a page of older ones, or those with the statuses given; or one run's steps, attempts, log paths and what each step used"],
   ["describe", "the pipeline as JSON: its steps, DAG, datasets, partitions, schedule, limits and Dista tasks"],
   ["fires [<count>] [--after <time>]", "a scheduled pipeline's next fires (5 by default) after now or after a time such as 2025-01-01T00:00Z, each with its UTC time, wall-clock time and the partition it fills"],
 ];
 
 const orcaCmds = [
-  ["register [options] [<binary>...]", "runs each binary's describe and records it, its path, its schedule and its limits, as a new version if its code or commit changed; queued runs move to the new build. How its runs run comes from ./orca.toml (ORCA_CONFIG, --config F, --no-config), with flags over it: --image, --head-type, --worker-type, --workers N or MIN..MAX (autoscaling on EC2), --worker-procs, --spot, --secret NAME=ID, --placement control|ec2|worker:<pool>|default and --max-runs. With no binaries it registers every [pipelines.<name>] of the file"],
+  ["register [options] [<binary>...]", "runs each binary's describe and records it, its path, its schedule and its limits, as a new version if its code or commit changed; queued runs move to the new build. How its runs run comes from ./orca.toml (ORCA_CONFIG, --config F, --no-config), with flags over it: --image, --head-type, --worker-type, --workers N or MIN..MAX (autoscaling on EC2), --worker-procs, --spot, --secret NAME=ID, --placement control|ec2|worker:<pool>|default, --max-runs, and a request, --cpus and --memory-gb (N or MIN..MAX). With no binaries it registers every [pipelines.<name>] of the file"],
   ["config show [<pipeline>] [--json], config export [--out F|-]", "each pipeline's effective settings and where each came from (code default, orca.toml, flag, environment); export writes an orca.toml from what's registered"],
+  ["config check [<orca.toml>] [--secrets]", "checks a file as register would, and that its instance types can be sized, with no database, for a project's CI; --secrets reads each secret too, never printing it. Exits 1 on a problem"],
   ["status [<pipeline>] [--json]", "the pipelines, or one pipeline's state and latest runs with how long each ran"],
-  ["backfill [--rerun] <pipeline> KEYS", "queues runs for the keys that haven't succeeded and aren't in a queued or running run, and says on standard error which it left out and why; --rerun queues the done ones too. A keyed pipeline takes names, @all or @file:<path>"],
+  ["backfill [--rerun [--allow-append]] [--preview] <pipeline> KEYS", "queues runs for the keys that haven't succeeded and aren't in a queued or running run, and says on standard error which it left out and why; --rerun queues the done ones too, refused for steps that append unless --allow-append; --preview says what it would queue. A keyed pipeline takes names, @all or @file:<path>"],
+  ["start <pipeline> KEYS", "one queued run over all the keys, as the UI's Start"],
+  ["resume [--allow-new-code] <run>, rerun [--allow-append] <run> <step>", "queues a run again to resume at what hasn't succeeded; or a new run from that step on, the steps before it copied"],
   ["pause <pipeline>, unpause <pipeline>", "the scheduler starts none of the pipeline's runs while it's paused; fires, sensors, retries and backfills still queue theirs, and runs already going go on"],
-  ["cancel <pipeline> KEYS|@all", "cancels its queued, running and retrying runs over those keys; a running one stops before its next attempt"],
+  ["cancel <pipeline> KEYS|@all, cancel <run>", "cancels its queued, running and retrying runs over those keys, or one run; a running one stops before its next step"],
   ["scheduler", "a tick every second until it's stopped: fires what's due, senses datasets, starts queued runs and retries"],
   ["tick", "one tick, then exits"],
   ["ui", "the web UI, on ORCA_UI_ADDR (127.0.0.1:8270)"],
   ["user add <name>, user remove <name>, user list", "the UI's users; add reads the password from standard input, and on an existing user changes it and ends their sessions"],
+  ["user tokens <name>, user revoke <name> <id>|@all", "a user's API tokens, from orca login, and revoking them"],
   ["lineage <dataset> [<snapshot>]", "what a snapshot (the latest, without one) was made from, and what was made from it"],
   ["rebuild <dataset> KEYS", "reruns every pipeline downstream of the dataset over the keys, level by level"],
+  ["expire <dataset>|--all [--older-than 30d] [--keep N] [--dry-run]", "drops a table's old snapshots, keeping what live runs need"],
   ["watchdog status [--json], watchdog snooze <rule> <duration>, watchdog ack [--all|<trip>]", "the watchdog's rules with each threshold and value, and its trips; snooze silences a rule (2h, 30m, 1d; off ends it); ack keeps a trip's pipelines paused and clears its banner"],
   ["notify test, notify --kind K [--subject S] ... [message]", "a test push to ORCA_NOTIFY_URL, or an alert from a script, held back like the scheduler's"],
   ["worker-token create --pool P [--days N] [--label L], worker-token list, worker-token revoke <id>", "the tokens remote workers use, each scoped to one pool"],
   ["worker --pool P [--remote URL] [--max-runs N] ...", "on another machine: claims the pool's runs from orca ui over HTTPS and runs them there, with no database"],
-  ["login <url>, logout, --remote <url> <command>", "a token for a deployed UI, then backfill, start, cancel, pause, unpause, resume, rerun, rebuild, status, lineage and watchdog against it"],
+  ["login [<url>], logout [<url>], --remote <url> <command>", "a token for a deployed UI, then backfill, start, cancel, pause, unpause, resume, rerun, rebuild, status, lineage and watchdog against it (below)"],
   ["locate <binary>... [--root <dir>]", "finds each step's function, each Dista task and the pipeline in the source, and writes <binary>.source.json for the UI's links to the code"],
 ];
 
@@ -49,7 +54,7 @@ const forYou = [
   ["<binary> sense", "the scheduler, every ORCA_SENSE_SECONDS, for a sensor; and register, to record what's already there", "prints each dataset it reads with its current snapshot"],
   ["<binary> keys", "the scheduler, for a keyed pipeline's backfills and sensor", "prints the keys dataset's snapshot, then its keys, one per line"],
   ["<binary> dista-status <head>, <binary> dista-drain <head> <worker>", "the scheduler, for a run registered with --workers MIN..MAX on EC2", "reads the Dista head's demand, and drains a worker it's removing"],
-  ["<binary> sample --out <location> ...", "every runner, beside each process doing a run's work", "a line of machine metrics every few seconds, for the UI's Machines section"],
+  ["<binary> sample --out <location> ...", "every runner, and orca worker, beside each process doing a run's work", "a line of machine metrics every few seconds, for the UI's Machines section"],
   ["<binary> put-log <file> <location>, <binary> keep-log <file> <location> <start>", "each EC2 instance's script", "uploads a head's or worker's log, and appends the driver's output to the run's driver.log"],
   ["DISTA_ROLE=head|worker <binary>", "the runners, on Kubernetes and EC2", "the binary serves as the run's Dista head or a worker instead"],
 ];
@@ -90,6 +95,7 @@ const exits = [
   <nav class="docs-toc" aria-label="On this page">
     <a href="#pipeline">A pipeline's commands</a>
     <a href="#orca">The orca command</a>
+    <a href="#remote">From a laptop</a>
     <a href="#aws">orca aws</a>
     <a href="#for-you">Commands orca runs for you</a>
     <a href="#where">Local or AWS?</a>
@@ -128,8 +134,10 @@ const exits = [
 
   <h2 id="orca">The orca command</h2>
   <p>
-    Everything but <code>locate</code>, <code>aws</code> and <code>sample</code> needs
-    <code>ORCA_DATABASE_URL</code>. The
+    Everything but <code>locate</code>, <code>aws</code>, <code>sample</code>,
+    <code>config check</code>, <code>worker</code>, <code>login</code> and
+    <code>logout</code> needs <code>ORCA_DATABASE_URL</code>, unless it's sent to a
+    deployed UI with <code>--remote</code>. The
     scheduler and the UI hold no state of their own, so either can be stopped and
     started again at any time, and an action from the UI or the command line is a row
     the scheduler acts on at its next tick.
@@ -151,6 +159,26 @@ const exits = [
 ./build/orca cancel gharchive @all
 ./build/orca scheduler
 ./build/orca ui                  # http://127.0.0.1:8270`} />
+
+  <h2 id="remote">From a laptop: orca login and --remote</h2>
+  <p>
+    <code>orca login</code> asks for a UI user's name and password (the password
+    without echo) and keeps an API token in <code>~/.config/orca/credentials</code>,
+    mode 600 (<code>ORCA_CREDENTIALS</code> moves it). <code>--remote &lt;url&gt;</code>,
+    or <code>ORCA_REMOTE</code>, then sends <code>backfill</code> (and
+    <code>--preview</code>), <code>start</code>, <code>cancel</code>,
+    <code>pause</code>, <code>unpause</code>, <code>resume</code>, <code>rerun</code>
+    and <code>rebuild</code> to the UI's actions as that user, reads
+    <code>status</code> and <code>lineage</code> from its JSON, and does
+    <code>watchdog status</code> and <code>snooze</code> there too, with no database and
+    no SSH. Every action is recorded as that user's, from the command
+    line. Tokens last <code>ORCA_API_TOKEN_DAYS</code> (30); <code>orca logout</code>
+    revokes one. Plain <code>http</code> is refused except to localhost.
+  </p>
+  <CodeBlock label="shell" code={`./build/orca login https://orca.example.com
+./build/orca --remote orca.example.com backfill gharchive 2025-01-01..2025-01-31
+./build/orca --remote orca.example.com status gharchive
+./build/orca logout`} />
 
   <h2 id="aws">orca aws</h2>
   <p>
@@ -213,18 +241,17 @@ const exits = [
     </table>
   </div>
   <p>
-    On AWS today, you run them on the control instance, inside the scheduler's container,
-    where that environment and the image's binaries are:
+    Day to day, operations go through the UI or <a href="#remote">orca login and
+    --remote</a>, which keep a record of who did what. On the control instance, inside
+    the scheduler's container, the same environment and the image's binaries are there
+    for debugging, and for what needs the database, such as adding the first user:
   </p>
   <CodeBlock label="shell" code={`aws ssm start-session --target <ControlInstance>      # from orca aws status
-sudo docker exec scheduler orca backfill gharchive 2025-01-01..2025-01-31
 sudo docker exec scheduler gharchive status
 sudo docker exec -i scheduler orca user add alice       # reads the password from stdin`} />
   <p>
-    <code>orca aws register</code> and <code>orca aws app</code> do this for you
-    through SSM. Running the rest from your own machine against the deployed UI is
-    planned, in <a href="https://github.com/magmalake/orca.mojo/issues/111" rel="noopener">orca
-    issue #111</a>. The <a href="/s/orca/docs/run#env">full list of variables</a> is with
+    <code>orca aws register</code> and <code>orca aws app</code> run there for you
+    through SSM. The <a href="/s/orca/docs/run#env">full list of variables</a> is with
     the scheduler.
   </p>
 

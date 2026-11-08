@@ -2,27 +2,29 @@
 import OrcaDocs from "../../../../components/OrcaDocs.astro";
 import CodeBlock from "../../../../components/CodeBlock.astro";
 
+const UI_MD = "https://github.com/magmalake/orca.mojo/blob/main/docs/ui.md";
+
 const description =
-  "Orca's web UI: its pages and their JSON, the actions that start, backfill, resume, rerun and cancel runs, logins and sessions, a run's Dista timeline and instances, and links to the code.";
+  "Orca's web UI: its pages and their JSON, coverage in one number, filtering runs and acting on many at once, the actions and the dialog they ask in, logins and sessions, a run's page with its cards, steps and machines, and code on hover.";
 
 const uiPages = [
-  ["/", "pipelines, with their schedules, next runs and last runs; its Timeline tab draws each pipeline's runs over 1 h to 7 d, in dataset order, with what started what (/api/gantt)"],
-  ["/pipelines/<name>", "three tabs: Overview (the Progress, Config and Code cards, steps as a graph or a table, next runs), ?tab=runs (runs and versions) and ?tab=operate (the coverage calendar, Start runs and Stop runs); a keyed one's keys, done, live and failed"],
+  ["/", "pipelines, with their partitions, coverage, schedules and last runs; its Timeline tab draws each pipeline's runs over 1 h to 7 d, in dataset order, with what started what (/api/gantt)"],
+  ["/pipelines/<name>", "three tabs: Overview (the Progress, Config, Code and Resources cards, the Configuration table, steps as a graph or a table, next runs), ?tab=runs (runs and versions) and ?tab=operate (the coverage calendar, Start runs and Stop runs); a keyed one's keys, done, live and failed"],
   ["/pipelines/<name>/keys/<key>", "one key of a keyed pipeline: its steps in every run it was in"],
-  ["/runs", "runs, newest first; ?pipeline=, ?status=, ?trigger="],
-  ["/runs/<id>", "a run's DAG in its steps' colours, its steps and partitions, attempts, errors, reads and commits, its source and code, its timeline, machines and instances, and resume, rerun from a step and cancel"],
-  ["/runs/<id>/attempts/<attempt>", "an attempt's log, its last MiB, with its error"],
+  ["/runs", "runs, newest first, a page at a time, with a filter bar and, logged in, actions on the runs ticked"],
+  ["/runs/<id>", "a run's Status, Partitions & trigger, Code, Resources and Settings cards, its steps as a table, a timeline or a graph, its machines and instances, its Dista timeline, actions and snapshots"],
+  ["/runs/<id>/attempts/<attempt>", "an attempt's log, its last MiB, with its error, peak memory and CPU"],
   ["/runs/<id>/timeline.json", "the run's Dista timeline, for Perfetto"],
   ["/runs/<id>/driver.log", "the run's driver output, as the scheduler kept it"],
   ["/runs/<id>/cluster/<role>-<instance>.log", "a head's or worker's output, from an EC2 run"],
-  ["/datasets", "every dataset with its writers and readers, and the graph of pipelines and datasets"],
+  ["/datasets", "every dataset with its writers and readers, and the graph of pipelines and datasets, drawn top to bottom"],
   ["/datasets/<name>", "a dataset's place in that graph, its snapshots, its rebuilds and the form to start one"],
-  ["/datasets/<name>/snapshots/<id>", "a snapshot's lineage, back and forward, as a graph and as tables"],
+  ["/datasets/<name>/snapshots/<id>", "a snapshot's lineage, Upstream and Downstream, as a graph and as tables"],
   ["/rebuilds/<id>", "a rebuild's pipelines by level, with their runs"],
-  ["/ops/control", "Ops › Control: the machine running the scheduler, the UI and Postgres: CPU, memory, disk, network, containers, and the alerts sent"],
-  ["/ops/fleet", "Ops › Fleet: the EC2 instances launched for runs, their cost an hour, runs and errors per hour; on the local runner, the fixed price"],
-  ["/ops/workers", "Ops › Workers: each remote worker's pool, image, last heartbeat and runs"],
-  ["/watchdog", "the watchdog's rules with each threshold and value, its trips and what each tripped on, and the form to snooze a rule"],
+  ["/ops/control", "Ops › Control: the machine running the scheduler, the UI and Postgres: CPU, memory, disk, network, containers, its memory pressure, the local and control-placed runs going with their memory against their limits, and the alerts sent"],
+  ["/ops/pools", "Ops › Pools: every machine runs are placed on, a row each: the EC2 instances orca launches, a Kubernetes run's pods and the machines running orca worker, filtered with ?kind= and ?pool=; with EC2 in view, the fleet's cost and charts"],
+  ["/ops/pools/<kind>/<id>", "one machine: an EC2 instance's samples over its run, or the runs a worker claimed"],
+  ["/watchdog", "Ops › Watchdog: the rules with each threshold and value, the trips and what each tripped on, and the form to snooze a rule"],
   ["/login, /logout", "a session for the actions, as a cookie"],
 ];
 
@@ -30,12 +32,23 @@ const uiActions = [
   ["Start", "a queued run over the partitions entered, trigger ui"],
   ["Backfill", "what orca backfill does: a queued run for each partition without one, and with and what is ticked, the done ones too"],
   ["Resume", "a failed, cancelled or stalled run queued again, to resume at what hasn't succeeded; a run whose code has changed asks for confirmation first"],
-  ["Rerun from a step", "a new run, trigger rerun, with the steps before the chosen one copied from the old run, so only it and what follows run"],
-  ["Cancel", "a queued or failed run cancelled at once; a running one stops before its next attempt, and the attempt already going finishes"],
+  ["Rerun, Rerun from here", "a new run over the same partitions, every step again; or, from an attempt's page, a new run, trigger rerun, with the steps before that one copied from the old run, so only it and what follows run"],
+  ["Cancel", "a queued or failed run cancelled at once; a running one stops before its next step, and the step running has ORCA_CANCEL_KILL_SECONDS (60) to finish"],
+  ["Cancel, Retry failed, Backfill again", "on a runs list, over the runs ticked or all that match the filters: what each row's Cancel and Retry do, and orca backfill --rerun over their partitions"],
   ["Pause, Unpause", "on a pipeline's page: what orca pause and orca unpause do"],
   ["Cancel queued runs", "on a pipeline's page: what orca cancel does, over @all or the partitions entered"],
-  ["Rebuild", "on a dataset's page: what orca rebuild does, over the partitions entered"],
+  ["Rebuild downstream", "on a dataset's page: what orca rebuild does, over the partitions entered"],
   ["Snooze, Keep paused", "on /watchdog and the trip banner: what orca watchdog snooze and orca watchdog ack do"],
+];
+
+const runFilters = [
+  ["?status=", "any of several statuses: ?status=failed&status=queued, or failed,queued; the box shows each status's count under the other filters"],
+  ["?trigger=", "schedule, sensor, backfill, fill, manual, ui, rerun or rebuild"],
+  ["?pipeline=", "one pipeline, on /runs"],
+  ["?from=, ?to=", "created from, and by the end of, a day (2024-06-01) or a time (2024-06-01T09:30), UTC"],
+  ["?since=", "created in the last 1h, 24h or 7d, or today: the quick picks beside the dates"],
+  ["?key=", "a partition: a glob such as 2023-08-*, or any part of one, such as modular/ for a keyed pipeline's repositories"],
+  ["?run=", "one run: the page goes to it"],
 ];
 ---
 
@@ -47,15 +60,21 @@ const uiActions = [
     <code>orca</code> binary, on <code>127.0.0.1:8270</code> unless
     <code>ORCA_UI_ADDR</code> says otherwise. It holds no state: it reads the tables the
     scheduler and the runs write, connecting to Postgres per request, so it can run beside
-    the scheduler or anywhere else that reaches the database. Nothing is fetched from
-    elsewhere, so it works offline.
+    the scheduler or anywhere else that reaches the database. Its pages load nothing from
+    other sites, so they work offline; only code on hover needs GitHub, and the UI fetches
+    that itself.
   </p>
 
   <nav class="docs-toc" aria-label="On this page">
     <a href="#pages">Pages</a>
+    <a href="#coverage">Coverage</a>
+    <a href="#lists">Lists of runs</a>
     <a href="#actions">Actions</a>
     <a href="#login">Login</a>
+    <a href="#pipeline">A pipeline's page</a>
     <a href="#runs">A run's page</a>
+    <a href="#ops">Ops</a>
+    <a href="#hover">Code on hover</a>
   </nav>
 
   <h2 id="pages">Pages</h2>
@@ -74,8 +93,62 @@ curl -H 'Accept: application/json' http://127.0.0.1:8270/runs/7`} />
   <p>
     Every path also answers JSON, to <code>Accept: application/json</code> or
     <code>?format=json</code>, built from the same rows, so a script and a person see the
-    same thing. While a run is going on, its page refreshes every 5 seconds, and an
-    attempt's log every two; each stops once it has ended.
+    same thing. A page with something going on refreshes that part by itself while the
+    tab is visible: a run's page and the runs tables every 5 seconds while a run is
+    queued or running, an attempt's log every 2, Ops › Pools every 10 and Ops › Control
+    and the watchdog every 30. A refresh keeps the row at the top of the window, the
+    chosen tab and a field being typed in. Every column header and every fact's name has
+    a "?" that explains it, and a value from a fixed set, such as a status or a trigger,
+    says what it means on hover. The old <code>/ops/fleet</code> and
+    <code>/ops/workers</code> redirect to Ops › Pools.
+  </p>
+
+  <h2 id="coverage">Coverage</h2>
+  <p>
+    Since 0.16.0 each pipeline has one coverage number: the home page's Coverage column
+    and its pipeline's Progress card (<code>1141 / 1407 days done (81%)</code>), linking
+    to its year calendar. For a daily or monthly pipeline it's the partitions done of
+    those in its range so far, from its first through the last that has ended; for a
+    keyed one, the keys done of the keys orca last read. Done is what the calendar and a
+    backfill count: every mapped step succeeded in a run of the current code. A pipeline
+    with nothing to count shows "—". The JSON has it as <code>coverage</code>
+    (<code>done</code>, <code>total</code>, <code>pct</code>, <code>unit</code>) on each
+    pipeline of <code>/</code> and on <code>/api/pipelines/&lt;name&gt;</code>.
+  </p>
+  <p>
+    A daily pipeline's Coverage card, on its Operate tab, has Month and Year tabs: Year is
+    twelve small months of days coloured done, failed, running or queued and not run,
+    each with its share done, and a strip of every month of the range. A sensor that
+    follows another pipeline's dataset marks the days it hasn't done yet as
+    <strong>behind</strong>, and its Progress card says how far behind it is.
+  </p>
+
+  <h2 id="lists">Lists of runs</h2>
+  <p>
+    <code>/runs</code>, a pipeline's Runs tab and a dataset's snapshots come a page at a
+    time, newest first, keyed by run id (<code>?before=</code>, <code>?after=</code>,
+    <code>?limit=</code>), so a page stays put while new runs arrive. Since 0.15.0 a filter
+    bar over the table narrows them; it's a plain <code>GET</code> form, so the filters
+    work without scripts, combine with each other, and are kept in every link, the live
+    refresh and the <code>1–50 of N</code> count:
+  </p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Parameter</th><th>Runs</th></tr></thead>
+      <tbody>
+        {runFilters.map(([k, v]) => (
+          <tr><td><code>{k}</code></td><td>{v}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <p>
+    Logged in, each row has a checkbox, and the bar over the table acts on the runs
+    ticked, or on all that match the filters: <strong>Cancel</strong>,
+    <strong>Retry failed</strong> and <strong>Backfill again</strong>. It says what it did
+    ("Cancelled 12 runs, 3 already finished"), does at most 2,000 runs at once, and
+    records each run as its own action. <code>&lt;pipeline&gt; status --status
+    failed,queued</code> filters the same way on the command line.
   </p>
 
   <h2 id="actions">Actions</h2>
@@ -97,6 +170,13 @@ curl -H 'Accept: application/json' http://127.0.0.1:8270/runs/7`} />
     <code>Referer</code> without one, isn't its own, so another site's page can't post to
     it through a browser.
   </p>
+  <p>
+    Since 0.16.0 the actions that are hard to undo (Cancel, a list's bulk Cancel, Cancel
+    queued runs, Rerun, Rerun from here and Rebuild downstream) ask first, in a dialog in
+    the UI's own colours, light or dark: what will happen ("Cancel run 4418?") and two
+    buttons, the safe one focused. Escape or a click outside is no. Without scripts the
+    forms post without asking, as before.
+  </p>
 
   <h2 id="login">Login</h2>
   <p>
@@ -113,24 +193,98 @@ curl -H 'Accept: application/json' http://127.0.0.1:8270/runs/7`} />
     its user and shown on its run's page, and so is every failed login: after 5 for one
     name, or 20 from one address, in 15 minutes, <code>/login</code> answers 429 without
     checking the password. Behind a proxy, <code>ORCA_UI_TRUST_PROXY=1</code> takes the
-    address from <code>X-Forwarded-For</code>.
+    address from <code>X-Forwarded-For</code>. The same users log in from the command
+    line with <a href="/s/orca/docs/cli#remote">orca login</a>.
+  </p>
+
+  <h2 id="pipeline">A pipeline's page</h2>
+  <p>
+    Overview, Runs and Operate are tabs, each its own page (<code>?tab=</code>), so links
+    and the back button work. The name, Pause and the Progress card are on every tab.
+    Over the Overview are four cards:
+  </p>
+  <ul class="docs-list">
+    <li>
+      <strong>Progress</strong>: the runs going, the <a href="/s/orca/docs/run#fills">fill</a>,
+      a failing sensor, the next run and the coverage. While the oldest queued run waits
+      on its host it says why, under Waiting: <code>waiting: needs 2 GB, 1.3 GB free of
+      grants</code>, or <code>waiting: memory pressure 23% (limit 10%)</code>.
+    </li>
+    <li><strong>Config</strong>: partitions, schedule, run retries, placement and binary.</li>
+    <li><strong>Code</strong>: the pipeline, its steps and Dista tasks, each linked to its line, and the code hash.</li>
+    <li>
+      <strong>Resources</strong> (since 0.14.0): the median and the most of the peak
+      memory, CPU time and peak cores of its last 20 measured runs, and the request
+      (<code>cpus</code>, <code>memory_gb</code>) if it has one: what to
+      <a href="/s/orca/docs/run#resources">ask for</a>.
+    </li>
+  </ul>
+  <p>
+    The Configuration table under them has each setting with where it came from, linked
+    to its line in orca.toml at the registered commit, or to the
+    <code>Pipeline[...]</code> line for a default from the code.
   </p>
 
   <h2 id="runs">A run's page</h2>
   <p>
-    A queued or running run's page refreshes itself every 5 seconds. It starts with the
-    run's duration, links the pipeline's previous and next run (the arrow keys follow
-    them), and shows the settings the run had, secrets by name only. A run with Dista
-    tasks draws its timeline in the page: a track per process, a lane per slot, spans
-    coloured by function, with a tooltip, and wheel or drag to zoom. With <code>ORCA_UI_URL</code> set to the UI's public
-    address, an Open in Perfetto link opens the full trace there. Its
-    <a href="/s/orca/docs/run#metrics">machine metrics</a> are drawn under its steps. A
-    run on EC2 lists its instances, with the number of workers over the run, why each
-    instance ended, and each one's log. The step names, the pipeline and its Dista tasks
-    link to their code (<a href="/s/orca/docs/build#versions">versions and code
-    links</a>), in a new tab, and the headings link to these docs
-    (<code>ORCA_DOCS_URL</code> changes where). The repository's
-    <a href="https://github.com/magmalake/orca.mojo/blob/main/docs/ui.md" rel="noopener">ui.md</a> has more on the pipeline page's cards,
-    the Ops pages and the anchors that link to one chart.
+    A queued or running run's page refreshes itself every 5 seconds, and its crumb links
+    the pipeline's previous and next run (the arrow keys follow them). Since 0.14.0 its
+    header is cards: <strong>Status</strong> (with Resume, Rerun and Cancel),
+    <strong>Partitions &amp; trigger</strong>, <strong>Code</strong>,
+    <strong>Resources</strong> and <strong>Settings</strong>, which has the settings the
+    run had and its secrets by name only. Resources has the run's peak memory and CPU
+    used, what it requested and was granted, and, where it ran in a cgroup of its own, its
+    Memory limit. <strong>Steps</strong> is one card with Table, Timeline and Graph tabs;
+    the table has each step's peak memory against its limit (<code>312 MB / 1 GB</code>).
+    An attempt the kernel killed for its memory fails <code>out of memory at
+    &lt;limit&gt;: ...</code>.
+  </p>
+  <p>
+    <strong>Machines</strong> draws the <a href="/s/orca/docs/run#metrics">machine
+    metrics</a> on the same time axis: the whole machine for the local runner and the
+    control placement, saying so when other runs shared it, the run's own instances on
+    EC2, the node on Kubernetes, and since 0.15.0 the worker's machine for a run on a
+    remote worker. So Machines is the machine, and Resources is the run's own use. A run
+    with Dista tasks draws its timeline in the page: a track per process, a lane per
+    slot, spans coloured by function, with a tooltip, and wheel or drag to zoom. With
+    <code>ORCA_UI_URL</code> set to the UI's public address, an Open in Perfetto link
+    opens the full trace there. A run on EC2 lists its instances, with why each ended and
+    each one's log. Snapshots lists what each step read and wrote, linked to their
+    lineage. The headings link to these docs (<code>ORCA_DOCS_URL</code> changes where).
+  </p>
+
+  <h2 id="ops">Ops</h2>
+  <p>
+    The Ops menu has three pages. <strong>Control</strong> is the one machine running the
+    scheduler, the UI and Postgres: its CPU, memory, disk, network and containers over the
+    last 24 hours, 7 or 14 days, and since 0.15.0 its <strong>Memory pressure</strong> card (Linux's
+    pressure stall information, and whether new runs wait for it) and a
+    <strong>Runs</strong> card of the local and control-placed runs going, each with its
+    memory against its limit. <strong>Pools</strong> (since 0.15.0, in place of Fleet and
+    Workers) is a row per machine runs are placed on: EC2 instances, a Kubernetes run's
+    pods and the machines running <a href="/s/orca/docs/workers">orca worker</a>, with
+    each one's state, image, CPUs, memory, runs and last heartbeat; with EC2 in view it
+    keeps Fleet's cost cards and charts. <strong>Watchdog</strong> has the rules and
+    their trips (<a href="/s/orca/docs/run#watchdog">the watchdog</a>). Each section's
+    heading links to it, so <code>/ops/control#memory</code> opens at that chart.
+  </p>
+
+  <h2 id="hover">Code on hover</h2>
+  <p>
+    The step names, the pipeline and its Dista tasks link to their code
+    (<a href="/s/orca/docs/build#versions">versions and code links</a>), and hovering such
+    a link shows the function, coloured, which the UI fetches from GitHub at the commit
+    (not for a private repository). Hovering a step in a Steps card shows its card: its
+    signature and docstring, its kind, inputs and outputs, the datasets it reads and
+    writes, and what its attempts took, on a pipeline's page over its last 20 runs and on
+    a run's page for that attempt. Since 0.16.0 the runs lists and the home page show the
+    same cards too: a run's pipeline at the commit it ran, a failed run's failed step, and
+    the home page's pipelines at the registered code. Every card leads with its
+    docstring's first sentence, so that sentence should say what the function or
+    pipeline is for. A card shows on hover, keyboard focus or a first tap.
+  </p>
+  <p>
+    The repository's <a href={UI_MD} rel="noopener">ui.md</a> has the rest: every JSON
+    field, the live fragments, the anchors that link to one chart, and the Pools columns.
   </p>
 </OrcaDocs>
