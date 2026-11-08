@@ -103,6 +103,18 @@ not write the data again. The same properties give lineage: each snapshot's
 page in the UI lists its Upstream and Downstream, and `orca rebuild` reruns
 everything downstream of a table.
 
+<figure class="shot">
+  <img class="shot__light" src="/blog/introducing-orca/snapshot-light.webp" alt="A snapshot page of mojo.activity: a lineage graph of the snapshots it was built from, and the Upstream table with the run, step, partition and code of each" width="1280" height="860" loading="lazy" />
+  <img class="shot__dark" src="/blog/introducing-orca/snapshot-dark.webp" alt="A snapshot page of mojo.activity: a lineage graph of the snapshots it was built from, and the Upstream table with the run, step, partition and code of each" width="1280" height="860" loading="lazy" />
+  <figcaption>A snapshot of <code>mojo.activity</code>. The graph and the Upstream table show the exact snapshots it was built from, and the run, step, partition and code hash that wrote each.</figcaption>
+</figure>
+
+<figure class="shot shot--tall">
+  <img class="shot__light" src="/blog/introducing-orca/datasets-light.webp" alt="The Datasets page: the census lineage graph, from gharchive through gharchive_index and mojo_repos to the mojo tables" width="436" height="1033" loading="lazy" />
+  <img class="shot__dark" src="/blog/introducing-orca/datasets-dark.webp" alt="The Datasets page: the census lineage graph, from gharchive through gharchive_index and mojo_repos to the mojo tables" width="436" height="1033" loading="lazy" />
+  <figcaption>Datasets: every census pipeline and the tables it reads and writes, from the GH Archive download down to the tables the Mojourney site shows.</figcaption>
+</figure>
+
 ## Where runs run
 
 orca's state is in Postgres. A pipeline binary can also keep its runs in a

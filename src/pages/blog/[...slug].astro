@@ -100,6 +100,8 @@ const shown = post.data.date.toLocaleDateString("en-GB", {
     border: 1px solid var(--border);
     border-radius: var(--radius);
   }
+  /* A tall graph at the column's full width would run several screens. */
+  .post .shot--tall { max-width: 22rem; margin-inline: auto; }
   .post .shot__dark { display: none !important; }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) .post .shot__light { display: none !important; }
