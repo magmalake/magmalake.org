@@ -20,13 +20,15 @@ says:
 
 | | now | 30 days ago |
 |---|---:|---:|
-| repos found | 611 | |
-| repos with their history read | 517 | 498 |
-| commits | 83,516 | 74,273 |
-| lines of Mojo | 18.9 M | 16.4 M |
+| repos found | 1,167 | |
+| repos with their history read | 564 | 545 |
+| commits | 103,921 | 94,677 |
+| lines of Mojo | 19.0 M | 16.5 M |
 
-That is 9,243 commits in the last 30 days, a little fewer than the 10,158 in
-the 30 days before. 515 of the 517 repos read had a commit in the last year.
+That is 9,244 commits in the last 30 days, a little fewer than the 10,163 in
+the 30 days before. 528 of the 564 repos read had a commit in the last year.
+More repos are found than read: the history of the repos found most
+recently is still being read, a few dozen at a time.
 The site refreshes every 30 minutes, so these numbers will have moved by the
 time you read this.
 
@@ -54,8 +56,8 @@ are from April 2023.
 The [main page](https://mojourney.dev) has the headline counts, a breakdown
 of repos by Mojo version, and four charts under Growth: lines of Mojo, repos
 and commits per month, and the share of repos by tooling. Today 88% of repos
-use pixi, 9% have no lock file or manifest, and 1% use Bazel. Half of all
-repos, 307 of 611, are on Mojo 1.2.
+Of the repos read, 82% use pixi, 15% have no lock file or manifest, and 1% use
+Bazel, and more than half, 308 of 564, are on Mojo 1.2.
 
 Below the charts are three tables:
 
@@ -64,14 +66,15 @@ Below the charts are three tables:
 - **Most active** lists the repos with the most commits in the last 30 days,
   and how many lines of Mojo they grew by.
 - **Most depended on** lists the repos that the most census repos declare as a
-  dependency. Today that list is mostly magmalake's own libraries, with
-  [lint.mojo](https://mojourney.dev/repos/magmalake/lint.mojo) used by 16
-  repos. The first one from outside magmalake is Brian Grenier's
-  [EmberJson](https://mojourney.dev/repos/bgreni/EmberJson), used by 4.
+  dependency. An owner's repos that depend on each other share one row, so
+  magmalake's own libraries are `magmalake/*`, used by 23 of its repos and
+  none from outside yet. The most used from another owner is Brian
+  Grenier's [EmberJson](https://mojourney.dev/repos/bgreni/EmberJson), used
+  by 5 repos.
 
 [Migrations](https://mojourney.dev/migrations) counts, per month, the repos
 whose lock file moved to each Mojo version. Releases show up as spikes. In
-July, 208 repos moved to 1.0.0. In August, 197 moved to the nightly
+July, 209 repos moved to 1.0.0. In August, 197 moved to the nightly
 1.1.0.dev2026081105, and in September 247 moved to 1.2.0.dev2026092605.
 
 [Repos](https://mojourney.dev/repos) is the full list, sortable and filtered
@@ -121,13 +124,14 @@ remote worker.
 
 - **Commit counts are first-parent.** They follow the main line of each
   repo's history, so they will be lower than the totals GitHub shows.
-- **Stars are refreshed weekly**, from the GitHub API each Monday.
-- **The backfill is still running.** 604 days of GH Archive are loaded, from
-  2023-01-01 to 2026-11-07, and the days in the middle years are finishing
-  over the next day or so. Rising counts stars and forks from GH Archive
-  events, so its list is short until those days are in. The repo count is a
-  lower bound for the same reason: a repo is found only when one of its events
-  falls on a day that is loaded.
+- **Stars are refreshed daily**, from the GitHub API at 06:00 UTC.
+- **GH Archive is loaded, the histories are catching up.** 1,406 of the
+  1,407 days from 2023-01-01 to 2026-11-07 are loaded; the last, 2025-06-12,
+  is missing an hour GH Archive never published, and loads without it. The
+  backfill found many repos in its last days, so about half of the 1,167
+  repos don't have their history read yet, and counts that come from the
+  history (commits, lines, versions) cover the 564 that do. The home page
+  shows both fractions.
 - **Detection can miss repos.** If a repo's events never carry a Mojo-specific
   signal, the census does not see it. Some repos also have no version it can
   read. They are listed as `no-manifest` or `unknown`.
@@ -138,8 +142,8 @@ site's footer opens an issue on
 
 ## Next
 
-Once the backfill is complete, the numbers for 2023 to 2025 will be whole,
-and Rising will have its full 30 days of stars. After that, the plan is to
+Once every repo's history is read, the commit, line and version counts will
+cover all the repos found. After that, the plan is to
 keep the census current and add views as questions come up.
 
 On Monday, the second post covers orca: how the seven pipelines are written,
