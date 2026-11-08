@@ -20,6 +20,7 @@ export const orcaDocs = [
   { href: "/s/orca/docs/run", label: "Run", title: "Scheduling and running" },
   { href: "/s/orca/docs/ui", label: "UI", title: "The UI" },
   { href: "/s/orca/docs/debug", label: "Debug", title: "Debugging failures" },
+  { href: "/s/orca/docs/workers", label: "Workers", title: "Remote workers" },
   { href: "/s/orca/docs/roadmap", label: "Roadmap", title: "Roadmap" },
 ];
 export const ORCA_PRS = `${ORCA_REPO}/pull`;
