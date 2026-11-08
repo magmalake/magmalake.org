@@ -20,7 +20,7 @@ says:
 
 | | now | 30 days ago |
 |---|---:|---:|
-| repos found | 611 | 592 |
+| repos found | 611 | |
 | repos with their history read | 517 | 498 |
 | commits | 83,516 | 74,273 |
 | lines of Mojo | 18.9 M | 16.4 M |
