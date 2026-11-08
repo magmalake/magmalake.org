@@ -7,7 +7,7 @@ sourceUrl: https://github.com/magmalake/orca.mojo
 sourceLabel: orca.mojo
 related: [introducing-mojourney]
 unlisted: false
-draft: true
+draft: false
 ---
 
 [orca](https://github.com/magmalake/orca.mojo) runs data pipelines written in
