@@ -22,7 +22,7 @@ public at [orca.mojourney.dev](https://orca.mojourney.dev), so everything in
 this post can be checked there. At the time of writing it has seven pipelines
 and 5,152 runs.
 
-## How a pipeline is written
+## Writing a pipeline
 
 A step is a top-level `def` with a typed input and output. `Step[...]` gives
 it a name, its types and its kind. A `Mapped` step runs once per partition,
@@ -116,7 +116,7 @@ everything downstream of a table.
   <figcaption>Datasets: every census pipeline and the tables it reads and writes, from the GH Archive download down to the tables the Mojourney site shows.</figcaption>
 </figure>
 
-## Where runs run
+## Tracking runs
 
 orca's state is in Postgres. A pipeline binary can also keep its runs in a
 SQLite file when you run it by hand. A pipeline's placement says which
@@ -125,14 +125,14 @@ machine starts its runs. The default is the scheduler's runner, which is
 scheduler's own host, under a memory cap. `worker:<pool>` runs them on a
 remote worker.
 
-A remote worker is one command:
+A remote worker connects to the cluster with one command:
 
 ```sh
 ORCA_WORKER_TOKEN=orca_... orca worker --pool bgent --remote https://orca.example.com
 ```
 
-It asks the UI for the pool's runs over HTTPS and runs them on its own
-machine. The run's state calls go to the UI's API, which writes them to
+It asks the API for the pool's runs over HTTPS and runs them on its own
+machine. The run's state calls go to the API, which writes them to
 Postgres, so the worker holds no database credentials and needs no inbound
 port. Its token is scoped to one pool and can be revoked. If a worker dies,
 its runs are requeued once their heartbeats stop.
@@ -146,7 +146,7 @@ its runs are requeued once their heartbeats stop.
 
 ## orca.toml
 
-What a pipeline does stays in its code. Where it runs and with how much goes
+A pipeline is defined in code, its execution parameters
 in `orca.toml`, checked in next to the code:
 
 ```toml
@@ -161,7 +161,7 @@ check` checks a file before it is registered. The pipeline page shows
 the same table, and each value links to its line in `orca.toml` at the
 registered commit.
 
-## What a run uses
+## Resources for runs
 
 Since 0.14.0 orca records each run's peak memory and CPU
 ([#200](https://github.com/magmalake/orca.mojo/issues/200)) on the local
@@ -182,7 +182,7 @@ and dista sizing its in-flight work from the run's grant
 borrows from, from Borg and Autopilot to Dominant Resource Fairness and
 morsel-driven parallelism.
 
-## Operating it
+## Operations
 
 Each pipeline has a page with Overview, Runs and Operate tabs. Operate has a
 coverage calendar with a year view: twelve small months of days, coloured by
@@ -235,9 +235,9 @@ push followed.
   <figcaption>Two of the pushes on the phone. The newer one is a real gap: GH Archive has no file for 17:00 UTC on 2025-06-12, so that day's run failed after its retries and said which hour and URL.</figcaption>
 </figure>
 
-## The census on orca
+## Mojourney on orca
 
-The census runs on one Hetzner CAX21, a 4-vCPU ARM server with 8 GB of RAM
+Mojourney runs on one Hetzner CAX21, a 4-vCPU ARM server with 8 GB of RAM
 for a fixed €12.49 a month. It runs the scheduler, the UI, Postgres, the
 Mojourney site and the GH Archive backfill. An Apple-silicon Mac is a remote
 worker of pool `bgent`. It runs `mojo_history` and `mojo_versions`, which
@@ -263,7 +263,7 @@ The UI and the census site are both Mojo HTTP servers built on
 runs its own data checks before a new build goes live, and shows them at
 [mojourney.dev/checks](https://mojourney.dev/checks).
 
-## What isn't done
+## Still ahead
 
 - **Fills on worker pools.** `fills = "all"` doesn't queue runs for a
   `worker:<pool>` pipeline yet. It is in progress
@@ -273,20 +273,5 @@ runs its own data checks before a new build goes live, and shows them at
   ([#220](https://github.com/magmalake/orca.mojo/issues/220)).
 - **Resources on EC2 and Kubernetes.** Peak memory and CPU are not measured
   there yet, and the Kubernetes runner does not pass secrets to its pods.
-- **Containing a run.** Until #201, a run that uses more memory than it
-  asked for can still take other runs on its machine down with it.
 
-This week also cleared the CI flakes
-([#218](https://github.com/magmalake/orca.mojo/pull/218)). Most were tests
-picking ports in Linux's ephemeral range. Two were real bugs in orca.
 
-## Reading the code
-
-The vision for orca is a core one person can read in an afternoon. The web
-layer is four small packages: `web/` for
-the router and auth, `api/` for JSON, `ui/` with a module per page, and
-`views/` for the queries both draw from.
-[DESIGN.md's Web layer section](https://github.com/magmalake/orca.mojo/blob/main/DESIGN.md#web-layer)
-maps each page to its module. To try orca, the
-[docs](/s/orca/docs) start with writing a pipeline, and
-`pixi shelf add orca-mojo` installs it.
