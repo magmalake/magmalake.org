@@ -74,7 +74,7 @@ export const phases: Phase[] = [
   {
     n: 5,
     title: "On Kubernetes",
-    status: "planned",
+    status: "done",
     summary:
       "The scheduler as a Deployment; a Dista cluster per run, created and deleted through the Kubernetes API.",
     gate: "The taxi pipeline runs on a schedule on EC2, each run on its own cluster.",
@@ -121,7 +121,6 @@ export const worksToday = [
 export const inReview: string[] = [];
 
 export const notYet = [
-  "Phase 5's gate on AWS: the taxi pipeline on a schedule, each run on a cluster of its own",
   "Secrets for runs on Kubernetes (orca #206)",
   "Requests on EC2 and Kubernetes, and requests learned from measured peaks (orca #171)",
 ];

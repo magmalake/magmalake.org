@@ -122,8 +122,10 @@ const env = [
     forks its Dista workers there. <code>ORCA_RUNNER</code> starts each run on a
     cluster of its own instead, from the image the pipeline was registered with:
   </p>
-  <CodeBlock label="shell" code={`./build/orca register --image 123456789012.dkr.ecr.us-east-2.amazonaws.com/orca:data \\
-    --head-type c7g.large --worker-type c7g.2xlarge --workers 3 ./build/taxi
+  <CodeBlock label="shell" code={`./build/orca register \\
+    --image 123456789012.dkr.ecr.us-east-2.amazonaws.com/orca:data \\
+    --head-type c7g.large --worker-type c7g.2xlarge \\
+    --workers 3 ./build/taxi
 ORCA_RUNNER=ec2 ./build/orca scheduler`} />
   <p>
     <strong><code>ORCA_RUNNER=ec2</code></strong> starts a head instance, on demand,

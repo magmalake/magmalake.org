@@ -7,7 +7,7 @@ import OrcaFooter from "../../../components/OrcaFooter.astro";
 import { worksToday, inReview, notYet, phases, ORCA_REPO, DISTA_SECTION } from "../../../data/orca";
 
 const description =
-  "Orca orchestrates data pipelines written in Mojo: DAGs declared in Mojo and checked by the compiler, cron schedules and backfills, steps that run on Dista, datasets in Iceberg tables and state in Postgres. Early, open source, four phases of five done.";
+  "Orca orchestrates data pipelines written in Mojo: DAGs declared in Mojo and checked by the compiler, cron schedules and backfills, steps that run on Dista, datasets in Iceberg tables and state in Postgres. Early, open source, all five phases done.";
 ---
 
 <Base title="Orca: orchestration for Mojo data pipelines" description={description} bare chrome={false}>
@@ -140,7 +140,7 @@ def main() raises:
   <section class="section">
     <div class="wrap wrap--wide">
       <p class="eyebrow">Status</p>
-      <h2 class="section-title">Four of {phases.length} phases done; Kubernetes is next</h2>
+      <h2 class="section-title">All {phases.length} phases done</h2>
       <p class="lede">
         Phase 1, DAGs and runs, is done: the 2023–2024 NYC taxi load runs as a pipeline, to
         the row count and column sums of taxibench's table, and a run killed with
@@ -151,8 +151,10 @@ def main() raises:
         is done: a failed step is found, its log read and its run resumed from the browser,
         and runs are started, rerun from a step, backfilled and cancelled there too. Phase 4,
         lineage and sensors, is done: a snapshot committed to a source table, by Orca or by
-        anything else, runs exactly the pipelines downstream of it, in order. Phase 5 runs
-        Orca on Kubernetes.
+        anything else, runs exactly the pipelines downstream of it, in order. Phase 5, on
+        Kubernetes, is done: the scheduler runs as a Deployment, and each run gets a Dista
+        cluster of its own, on EC2 or Kubernetes, deleted when it ends. What comes next is
+        on the <a href="/s/orca/docs/roadmap">roadmap</a>.
         The repository's <a href={`${ORCA_REPO}/blob/main/DESIGN.md`} rel="noopener">DESIGN.md</a>
         has every phase and its gate.
       </p>
