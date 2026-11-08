@@ -6,7 +6,7 @@ import { installTabs, MOJOSHELF_INSTALL } from "../../../../data/install";
 import { ORCA_REPO, orcaDocs } from "../../../../data/orca";
 
 const description =
-  "How to use Orca: installing it, then writing a pipeline, its command line, scheduling and running it here or on Kubernetes or EC2, the web UI, and debugging failed runs, and the resource roadmap, each on a page of its own.";
+  "How to use Orca: installing it, then writing a pipeline, its command line, scheduling and running it here or on Kubernetes or EC2, the web UI, debugging failed runs, remote workers, and the resource roadmap, each on a page of its own.";
 
 const about: Record<string, string> = {
   "/s/orca/docs/build":
@@ -19,6 +19,8 @@ const about: Record<string, string> = {
     "The pages and their JSON, the actions, logins, timelines and links to the code.",
   "/s/orca/docs/debug":
     "Where a failed run's errors and logs are, adding context to errors, symbolized crash dumps, reproducing a partition locally, and resuming it.",
+  "/s/orca/docs/workers":
+    "Running some pipelines on a second machine: a worker token, a placement, a worker container that needs only outbound HTTPS, and the census as the example.",
   "/s/orca/docs/roadmap":
     "How Orca will measure, admit and contain runs by memory and CPU, in the order it will be built, and the work it draws on.",
 };
