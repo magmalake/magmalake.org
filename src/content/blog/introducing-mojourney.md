@@ -146,5 +146,3 @@ Once every repo's history is read, the commit, line and version counts will
 cover all the repos found. After that, the plan is to
 keep the census current and add views as questions come up.
 
-On Monday, the second post covers orca: how the seven pipelines are written,
-scheduled and run, and how a second machine joins as a remote worker.
