@@ -173,10 +173,13 @@ A pipeline can also ask for a range of CPUs and memory
 ([#208](https://github.com/magmalake/orca.mojo/pull/208)). The scheduler
 starts a run only if its minimum fits what the machine has left, and
 otherwise holds it with a reason such as `waiting: needs 2 GB, 1.3 GB free
-of grants`. The next steps are a cgroup memory limit per run
-([#201](https://github.com/magmalake/orca.mojo/issues/201)), admission by
-memory pressure ([#202](https://github.com/magmalake/orca.mojo/issues/202)),
-and dista sizing its in-flight work from the run's grant
+of grants`. Since 0.15.0 a run can also get a cgroup of its own, with its
+grant as the memory limit
+([#201](https://github.com/magmalake/orca.mojo/issues/201)): a run that
+goes over is killed alone and retried with 1.5 times the memory. And no
+new run starts while the machine is already stalling on memory
+([#202](https://github.com/magmalake/orca.mojo/issues/202)). Next is dista
+sizing its in-flight work from the run's grant
 ([dista #123](https://github.com/magmalake/dista.mojo/issues/123)). The
 [roadmap](/s/orca/docs/roadmap) sets out the order and the papers each step
 borrows from, from Borg and Autopilot to Dominant Resource Fairness and
@@ -265,13 +268,27 @@ runs its own data checks before a new build goes live, and shows them at
 
 ## Still ahead
 
-- **Fills on worker pools.** `fills = "all"` doesn't queue runs for a
-  `worker:<pool>` pipeline yet. It is in progress
-  ([#177](https://github.com/magmalake/orca.mojo/issues/177)).
+- **Deploys that interrupt nothing.** Today a deploy pauses the pipelines,
+  waits for the running runs and restarts everything. Next, it restarts only
+  what changed ([#230](https://github.com/magmalake/orca.mojo/issues/230)),
+  starts the new UI before stopping the old one
+  ([#231](https://github.com/magmalake/orca.mojo/issues/231)), and runs
+  survive a scheduler restart
+  ([#232](https://github.com/magmalake/orca.mojo/issues/232)).
+- **CPU for the control plane.** Runs should yield the CPU to the
+  scheduler, the UI and Postgres
+  ([#229](https://github.com/magmalake/orca.mojo/issues/229)), and the
+  per-run cgroups should be on by default
+  ([#239](https://github.com/magmalake/orca.mojo/issues/239)).
 - **Self-hosted pools.** Declaring pools in `orca.toml` and joining a
   machine with `orca host join`
   ([#220](https://github.com/magmalake/orca.mojo/issues/220)).
 - **Resources on EC2 and Kubernetes.** Peak memory and CPU are not measured
   there yet, and the Kubernetes runner does not pass secrets to its pods.
 
+## Where to go next
 
+To build a pipeline of your own,
+[Getting started](/getting-started/) sets up magmalake from scratch and
+builds the census with it. To see where orca is headed, and the papers
+each step borrows from, the [roadmap](/s/orca/docs/roadmap) has the plan.
