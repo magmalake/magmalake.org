@@ -30,6 +30,7 @@ const rules = [
     <a href="#keyed">Keyed pipelines</a>
     <a href="#tables">Iceberg tables</a>
     <a href="#datasets">Datasets</a>
+    <a href="#replaces">Reruns that replace</a>
     <a href="#sensors">Sensors</a>
     <a href="#dista">Dista inside steps</a>
     <a href="#binaries">Building the binaries</a>
@@ -64,6 +65,13 @@ comptime Total = Step["total", Seq[Measured], Int, total, Gather, after=Measure]
     retries a failing step twice, and <code>ctx.attempt</code> says which attempt this
     is. <code>ctx.log</code> writes a line tagged with the step and partition, to standard
     output and to the attempt's <a href="/s/orca/docs/run#logs">log file</a>.
+  </p>
+  <p>
+    <code>timeout_seconds=600</code> bounds a step that might never end, such as a
+    <code>git clone</code> that hangs. On each heartbeat the run checks for an attempt of
+    such a step older than that. It fails the attempt ("timed out after 600 s") and the
+    run, and the process exits, since a step can't be interrupted where it runs. The
+    scheduler then retries the run as it would any failed run.
   </p>
   <p>
     Step outputs should be small values, such as paths, snapshot IDs and counts. They're
@@ -223,6 +231,25 @@ comptime Clean = Step[
     what <a href="/s/orca/docs/run#lineage">lineage</a> walks.
   </p>
 
+  <h3 id="replaces">Reruns that replace a partition</h3>
+  <p>
+    A new run of a key, whether from <code>orca backfill --rerun</code>,
+    <code>orca rerun</code> or the UI's Rerun, appends again to what its steps append to,
+    so the key's rows would be there twice. A step that recomputes a key's rows declares
+    the dataset in <code>replaces=</code> instead of <code>writes=</code>:
+  </p>
+  <CodeBlock label="Mojo" code={`comptime LoadDay = Step[
+    "load_day", Day, Int64, load_day, Mapped, replaces=["gharchive.events"],
+]`} />
+  <p>
+    Its first commit to each partition then becomes an overwrite that removes the files
+    earlier runs left there. Its later commits append, and a retried attempt still finds
+    what it committed. If two runs replace the same partition at once, the one that finds
+    the other's files after its own first commit fails instead of keeping both. A rerun
+    of finished keys is refused for a pipeline whose steps would append again, unless you
+    pass <code>--allow-append</code> (the UI asks first).
+  </p>
+
   <h2 id="sensors">Sensors</h2>
   <p>
     <code>sensor=True</code> on a pipeline runs it when a dataset it reads, and doesn't
@@ -332,7 +359,9 @@ def main() raises:
     <code>orca locate</code> finds, in the source tree, the line of each step's
     function, each Dista task and the pipeline's own declaration, and writes them beside
     the binary, where <code>orca register</code> reads them; the UI then links each to
-    its line at the commit. A binary built without these just has no links. The image
+    its line at the commit. A binary built without these just has no links. The UI's code
+    cards lead with a docstring's first sentence (a pipeline without one uses its
+    module's), so make that sentence say what the step or pipeline is for. The image
     <code>orca aws push</code> builds passes the source and commit and runs
     <code>orca locate</code> for you.
   </p>

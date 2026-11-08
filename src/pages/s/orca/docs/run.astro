@@ -6,15 +6,16 @@ import { ORCA_PRS, ORCA_REPO } from "../../../../data/orca";
 const DOCS = `${ORCA_REPO}/blob/main/docs`;
 
 const description =
-  "Scheduling and running Orca pipelines: the scheduler and its fires, retries and limits, runs on this machine, on Kubernetes or on EC2, runs recorded and resumed in Postgres, logs and machine metrics, lineage and rebuilds, every environment variable, and what happens when things fail.";
+  "Scheduling and running Orca pipelines: the scheduler and its fires, retries and limits, runs on this machine, on Kubernetes or on EC2, remote workers and fills, runs sized by memory and CPU, held off by memory pressure and contained in cgroups, runs recorded and resumed in Postgres, deploys and rollbacks, logs and machine metrics, lineage and rebuilds, every environment variable, and what happens when things fail.";
 
 const env = [
-  ["ORCA_DATABASE_URL", "the Postgres database runs are recorded in; unset, a pipeline's run runs in memory", "unset"],
+  ["ORCA_DATABASE_URL", "the Postgres database runs are recorded in, or a SQLite file (sqlite:<path>) for one machine; unset, a pipeline's run runs in memory", "unset"],
   ["ORCA_STALE_SECONDS", "how old a run's heartbeat must be before another process may resume it", "30"],
   ["ORCA_WORKERS", "the local Dista workers a run forks", "4"],
   ["ORCA_LOGS", "where attempts' logs, timelines, driver logs, instance logs and metrics go: a directory or s3://bucket/prefix", "unset"],
   ["ORCA_LOG_STAGE", "where a log bound for object storage is written until it's complete", "$TMPDIR/orca-logs"],
   ["ORCA_WAREHOUSE", "the root of the filesystem catalog datasets are found in, a directory or s3://; ns.table is <warehouse>/ns/table", "unset"],
+  ["ORCA_CANCEL_KILL_SECONDS", "how long a cancelled run's running step has to finish before it's stopped", "60"],
   ["ORCA_RETRY_SECONDS", "the scheduler's first wait before retrying a failed run, doubled with each start", "60"],
   ["ORCA_SENSE_SECONDS", "how often the scheduler asks a sensor's binary for its datasets' current snapshots", "60"],
   ["ORCA_SAMPLE_SECONDS", "how often a run's sampler writes a line of machine metrics; 0 turns it off", "5"],
@@ -22,9 +23,18 @@ const env = [
   ["ORCA_CONFIG", "the orca.toml orca register reads, unless --config names another", "./orca.toml"],
   ["ORCA_PIPELINES_DIR", "where orca register with no paths finds each [pipelines.<name>] binary", "pipelines/ next to the file"],
   ["ORCA_CONTROL_MAX_RUNS, ORCA_CONTROL_MEMORY_MB, ORCA_CONTROL_NICE, ORCA_CONTROL_WORKERS", "the limits of control-placed runs: at once, resident memory, nice and local Dista workers", "2, 1024, 10, 1"],
+  ["ORCA_HOST_CPUS, ORCA_HOST_MEMORY_MB", "what this host can grant, over what orca reads from its cgroup or the machine", "the host's"],
+  ["ORCA_RESERVE_CPUS, ORCA_RESERVE_MEMORY_MB", "kept back from grants for the scheduler, Postgres and the UI; on a worker, for the worker", "1, 1536 (a worker: 0, 512)"],
+  ["ORCA_ADMIT_MEMORY_PRESSURE", "the PSI some avg10 percent over which no new run starts; 0 turns it off", "10"],
+  ["ORCA_ADMIT_PRESSURE_GRACE_SECONDS", "how long a pressure hold lasts with none of orca's runs going before runs start one at a time", "600"],
+  ["ORCA_MEMORY_PRESSURE_FILE", "the PSI file to read instead of the one orca finds; every run gets the one its host's pressure is read from", "found"],
+  ["ORCA_CGROUPS", "0 turns off a cgroup per run", "on where orca can make them"],
+  ["ORCA_RUN_MEMORY_MB", "the memory limit of a run without a request or grant", "what the host can grant"],
+  ["ORCA_RUN_MEMORY_MARGIN", "the percent over its limit at which the kernel kills a run", "25"],
+  ["ORCA_RUN_MEMORY_GROWTH", "how much more a run killed for its memory asks for next time", "1.5"],
   ["ORCA_WATCHDOG_SECONDS", "how often the watchdog checks its rules; 0 turns it off. Each threshold has an ORCA_WATCHDOG_* variable of its own", "60"],
   ["ORCA_NOTIFY_URL", "an ntfy topic URL alerts are pushed to; ORCA_NOTIFY_SECRET reads the topic from a secret instead", "unset: no alerts"],
-  ["ORCA_FIXED_COST", "on the local runner, what Ops › Fleet's Cost tile shows, such as €8.49/month", "unset"],
+  ["ORCA_FIXED_COST", "on the local runner, what Ops › Pools' Cost tile shows, such as €8.49/month", "unset"],
   ["ORCA_WORKER_TOKEN", "a remote worker's token, from orca worker-token create", "unset"],
   ["ORCA_VCPU_BUDGET", "the vCPUs all live runs' pods or instances may use together; a run that would go over waits", "no limit"],
   ["ORCA_RUN_ENV", "the scheduler's variables, by name and comma-separated, copied to every run's pods or instances", "unset"],
@@ -40,6 +50,7 @@ const env = [
   ["ORCA_CLUSTER_LOG_SECONDS", "how often a run instance uploads its head's or worker's log", "30"],
   ["ORCA_RUNS_NAMESPACE", "the Kubernetes namespace runs' pods go in", "orca-runs"],
   ["ORCA_UI_ADDR", "host:port orca ui listens on", "127.0.0.1:8270"],
+  ["ORCA_WORKER_ADDR", "a host:port where orca ui also serves the worker API, from a thread of its own (since 0.15.0)", "unset: the UI's port only"],
   ["ORCA_UI_LOGIN", "required makes the UI's actions need a login even before any user exists", "on once a user exists"],
   ["ORCA_UI_SESSION_HOURS", "how long a login lasts", "12"],
   ["ORCA_UI_SECURE_COOKIES", "1 marks the session cookie Secure, for a UI behind HTTPS", "unset"],
@@ -67,9 +78,11 @@ const env = [
     <a href="#runners">On Kubernetes and EC2</a>
     <a href="#placement">Placement and remote workers</a>
     <a href="#fills">Fills</a>
+    <a href="#resources">Memory and CPU</a>
     <a href="#watchdog">The watchdog</a>
     <a href="#alerts">Alerts</a>
     <a href="#state">Runs in Postgres</a>
+    <a href="#deploys">Deploys and rollbacks</a>
     <a href="#logs">Logs</a>
     <a href="#metrics">Machine metrics</a>
     <a href="#lineage">Lineage</a>
@@ -109,8 +122,10 @@ const env = [
     forks its Dista workers there. <code>ORCA_RUNNER</code> starts each run on a
     cluster of its own instead, from the image the pipeline was registered with:
   </p>
-  <CodeBlock label="shell" code={`./build/orca register --image 123456789012.dkr.ecr.us-east-2.amazonaws.com/orca:data \\
-    --head-type c7g.large --worker-type c7g.2xlarge --workers 3 ./build/taxi
+  <CodeBlock label="shell" code={`./build/orca register \\
+    --image 123456789012.dkr.ecr.us-east-2.amazonaws.com/orca:data \\
+    --head-type c7g.large --worker-type c7g.2xlarge \\
+    --workers 3 ./build/taxi
 ORCA_RUNNER=ec2 ./build/orca scheduler`} />
   <p>
     <strong><code>ORCA_RUNNER=ec2</code></strong> starts a head instance, on demand,
@@ -159,8 +174,10 @@ ORCA_RUNNER=ec2 ./build/orca scheduler`} />
     each run records its state through the UI's API instead of Postgres, so nothing on
     the worker holds database credentials. Its token, from
     <code>orca worker-token create --pool &lt;pool&gt;</code>, is scoped to the pool and
-    revocable, and a dead worker's runs are queued again
-    (<a href={`${DOCS}/workers.md`} rel="noopener">workers.md</a>).
+    revocable. Since 0.15.0 a run whose worker is gone is queued again for the pool,
+    whatever started it, within <code>run_retries</code> starts
+    (<a href="/s/orca/docs/workers">Remote workers</a>,
+    <a href={`${DOCS}/workers.md`} rel="noopener">workers.md</a>).
   </p>
   <CodeBlock label="shell" code={`./build/orca register --placement worker:bgent ./build/toy
 ./build/orca worker-token create --pool bgent        # on the server
@@ -175,6 +192,62 @@ ORCA_WORKER_TOKEN=orca_... ./build/orca worker --pool bgent --remote https://orc
     never reruns a done partition and stops while the pipeline is paused. The pipeline
     page's Progress card shows done of total, rate, ETA and why a fill is idle
     (<a href={`${DOCS}/orca-toml.md#fills`} rel="noopener">orca-toml.md#fills</a>).
+    Since 0.15.0 a pipeline placed on a worker pool fills too: its fill runs are queued
+    in the same order and window for the pool's workers to claim, with at most
+    <code>fill_max_runs</code> across the whole pool.
+  </p>
+
+  <h2 id="resources">Memory and CPU</h2>
+  <p>
+    The scheduler measures every run it starts on its own host, and
+    <code>orca worker</code> every run it starts: each attempt's peak memory, CPU time
+    and peak cores, shown on the run, its steps and the pipeline's Resources card
+    (since 0.14.0). Runs on EC2 and Kubernetes aren't measured this way; their machines
+    are, under Machines. A pipeline can then ask for what it needs, in
+    <code>orca.toml</code> or with <code>orca register --cpus</code> and
+    <code>--memory-gb</code>, as the least it needs to start and the most it can use:
+  </p>
+  <CodeBlock label="orca.toml" code={`[pipelines.gharchive]
+cpus = "1..16"
+memory_gb = "2..24"
+env = { DISTA_WORKER_SLOTS = "auto", GHARCHIVE_PARALLEL = "auto" }`} />
+  <p>
+    <strong>Grants</strong> (since 0.14.0). On the local runner, for control-placed runs
+    and on a remote worker, a run starts only if its minimum fits what the host can grant
+    (its CPUs and memory less a reserve, <code>ORCA_RESERVE_CPUS</code> and
+    <code>ORCA_RESERVE_MEMORY_MB</code>) less what the runs going there were granted;
+    otherwise it waits, saying why (<code>waiting: needs 2 GB, 1.3 GB free of
+    grants</code>). A run that starts gets up to its maximum of what's left, fixed for that
+    start, in <code>ORCA_GRANT_CPUS</code> and <code>ORCA_GRANT_MEMORY_MB</code>. An
+    <code>env</code> value <code>"auto"</code> lets the run size itself from the grant
+    (<code>orca.auto_count</code>; <code>DISTA_WORKER_SLOTS</code> becomes the granted
+    CPUs over the run's local workers). A pipeline without a request runs as before, and
+    on EC2 and Kubernetes the request is kept but not used yet.
+  </p>
+  <p>
+    <strong>Memory pressure</strong> (since 0.15.0). Requests are estimates, so on the
+    local runner, the control host and each worker no new run starts while Linux's
+    pressure stall information reads <code>some avg10</code> over
+    <code>ORCA_ADMIT_MEMORY_PRESSURE</code> (10%); runs already going go on. A waiting run
+    says <code>waiting: memory pressure 23% (limit 10%)</code>. The hold ends under half
+    the limit, and one that outlasts <code>ORCA_ADMIT_PRESSURE_GRACE_SECONDS</code> with
+    none of orca's runs going raises an alert and lets runs start one at a time. Without
+    PSI (macOS) nothing is held. Ops › Control shows the reading, and every run gets
+    <code>ORCA_MEMORY_PRESSURE_FILE</code> to lower its own parallelism while it's high.
+  </p>
+  <p>
+    <strong>A cgroup per run</strong> (since 0.15.0). Where orca can make cgroup v2
+    cgroups, each local, control-placed and worker run gets one, its memory limit at its
+    grant (else its request's maximum, else <code>ORCA_RUN_MEMORY_MB</code>), and the
+    kernel kills it, it alone, <code>ORCA_RUN_MEMORY_MARGIN</code> (25) percent above
+    that. The attempt fails <code>out of memory at &lt;limit&gt;</code>, and its retry and
+    the pipeline's later runs ask for 1.5 times as much, up to <code>memory_gb</code>'s
+    maximum. Where cgroups aren't available (macOS, cgroup v1, no delegation,
+    <code>ORCA_CGROUPS=0</code>) the scheduler says why once and runs as before; on the
+    Hetzner server, <code>orca-stack configure CGROUPS=1</code> turns them on
+    (<a href={`${DOCS}/hetzner.md#a-cgroup-per-run`} rel="noopener">hetzner.md</a>).
+    <a href={`${DOCS}/orca-toml.md#requests-and-grants`} rel="noopener">orca-toml.md</a>
+    has all of it, and the <a href="/s/orca/docs/roadmap">roadmap</a> what comes next.
   </p>
 
   <h2 id="watchdog">The watchdog</h2>
@@ -236,6 +309,30 @@ control   memory 98.30 % (trips over 90.00, past), disk 10.60 % (trips over 85.0
     vanished.
   </p>
 
+  <h2 id="deploys">Deploys and rollbacks</h2>
+  <p>
+    On the <a href={`${DOCS}/hetzner.md`} rel="noopener">Hetzner stack</a>, restarting
+    the scheduler's container kills the running runs, so
+    <code>deploy.sh &lt;tag&gt;</code> pauses the pipelines that aren't paused, waits for
+    the running runs to end, deploys and unpauses what it paused. Since 0.16.0 it backs
+    the database up first (<code>orca-stack backup-now</code>), stopping without deploying
+    if that fails, and prints the previous tag, the new one and the dump's key.
+    <code>deploy.sh --rollback</code> does the same and then applies the tags the last
+    deploy replaced and registers the pipelines again, so the scheduler starts runs with
+    the code that's deployed:
+  </p>
+  <CodeBlock label="shell" code={`./deploy.sh a1b2c3d          # quiesce, back up, apply, resume
+./deploy.sh --rollback        # quiesce, back up, the previous tags, register, resume`} />
+  <p>
+    Postgres isn't rolled back. Since 0.16.0 each migration has a compatibility floor,
+    recorded in <code>orca.schema_version.min_binary</code>, so an older orca starts on a
+    newer schema whose migrations since are additive, and logs that it does; it refuses
+    only past a migration that raises the floor (so far only migration 24), which needs the backup
+    restored. The repository's AGENTS.md has the rules that keep migrations additive, and
+    <a href={`${DOCS}/hetzner.md#rolling-back`} rel="noopener">hetzner.md</a> the
+    runbook.
+  </p>
+
   <h2 id="logs">Logs</h2>
   <p>
     With <code>ORCA_LOGS</code> set to a directory, each attempt writes
@@ -265,9 +362,12 @@ control   memory 98.30 % (trips over 90.00, past), disk 10.60 % (trips over 85.0
     <code>&lt;binary&gt; sample</code>, which writes a JSON line of the machine's CPU,
     memory, disk, disk I/O and network every <code>ORCA_SAMPLE_SECONDS</code> to
     <code>&lt;pipeline&gt;/&lt;run&gt;/metrics/&lt;instance&gt;.jsonl</code> under
-    <code>ORCA_LOGS</code>. A run's page draws them as its Machines section, on the same
-    time axis as its steps, and marks the stretches where memory use or a disk was over 90%
-    or CPU steal over 20%, which explain most slow or failed runs.
+    <code>ORCA_LOGS</code>; since 0.15.0 <code>orca worker</code> does the same beside
+    each run it starts, as <code>metrics/worker-&lt;name&gt;.jsonl</code>. A run's page
+    draws them as its Machines section, on the same time axis as its steps, and marks the
+    stretches where memory use or a disk was over 90% or CPU steal over 20%, which explain
+    most slow or failed runs. They are the machine's numbers; the run's own peak memory
+    and CPU are in its <a href="/s/orca/docs/run#resources">Resources</a> card.
   </p>
 
   <h2 id="lineage">Lineage</h2>
@@ -323,7 +423,9 @@ rebuild 1
     running with a stale heartbeat; <code>resume</code> marks the interrupted attempt
     failed and continues from there. One that crashed has its attempts failed with its
     stack dump's first frames as soon as its runner sees it end
-    (<a href="/s/orca/docs/debug#crashes">Debugging failures</a>). <strong>A commit that landed before the crash</strong>
+    (<a href="/s/orca/docs/debug#crashes">Debugging failures</a>). <strong>A run over its
+    memory</strong>, in a cgroup of its own, is killed alone and retried with 1.5 times
+    the memory (<a href="#resources">Memory and CPU</a>). <strong>A commit that landed before the crash</strong>
     is found by the retry rather than made again. Fuzzing, and a chaos test that kills
     runs, restarts Postgres and races two resumes over many seeds, run in
     <a href={`${ORCA_PRS}/6`} rel="noopener">CI</a>.
