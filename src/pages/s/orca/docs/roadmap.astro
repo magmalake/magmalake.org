@@ -7,33 +7,53 @@ const description =
 const O = "https://github.com/magmalake/orca.mojo/issues";
 const D = "https://github.com/magmalake/dista.mojo/issues";
 
+const P = "https://github.com/magmalake/orca.mojo/pull";
+
+// As of orca 0.15.0. `today` is HTML once backticks become <code>, so it can link the PR that shipped it.
 const layers: { layer: string; does: string; today: string; next: [string, string, string][] }[] = [
   {
     layer: "Measure",
     does: "Know what each run actually used",
-    today: "Nothing is recorded",
-    next: [["orca #200", `${O}/200`, "Record each run's peak memory and CPU"]],
+    today: `Each run's peak memory, CPU time and peak cores are recorded and shown on the run, its steps and the pipeline's Resources card, over its last 20 runs (<a href="${P}/203" rel="noopener">#203</a>)`,
+    next: [["orca #171", `${O}/171`, "Requests learned from those peaks (\"auto\" requests)"]],
   },
   {
     layer: "Admit",
     does: "Start a run only if its request fits what's free",
-    today: "`max_runs` counts runs, not their size",
+    today: `\`cpus\` and \`memory_gb\` requests, admitted against the host's capacity less a reserve, with greedy grants passed as \`ORCA_GRANT_*\`, on the local runner, control and remote workers (<a href="${P}/208" rel="noopener">#208</a>). Nothing new starts while the machine's memory pressure (PSI) is over 10% (<a href="${P}/225" rel="noopener">#225</a>)`,
     next: [
-      ["orca #171", `${O}/171`, "Resource requests and grants, \"auto\""],
-      ["orca #202", `${O}/202`, "Admission by memory pressure"],
+      ["orca #171", `${O}/171`, "Requests on EC2 and Kubernetes, and a reservation so a large run isn't starved by small ones"],
     ],
   },
   {
     layer: "Contain",
     does: "An overrun hits only its own run",
-    today: "`first_to_go` makes a run's processes the kernel's first choice; a memory cap on control-placed runs",
-    next: [["orca #201", `${O}/201`, "A cgroup memory limit per run, retry bigger after an OOM"]],
+    today: `A cgroup per run, at its grant: throttled there, killed alone 25% above it, retried 1.5\u00d7 bigger, and the pipeline remembers (<a href="${P}/226" rel="noopener">#226</a>). Used wherever orca can make cgroups (on the Hetzner stack, after \`orca-stack configure CGROUPS=1\`); otherwise \`first_to_go\` and the control cap`,
+    next: [["orca #201", `${O}/201`, "On by default, and each run's own memory pressure next to its limit"]],
   },
   {
     layer: "Back pressure inside a run",
     does: "A job adapts how much work it keeps in flight",
-    today: "Hand-set: `DISTA_WORKER_SLOTS`, `DISTA_MAX_QUEUED`, `DISTA_STORE_BYTES`, and each pipeline's own settings",
+    today: `\`"auto"\` settings sized from the grant (\`orca.auto_count\`, \`DISTA_WORKER_SLOTS\`); every run can read the machine's pressure from \`ORCA_MEMORY_PRESSURE_FILE\`. dista's queue and store sizes are still hand-set`,
     next: [["dista #123", `${D}/123`, "Size in-flight work from the run's grant and live memory"]],
+  },
+];
+
+const machines: { what: string; today: string; next: [string, string, string][] }[] = [
+  {
+    what: "Remote workers",
+    today: `\`orca worker --pool\` claims runs over HTTPS with a pool token and no database access. Fill runs go to pools too, a dead worker's runs are requeued, and each worker run gets the Machines card (<a href="${P}/221" rel="noopener">#221</a>)`,
+    next: [["orca #177", `${O}/177`, "Long-poll claims, once the worker listener serves concurrently"]],
+  },
+  {
+    what: "Pools",
+    today: `Ops \u203a Pools lists each pool, its workers and their machines (<a href="${P}/224" rel="noopener">#224</a>); a worker is started by hand`,
+    next: [["orca #220", `${O}/220`, "\`[pools]\` in orca.toml and \`orca host join\`"]],
+  },
+  {
+    what: "Kubernetes",
+    today: "A Dista cluster per run, created and deleted through the Kubernetes API",
+    next: [["orca #206", `${O}/206`, "Give runs their secrets"]],
   },
 ];
 
@@ -107,13 +127,14 @@ const refs: { cite: string; takes: string; url?: string }[] = [
   <nav class="docs-toc" aria-label="On this page">
     <a href="#layers">Four layers</a>
     <a href="#order">Order</a>
+    <a href="#machines">Machines</a>
     <a href="#prior-art">Prior art</a>
   </nav>
 
   <h2 id="layers">Four layers</h2>
   <div class="table-scroll">
     <table>
-      <thead><tr><th>Layer</th><th>What it does</th><th>Today</th><th>Next</th></tr></thead>
+      <thead><tr><th>Layer</th><th>What it does</th><th>Today (0.15.0)</th><th>Next</th></tr></thead>
       <tbody>
         {layers.map((l) => (
           <tr>
@@ -136,10 +157,37 @@ const refs: { cite: string; takes: string; url?: string }[] = [
 
   <h2 id="order">Order</h2>
   <p>
-    orca #200, then #171, then #201, then #202 and dista #123. Each step needs the one
-    before it: grants need measurements, containment needs grants to use as limits, and
-    adaptive in-flight work needs both grants and the pressure signal.
+    Measure (orca #200), grants (#171), containment (#201) and admission by memory pressure
+    (#202) are in 0.15.0, each built on the one before: grants need measurements,
+    containment uses the grants as limits, and admission holds new runs off a machine that
+    is already short of memory. Next is dista #123, which needs both the grant and the
+    pressure signal, then requests learned from the measured peaks, so a pipeline gets the
+    right size without setting <code>memory_gb</code> at all.
   </p>
+
+  <h2 id="machines">Machines</h2>
+  <p>Where runs run, beside the scheduler's own host:</p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th></th><th>Today (0.15.0)</th><th>Next</th></tr></thead>
+      <tbody>
+        {machines.map((m) => (
+          <tr>
+            <td>{m.what}</td>
+            <td set:html={code(m.today)} />
+            <td>
+              {m.next.map(([ref, href, title], i) => (
+                <>
+                  {i > 0 && <br />}
+                  <a href={href} rel="noopener">{ref}</a> <span set:html={code(title)} />
+                </>
+              ))}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
 
   <h2 id="prior-art">Prior art</h2>
   <p>What each of these gives the plan:</p>
