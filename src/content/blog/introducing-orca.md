@@ -20,7 +20,7 @@ lives in Apache Iceberg tables in object storage.
 The [Mojourney census](/blog/introducing-mojourney) runs on it. Its runs are
 public at [orca.mojourney.dev](https://orca.mojourney.dev), so everything in
 this post can be checked there. At the time of writing it has seven pipelines
-and 2,165 runs.
+and 5,152 runs.
 
 ## How a pipeline is written
 
@@ -167,7 +167,7 @@ Since 0.14.0 orca records each run's peak memory and CPU
 ([#200](https://github.com/magmalake/orca.mojo/issues/200)) on the local
 runner, on the control host and on workers. The pipeline's Overview has a
 Resources card with the p50 and max of its last 20 runs. For `gharchive`
-today that is 733 MB p50 and 864 MB max, and about 3 cores.
+today that is 731 MB p50 and 801 MB max, and about 3 cores.
 
 A pipeline can also ask for a range of CPUs and memory
 ([#208](https://github.com/magmalake/orca.mojo/pull/208)). The scheduler
@@ -202,7 +202,7 @@ refresh by themselves while something is going.
 <figure class="shot">
   <img class="shot__light" src="/blog/introducing-orca/coverage-light.webp" alt="The gharchive coverage calendar in year view for 2024: all 366 days done" width="1112" height="594" loading="lazy" />
   <img class="shot__dark" src="/blog/introducing-orca/coverage-dark.webp" alt="The gharchive coverage calendar in year view for 2024: all 366 days done" width="1112" height="594" loading="lazy" />
-  <figcaption>The coverage calendar in year view. All of 2024 is done; the strip below it is the whole range, month by month, with the backfill still working through it.</figcaption>
+  <figcaption>The coverage calendar in year view. All of 2024 is done; the strip below it is the whole range, month by month, all of it done now.</figcaption>
 </figure>
 
 Every minute a watchdog checks launches, cost, idle workers, failing
@@ -243,18 +243,19 @@ Mojourney site and the GH Archive backfill. An Apple-silicon Mac is a remote
 worker of pool `bgent`. It runs `mojo_history` and `mojo_versions`, which
 clone every repository, and since this week `mojo_activity`.
 
-The backfill is `gharchive` with `fills = "all"`. Its Progress card says 1,111
-of 1,407 days are done. A day's raw events were 1.1 GB, 97% of the bucket,
+The backfill is `gharchive` with `fills = "all"`. Its Progress card says all
+1,407 days are done, from 2023-01-01 to yesterday. One, 2025-06-12, is short
+the 17:00 hour, which GH Archive never published. A day's raw events were 1.1 GB, 97% of the bucket,
 and the census only needs the index built from them. After it stopped writing
 them, an hour of GH Archive in flight took about 200 MB instead of 450 MB.
 With two fill runs at a time, the backfill went from about 22 days an hour
-to 63 in the last full hour before this was written. The card shows the
-current rate and an ETA.
+to 63 an hour, and it finished on 2026-11-08. While it ran, the card showed
+the current rate and an ETA.
 
 <figure class="shot">
   <img class="shot__light" src="/blog/introducing-orca/gharchive-light.webp" alt="The gharchive pipeline page: Progress shows 1,111 of 1,407 days done at 61.8 an hour, ETA 4 h 47 m" width="1280" height="720" loading="lazy" />
   <img class="shot__dark" src="/blog/introducing-orca/gharchive-dark.webp" alt="The gharchive pipeline page: Progress shows 1,111 of 1,407 days done at 61.8 an hour, ETA 4 h 47 m" width="1280" height="720" loading="lazy" />
-  <figcaption>The <code>gharchive</code> pipeline page. Progress has the fill, its rate and ETA; Resources has what its last 20 runs used, measured.</figcaption>
+  <figcaption>The <code>gharchive</code> pipeline page while the backfill ran. Progress has the fill, its rate and ETA; Resources has what its last 20 runs used, measured.</figcaption>
 </figure>
 
 The UI and the census site are both Mojo HTTP servers built on
