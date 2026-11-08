@@ -228,6 +228,11 @@ The fix was one line per pipeline, placing them on the worker pool. Once
 `mojo_activity` was unpaused the trip cleared, and a low-priority "resolved"
 push followed.
 
+<figure class="shot shot--tall">
+  <img src="/blog/introducing-orca/ntfy.webp" alt="Two ntfy notifications on a phone: “orca: gharchive run 4013 failed — gharchive 2025-06-12, hour 17: GET https://data.gharchive.org/2025-06-12-17.json.gz: HTTP 404”, and from the day before, “orca watchdog: failing resolved”" width="400" height="274" loading="lazy" />
+  <figcaption>Two of the pushes on the phone. The newer one is a real gap: GH Archive has no file for 17:00 UTC on 2025-06-12, so that day's run failed after its retries and said which hour and URL.</figcaption>
+</figure>
+
 ## The census on orca
 
 The census runs on one Hetzner CAX21, a 4-vCPU ARM server with 8 GB of RAM
