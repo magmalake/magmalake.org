@@ -6,7 +6,7 @@ import { installTabs, MOJOSHELF_INSTALL } from "../../../../data/install";
 import { ORCA_REPO, orcaDocs } from "../../../../data/orca";
 
 const description =
-  "How to use Orca: installing it, then writing a pipeline, its command line, scheduling and running it here or on Kubernetes or EC2, the web UI, debugging failed runs, remote workers, and the resource roadmap, each on a page of its own.";
+  "How to use Orca: installing it, then writing a pipeline, its command line, scheduling and running it here or on Kubernetes or EC2, the web UI, debugging failed runs, remote workers, deploying, and the resource roadmap, each on a page of its own.";
 
 const about: Record<string, string> = {
   "/s/orca/docs/build":
@@ -14,15 +14,17 @@ const about: Record<string, string> = {
   "/s/orca/docs/cli":
     "The commands you type, on a pipeline binary and on orca, from a laptop with orca login and --remote, the ones orca runs for you, and how the same binary acts locally or on AWS.",
   "/s/orca/docs/run":
-    "The scheduler, runs on Kubernetes and EC2, placement and remote workers, fills, sizing runs by memory and CPU, the watchdog and alerts, runs in Postgres, deploys and rollbacks, logs and machine metrics, lineage and rebuilds, the environment, and what happens when things fail.",
+    "The scheduler, runs on Kubernetes and EC2, placement and remote workers, fills, sizing runs by memory and CPU, the watchdog and alerts, runs in Postgres, logs and machine metrics, lineage and rebuilds, the environment, and what happens when things fail.",
   "/s/orca/docs/ui":
     "The pages and their JSON, coverage, filtering runs and acting on many, the actions and what they ask first, logins, a run's page, and code on hover.",
   "/s/orca/docs/debug":
     "Where a failed run's errors and logs are, adding context to errors, symbolized crash dumps, reproducing a partition locally, and resuming it.",
   "/s/orca/docs/workers":
     "Running some pipelines on a second machine: a worker token, a placement, a worker container that needs only outbound HTTPS, and the census as the example.",
+  "/s/orca/docs/deploy":
+    "Deploying on one Hetzner server: the scripts from a release, deploys that replace only what changed and don't pause runs, rollbacks, settings and SOPS secrets, and rescaling.",
   "/s/orca/docs/roadmap":
-    "How Orca measures, admits and contains runs by memory and CPU, what comes next for that and for deploys, and the work it draws on.",
+    "Vertical scaling, the right size for each run, and horizontal scaling, the right number of runs and machines: what Orca does today, the milestones next, and the work it draws on.",
 };
 ---
 

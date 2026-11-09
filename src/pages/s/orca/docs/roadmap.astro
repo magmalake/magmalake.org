@@ -2,20 +2,24 @@
 import OrcaDocs from "../../../../components/OrcaDocs.astro";
 
 const description =
-  "Orca's resource roadmap: measuring each run's memory and CPU, admitting runs by what they need, containing an overrun to its own run and adapting in-flight work inside a run, where runs run, deploys that keep runs going, with the issues for each step and the papers behind them.";
+  "Orca's resource roadmap in two halves, after Google's Autopilot: vertical scaling, the right size for each run (measuring its memory and CPU, admitting it by what it needs, containing an overrun to its own run, back pressure inside it), and horizontal scaling, the right number of runs and machines, with milestones, the issues for each step and the papers behind them.";
 
 const O = "https://github.com/magmalake/orca.mojo/issues";
 const D = "https://github.com/magmalake/dista.mojo/issues";
 
 const P = "https://github.com/magmalake/orca.mojo/pull";
 
-// As of orca 0.16.0. `today` is HTML once backticks become <code>, so it can link the PR that shipped it.
+// The issue for requests learned from measured peaks (Autopilot's vertical
+// recommender). #171 for now, until it has an issue of its own.
+const LEARNED = 171;
+
+// As of orca 0.19.0. `today` is HTML once backticks become <code>, so it can link the PR that shipped it.
 const layers: { layer: string; does: string; today: string; next: [string, string, string][] }[] = [
   {
     layer: "Measure",
     does: "Know what each run actually used",
     today: `Each run's peak memory, CPU time and peak cores are recorded and shown on the run, its steps and the pipeline's Resources card, over its last 20 runs (<a href="${P}/203" rel="noopener">#203</a>)`,
-    next: [["orca #171", `${O}/171`, "Requests learned from those peaks (\"auto\" requests)"]],
+    next: [[`orca #${LEARNED}`, `${O}/${LEARNED}`, "Requests learned from those peaks, as Autopilot's vertical recommender does"]],
   },
   {
     layer: "Admit",
@@ -28,7 +32,7 @@ const layers: { layer: string; does: string; today: string; next: [string, strin
   {
     layer: "Contain",
     does: "An overrun hits only its own run",
-    today: `A cgroup per run, at its grant: throttled there, killed alone 25% above it, retried 1.5\u00d7 bigger, and the pipeline remembers (<a href="${P}/226" rel="noopener">#226</a>). Used wherever orca can make cgroups (on the Hetzner stack, after \`orca-stack configure CGROUPS=1\`); otherwise \`first_to_go\` and the control cap`,
+    today: `A cgroup per run, at its grant: throttled there, killed alone 25% above it, retried 1.5× bigger, and the pipeline remembers (<a href="${P}/226" rel="noopener">#226</a>). Used wherever orca can make cgroups (on the Hetzner stack, after \`orca-stack configure CGROUPS=1\`); otherwise \`first_to_go\` and the control cap`,
     next: [
       ["orca #239", `${O}/239`, "On by default, and each run's own memory pressure next to its limit"],
       ["orca #229", `${O}/229`, "CPU too: runs at a lower priority than the scheduler, the UI and Postgres"],
@@ -42,92 +46,109 @@ const layers: { layer: string; does: string; today: string; next: [string, strin
   },
 ];
 
-const deploys: { what: string; today: string; next: [string, string, string][] }[] = [
+// Horizontal scaling as it is in 0.19.0.
+const across: { what: string; today: string }[] = [
   {
-    what: "Deploys",
-    today: `\`deploy.sh\` pauses the pipelines, waits for running runs, backs the database up first, applies the new tags and unpauses what it paused (the backup since 0.16.0)`,
-    next: [
-      ["orca #230", `${O}/230`, "Restart only the containers whose image or settings changed"],
-      ["orca #231", `${O}/231`, "Replace the UI and apps without downtime"],
-    ],
+    what: "Inside a run",
+    today: `A run's dista workers, on its machine: \`DISTA_WORKER_SLOTS = "auto"\` makes them the granted CPUs over the run's local workers`,
   },
   {
-    what: "Rollbacks",
-    today: `\`deploy.sh --rollback\` applies the tags the last deploy replaced and registers the pipelines again; an older orca runs on a newer schema whose migrations since are additive (schema floors, since 0.16.0, <a href="${P}/234" rel="noopener">#234</a>)`,
-    next: [],
+    what: "Runs at once",
+    today: `\`max_runs\` and, for fills, \`fill_max_runs\` per pipeline, set by hand in orca.toml; on a pool, \`fill_max_runs\` counts across the pool and each worker's \`--max-runs\` caps its machine`,
   },
   {
-    what: "Restarts",
-    today: "Restarting the scheduler's container kills the runs going, so a deploy waits for them to end",
-    next: [["orca #232", `${O}/232`, "Runs that survive a scheduler restart: a runner process the scheduler adopts runs from"]],
+    what: "Remote workers and pools",
+    today: `\`orca worker --pool\` claims a pool's runs over HTTPS, fills included, and a dead worker's runs are queued again (<a href="${O}/173" rel="noopener">#173</a>, <a href="${P}/221" rel="noopener">#221</a>). Ops › Pools lists each pool, its workers and their machines (<a href="${P}/224" rel="noopener">#224</a>). Each worker is started by hand (<a href="/s/orca/docs/workers">Remote workers</a>)`,
+  },
+  {
+    what: "Kubernetes and EC2",
+    today: `A dista cluster of its own per run, created and deleted with it; on EC2, \`--workers MIN..MAX\` adds and drains workers as the head's demand changes (<a href="/s/orca/docs/run#runners">On Kubernetes and EC2</a>). Kubernetes runs don't get their secrets yet (<a href="${O}/206" rel="noopener">#206</a>)`,
   },
 ];
 
-const machines: { what: string; today: string; next: [string, string, string][] }[] = [
+const milestones: { id: string; title: string; issue: [string, string]; body: string }[] = [
   {
-    what: "Remote workers",
-    today: `\`orca worker --pool\` claims runs over HTTPS with a pool token and no database access. Fill runs go to pools too, a dead worker's runs are requeued, and each worker run gets the Machines card (<a href="${P}/221" rel="noopener">#221</a>)`,
-    next: [["orca #177", `${O}/177`, "Long-poll claims, once the worker listener serves concurrently"]],
+    id: "H1",
+    title: "Across runs",
+    issue: ["orca #266", `${O}/266`],
+    body: `\`max_runs = "auto"\` (and \`fill_max_runs\`): another run of the pipeline starts while its request fits in what's free, with the same admission as a single run, up to a ceiling. Each run's size stays as vertical scaling sets it; this decides only how many. Done when a backfill on a CAX41 runs about twice as many partitions at once as on a CAX21, with no orca.toml change.`,
   },
   {
-    what: "Pools",
-    today: `Ops \u203a Pools lists each pool, its workers and their machines (<a href="${P}/224" rel="noopener">#224</a>); a worker is started by hand`,
-    next: [["orca #220", `${O}/220`, "\`[pools]\` in orca.toml and \`orca host join\`"]],
+    id: "H2",
+    title: "Declared pools",
+    issue: ["orca #220", `${O}/220`],
+    body: `\`[pools.&lt;name&gt;]\` in orca.toml says what a pool's machines run (max runs, env, volumes), and \`orca host join\` makes a machine a worker once: it runs the worker at the server's image tag, upgrades after a deploy, reports the machine and drains on request. The worker follow-ups in <a href="${O}/177" rel="noopener">#177</a> come with it: long-poll claims, and requeuing manual runs on a dead worker.`,
   },
   {
-    what: "Kubernetes",
-    today: "A Dista cluster per run, created and deleted through the Kubernetes API",
-    next: [["orca #206", `${O}/206`, "Give runs their secrets"]],
+    id: "H3",
+    title: "Pools that add and remove machines",
+    issue: ["orca #267", `${O}/267`],
+    body: `A pool declares a machine type, a minimum and a maximum. When runs wait for the pool and don't fit on its live workers, orca creates a machine that joins it; an idle machine is removed, down to the minimum, which can be zero. Hetzner Cloud first, then GCP (<a href="${O}/263" rel="noopener">#263</a>), EC2 and Kubernetes (<a href="${O}/206" rel="noopener">#206</a>), with each pool's machine-hours on its page.`,
+  },
+  {
+    id: "H4",
+    title: "One run across several machines",
+    issue: ["orca #268", `${O}/268`],
+    body: `A run on a pool is granted workers on more than one of its machines, and its dista cluster spans them, so one large backfill step uses the whole pool, with results identical to one machine. Later, a running job grows as the pool adds machines (<a href="${D}/76" rel="noopener">dista #76</a>).`,
   },
 ];
 
 // Backtick spans in the table text become <code>.
 const code = (s: string) => s.split("`").map((t, i) => (i % 2 ? `<code>${t}</code>` : t)).join("");
 
-const refs: { cite: string; takes: string; url?: string }[] = [
+const refs: { cite: string; half: string; takes: string; url?: string }[] = [
   {
     cite: "Abhishek Verma, Luis Pedrosa, Madhukar Korupolu, David Oppenheimer, Eric Tune and John Wilkes, \"Large-scale cluster management at Google with Borg\", EuroSys 2015.",
+    half: "Vertical",
     takes: "requests against usage, and limits.",
     url: "https://doi.org/10.1145/2741948.2741964",
   },
   {
     cite: "Krzysztof Rzadca et al., \"Autopilot: workload autoscaling at Google\", EuroSys 2020.",
-    takes: "limits set from usage history, which is what \"auto\" means here.",
+    half: "Both",
+    takes: "the split into vertical and horizontal scaling, and limits set from usage history, which is what \"auto\" means here.",
     url: "https://doi.org/10.1145/3342195.3387524",
   },
   {
     cite: "Christina Delimitrou and Christos Kozyrakis, \"Quasar: resource-efficient and QoS-aware cluster management\", ASPLOS 2014.",
+    half: "Vertical",
     takes: "learning what a job needs instead of trusting its declaration.",
     url: "https://doi.org/10.1145/2541940.2541941",
   },
   {
     cite: "Ali Ghodsi, Matei Zaharia, Benjamin Hindman, Andy Konwinski, Scott Shenker and Ion Stoica, \"Dominant Resource Fairness: fair allocation of multiple resource types\", NSDI 2011.",
-    takes: "admitting with CPU and memory together.",
+    half: "Both",
+    takes: "admitting with CPU and memory together, for one run and for how many fit.",
     url: "https://www.usenix.org/conference/nsdi11/dominant-resource-fairness-fair-allocation-multiple-resource-types",
   },
   {
     cite: "Robert Grandl, Ganesh Ananthanarayanan, Srikanth Kandula, Sriram Rao and Aditya Akella, \"Multi-resource packing for cluster schedulers\" (Tetris), SIGCOMM 2014.",
-    takes: "the same, as packing.",
+    half: "Horizontal",
+    takes: "the same, as packing runs onto machines.",
     url: "https://doi.org/10.1145/2619239.2626334",
   },
   {
     cite: "Matt Welsh, David Culler and Eric Brewer, \"SEDA: an architecture for well-conditioned, scalable internet services\", SOSP 2001.",
+    half: "Vertical",
     takes: "admission control and bounded queues.",
     url: "https://doi.org/10.1145/502034.502057",
   },
   {
     cite: "Kathleen Nichols and Van Jacobson, \"Controlling queue delay\", ACM Queue, 2012.",
+    half: "Vertical",
     takes: "sizing in-flight work from measured delay.",
     url: "https://doi.org/10.1145/2208917.2209336",
   },
   {
     cite: "Johannes Weiner et al., \"TMO: transparent memory offloading in datacenters\", ASPLOS 2022.",
+    half: "Vertical",
     takes: "memory pressure (PSI) as the signal.",
     url: "https://doi.org/10.1145/3503222.3507731",
   },
   {
     cite: "Viktor Leis, Peter Boncz, Alfons Kemper and Thomas Neumann, \"Morsel-driven parallelism: a NUMA-aware query evaluation framework for the many-core age\", SIGMOD 2014.",
-    takes: "work in small units sized to the cores and memory available.",
+    half: "Both",
+    takes: "work in small units sized to the cores and memory available, on one machine or spread over several.",
     url: "https://doi.org/10.1145/2588555.2610507",
   },
 ];
@@ -137,9 +158,25 @@ const refs: { cite: string; takes: string; url?: string }[] = [
   <p class="eyebrow">Docs</p>
   <h1 class="section-title">Roadmap</h1>
   <p class="lede">
-    The goal for resources: a run that needs more memory than expected fails alone and is
-    retried bigger, instead of taking other runs down with it, and a pipeline on a new
-    machine uses its cores without hand-set concurrency settings.
+    The resource plan has two halves, as in Google's Autopilot: vertical scaling gives
+    each run the right size, and horizontal scaling runs the right number of them, on the
+    right number of machines.
+  </p>
+
+  <nav class="docs-toc" aria-label="On this page">
+    <a href="#vertical">Vertical</a>
+    <a href="#layers">Four layers</a>
+    <a href="#order">Order</a>
+    <a href="#horizontal">Horizontal</a>
+    <a href="#milestones">Milestones</a>
+    <a href="#prior-art">Prior art</a>
+  </nav>
+
+  <h2 id="vertical">Vertical: the right size for each run</h2>
+  <p>
+    The goal: a run that needs more memory than expected fails alone and is retried
+    bigger, instead of taking other runs down with it, and a pipeline on a new machine
+    uses its cores without hand-set concurrency settings.
   </p>
   <p>
     "Never out of memory" isn't promised. Some memory use depends on the data, such as a
@@ -147,19 +184,16 @@ const refs: { cite: string; takes: string; url?: string }[] = [
     step runs. Packing runs onto a machine optimally is a bin-packing problem; the aim is
     to keep the machine busy without anything being killed.
   </p>
+  <p>
+    The host itself is resized by hand: on the Hetzner stack, <code>rescale.sh up</code>
+    moves the server from a CAX21 to a CAX41 for an import, and <code>rescale.sh down</code>
+    moves it back (<a href="/s/orca/docs/deploy#rescaling">Deploying</a>).
+  </p>
 
-  <nav class="docs-toc" aria-label="On this page">
-    <a href="#layers">Four layers</a>
-    <a href="#order">Order</a>
-    <a href="#machines">Machines</a>
-    <a href="#deploys">Deployments</a>
-    <a href="#prior-art">Prior art</a>
-  </nav>
-
-  <h2 id="layers">Four layers</h2>
+  <h3 id="layers">Four layers</h3>
   <div class="table-scroll">
     <table>
-      <thead><tr><th>Layer</th><th>What it does</th><th>Today (0.16.0)</th><th>Next</th></tr></thead>
+      <thead><tr><th>Layer</th><th>What it does</th><th>Today (0.19.0)</th><th>Next</th></tr></thead>
       <tbody>
         {layers.map((l) => (
           <tr>
@@ -180,74 +214,56 @@ const refs: { cite: string; takes: string; url?: string }[] = [
     </table>
   </div>
 
-  <h2 id="order">Order</h2>
+  <h3 id="order">Order</h3>
   <p>
     Measure (orca #200), grants (#171), containment (#201) and admission by memory pressure
     (#202) are in 0.15.0, each built on the one before: grants need measurements,
     containment uses the grants as limits, and admission holds new runs off a machine that
     is already short of memory. Next is dista #123, which needs both the grant and the
-    pressure signal, then requests learned from the measured peaks, so a pipeline gets the
-    right size without setting <code>memory_gb</code> at all.
+    pressure signal, then requests learned from the measured peaks
+    (<a href={`${O}/${LEARNED}`} rel="noopener">orca #{LEARNED}</a>), so a pipeline gets
+    the right size without setting <code>memory_gb</code> at all.
   </p>
 
-  <h2 id="machines">Machines</h2>
-  <p>Where runs run, beside the scheduler's own host:</p>
-  <div class="table-scroll">
-    <table>
-      <thead><tr><th></th><th>Today (0.16.0)</th><th>Next</th></tr></thead>
-      <tbody>
-        {machines.map((m) => (
-          <tr>
-            <td>{m.what}</td>
-            <td set:html={code(m.today)} />
-            <td>
-              {m.next.map(([ref, href, title], i) => (
-                <>
-                  {i > 0 && <br />}
-                  <a href={href} rel="noopener">{ref}</a> <span set:html={code(title)} />
-                </>
-              ))}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-
-  <h2 id="deploys">Deployments</h2>
+  <h2 id="horizontal">Horizontal: the right number</h2>
   <p>
-    A deploy shouldn't cost a run, and a bad one should be easy to undo. On the Hetzner
-    stack (<a href="https://github.com/magmalake/orca.mojo/blob/main/docs/hetzner.md#rolling-back" rel="noopener">hetzner.md</a>):
+    The goal: a pipeline runs as many runs at once, on as many machines, as its queue
+    needs and its pools can give, with no hand-set counts. A backfill on a bigger machine,
+    or on a pool with one more worker, runs more at once without an orca.toml change, and
+    a pool with nothing queued costs nothing.
   </p>
+  <p>Where it stands in 0.19.0:</p>
   <div class="table-scroll">
     <table>
-      <thead><tr><th></th><th>Today (0.16.0)</th><th>Next</th></tr></thead>
+      <thead><tr><th></th><th>Today (0.19.0)</th></tr></thead>
       <tbody>
-        {deploys.map((m) => (
+        {across.map((a) => (
           <tr>
-            <td>{m.what}</td>
-            <td set:html={code(m.today)} />
-            <td>
-              {m.next.length === 0 && "—"}
-              {m.next.map(([ref, href, title], i) => (
-                <>
-                  {i > 0 && <br />}
-                  <a href={href} rel="noopener">{ref}</a> <span set:html={code(title)} />
-                </>
-              ))}
-            </td>
+            <td>{a.what}</td>
+            <td set:html={code(a.today)} />
           </tr>
         ))}
       </tbody>
     </table>
   </div>
+
+  <h3 id="milestones">Milestones</h3>
+  <p>In order:</p>
+  <ul class="docs-list">
+    {milestones.map((m) => (
+      <li>
+        <strong>{m.id}. {m.title}</strong> (<a href={m.issue[1]} rel="noopener">{m.issue[0]}</a>).{" "}
+        <span set:html={code(m.body)} />
+      </li>
+    ))}
+  </ul>
 
   <h2 id="prior-art">Prior art</h2>
-  <p>What each of these gives the plan:</p>
+  <p>What each of these gives the plan, and which half it informs:</p>
   <ul class="docs-list">
     {refs.map((r) => (
       <li>
-        {r.cite} {r.takes}
+        {r.cite} <em>{r.half}:</em> {r.takes}
         {r.url && <> <a href={r.url} rel="noopener">Link</a></>}
       </li>
     ))}

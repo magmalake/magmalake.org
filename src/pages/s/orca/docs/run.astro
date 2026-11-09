@@ -311,26 +311,14 @@ control   memory 98.30 % (trips over 90.00, past), disk 10.60 % (trips over 85.0
 
   <h2 id="deploys">Deploys and rollbacks</h2>
   <p>
-    On the <a href={`${DOCS}/hetzner.md`} rel="noopener">Hetzner stack</a>, restarting
-    the scheduler's container kills the running runs, so
-    <code>deploy.sh &lt;tag&gt;</code> pauses the pipelines that aren't paused, waits for
-    the running runs to end, deploys and unpauses what it paused. Since 0.16.0 it backs
-    the database up first (<code>orca-stack backup-now</code>), stopping without deploying
-    if that fails, and prints the previous tag, the new one and the dump's key.
-    <code>deploy.sh --rollback</code> does the same and then applies the tags the last
-    deploy replaced and registers the pipelines again, so the scheduler starts runs with
-    the code that's deployed:
-  </p>
-  <CodeBlock label="shell" code={`./deploy.sh a1b2c3d          # quiesce, back up, apply, resume
-./deploy.sh --rollback        # quiesce, back up, the previous tags, register, resume`} />
-  <p>
-    Postgres isn't rolled back. Since 0.16.0 each migration has a compatibility floor,
-    recorded in <code>orca.schema_version.min_binary</code>, so an older orca starts on a
-    newer schema whose migrations since are additive, and logs that it does; it refuses
-    only past a migration that raises the floor (so far only migration 24), which needs the backup
-    restored. The repository's AGENTS.md has the rules that keep migrations additive, and
-    <a href={`${DOCS}/hetzner.md#rolling-back`} rel="noopener">hetzner.md</a> the
-    runbook.
+    On the <a href={`${DOCS}/hetzner.md`} rel="noopener">Hetzner stack</a>,
+    <code>deploy.sh &lt;tag&gt;</code> replaces only the containers that changed, the UI
+    and apps without downtime, and pauses the pipelines only when it replaces the
+    scheduler, whose restart would kill its runs. It backs the database up first, and
+    <code>deploy.sh --rollback</code> goes back to the tags deployed before; an older
+    orca runs on a newer schema whose migrations since are additive.
+    <a href="/s/orca/docs/deploy">Deploying</a> has the rest: overlapping schedulers,
+    settings and SOPS secrets, and rescaling.
   </p>
 
   <h2 id="logs">Logs</h2>
