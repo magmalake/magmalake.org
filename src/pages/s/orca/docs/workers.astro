@@ -7,7 +7,7 @@ import { GHARCHIVE_REPO } from "../../../../data/gharchive";
 const DOCS = `${ORCA_REPO}/blob/main/docs`;
 
 const description =
-  "Running some of Orca's pipelines on a second machine: what a remote worker is, a worker token, a placement, the worker container that needs only outbound HTTPS, fills on a pool, what happens when a worker dies, the census as the example, and the limits.";
+  "Running some of Orca's pipelines on a second machine: what a remote worker is, a worker token, a placement, the worker container that needs only outbound HTTPS, fills on a pool, what happens when a worker dies, deploys, the census as the example, and the limits.";
 ---
 
 <OrcaDocs href="/s/orca/docs/workers" description={description}>
@@ -197,6 +197,13 @@ env = { DISTA_WORKER_SLOTS = "3" }`} />
       <a href={`${ORCA_REPO}/issues/220`} rel="noopener">orca #220</a>.
     </li>
     <li>
+      <strong>Deploys.</strong> Since 0.18.0 a server deploy doesn't wait for a worker's
+      runs, and the UI is replaced without downtime, so the worker's claims, state calls
+      and heartbeats go on to the new UI. <code>rescale.sh</code> does wait for them,
+      since the UI goes down with the server
+      (<a href="/s/orca/docs/deploy">Deploying</a>).
+    </li>
+    <li>
       <strong>The UI's port.</strong> By default the worker API shares the UI's port, so a
       slow page can delay a worker. From orca 0.15.0, <code>ORCA_WORKER_ADDR</code> serves
       it on a listener of its own.
@@ -220,7 +227,10 @@ env = { DISTA_WORKER_SLOTS = "3" }`} />
     <a href={`${DOCS}/workers.md`} rel="noopener">workers.md</a> in the Orca repository has
     the flags, how a dead worker's runs are queued again, the state calls and the network
     details. <a href="/s/orca/docs/run#placement">Scheduling and running</a> says where
-    placement fits among the runners.
+    placement fits among the runners: on <a href="/s/orca/docs/run#runners">Kubernetes
+    and EC2</a> each run gets a Dista cluster of its own instead, created and deleted with
+    it. The <a href="/s/orca/docs/roadmap#horizontal">roadmap</a> has what comes next for
+    pools.
   </p>
 </OrcaDocs>
 

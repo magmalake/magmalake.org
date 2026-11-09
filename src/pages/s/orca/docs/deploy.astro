@@ -1,0 +1,146 @@
+---
+import OrcaDocs from "../../../../components/OrcaDocs.astro";
+import CodeBlock from "../../../../components/CodeBlock.astro";
+import { ORCA_REPO } from "../../../../data/orca";
+
+const HETZNER = `${ORCA_REPO}/blob/main/docs/hetzner.md`;
+const O = `${ORCA_REPO}/issues`;
+
+const description =
+  "Deploying Orca on one Hetzner server: the scripts from a release, deploys that replace only what changed, the UI and apps without downtime, overlapping schedulers so a deploy doesn't pause runs, rollbacks, settings from hetzner.env, secrets encrypted with SOPS, rescaling the server, and what comes next.";
+---
+
+<OrcaDocs href="/s/orca/docs/deploy" description={description}>
+  <p class="eyebrow">Docs</p>
+  <h1 class="section-title">Deploying</h1>
+  <p class="lede">
+    On one Hetzner server, a deploy shouldn't cost a run, and a bad one should be easy to
+    undo. The scripts that do it come with each Orca release. This page is the outline;
+    <a href={HETZNER} rel="noopener">docs/hetzner.md</a> in the repository is the full
+    runbook. On AWS, <a href="/s/orca/docs/cli#aws">orca aws</a> makes and updates the stack.
+  </p>
+
+  <nav class="docs-toc" aria-label="On this page">
+    <a href="#scripts">The scripts</a>
+    <a href="#deploys">Deploys</a>
+    <a href="#overlap">Overlapping schedulers</a>
+    <a href="#rollbacks">Rollbacks</a>
+    <a href="#settings">Settings and secrets</a>
+    <a href="#rescaling">Rescaling</a>
+    <a href="#next">Next</a>
+  </nav>
+
+  <h2 id="scripts">The scripts</h2>
+  <p>
+    Since 0.19.0 the deploy tooling is a release asset, so deploying needs no checkout of
+    orca.mojo. It unpacks to <code>orca-hetzner-&lt;version&gt;/</code>, and the scripts
+    print that version:
+  </p>
+  <CodeBlock label="shell" code={`curl -fsSL https://github.com/magmalake/orca.mojo/releases/latest/download/orca-hetzner.tar.gz | tar -xz
+cd orca-hetzner-<version>
+cp hetzner.env.example hetzner.env     # fill in every line
+./up.sh --dry-run                      # prints every hcloud and ssh command; runs none
+./up.sh`} />
+  <p>
+    <code>up.sh</code> makes the firewall, the Volume and the server, puts the settings
+    and secrets on it and starts the containers: Postgres, the scheduler, the UI, the
+    sampler, the apps and the Cloudflare tunnel
+    (<a href={`${HETZNER}#first-setup`} rel="noopener">First setup</a>).
+  </p>
+
+  <h2 id="deploys">Deploys</h2>
+  <CodeBlock label="shell" code={`./deploy.sh a1b2c3d                    # the image at that tag; starts again what changed
+./deploy.sh a1b2c3d console=latest     # one app on another tag
+./deploy.sh --all a1b2c3d              # every container again, changed or not`} />
+  <p>
+    <strong>Only what changed starts again</strong> (since 0.18.0). <code>orca-stack
+    apply</code> compares each container's image, env file, flags and mounts with what it
+    runs, and leaves it alone when nothing differs; <code>orca-stack plan</code> says what
+    an apply would do. A census-only deploy replaces the console and nothing else, and
+    Postgres is never restarted.
+  </p>
+  <p>
+    <strong>The UI and the apps without downtime</strong> (since 0.18.0). A new UI or app
+    starts beside the old one, takes its name on the network once it's healthy (the UI's
+    <code>/healthz</code>), and the old one finishes its requests and stops. One that
+    never gets healthy is removed and the old one keeps serving. Remote workers talk only
+    to the UI, so their runs go on through a deploy.
+  </p>
+  <p>
+    <strong>The scheduler.</strong> Restarting it kills the runs it holds, so when the plan
+    replaces it, <code>deploy.sh</code> pauses the pipelines, waits for the scheduler's
+    running runs (not those on remote workers), backs the database up, applies, registers
+    the pipelines from the new image and unpauses what it paused. When the plan doesn't
+    replace the scheduler, nothing is paused.
+  </p>
+
+  <h2 id="overlap">Overlapping schedulers</h2>
+  <p>
+    Since 0.18.0, with <code>orca-stack configure OVERLAP=1</code> (off by default), a
+    deploy that replaces the scheduler doesn't pause. The new scheduler starts beside the
+    old one and takes the lead, and the old one starts nothing more, finishes its runs
+    under its own image and exits (<a href={`${O}/232`} rel="noopener">#232</a>). A
+    migration that raises the schema's floor refuses the overlap, and the deploy then
+    pauses and waits as above, saying why.
+  </p>
+
+  <h2 id="rollbacks">Rollbacks</h2>
+  <CodeBlock label="shell" code={`./deploy.sh --rollback                 # back to the tags deployed before
+ssh root@<ip> orca-stack apply --app console=<sha>   # only an app`} />
+  <p>
+    Each deploy keeps the tags it replaced and, when it replaces anything, a database
+    backup first (since 0.16.0). <code>--rollback</code> applies the previous tags and, if
+    the scheduler was replaced, registers the pipelines again, so runs start with the code
+    that's deployed. Postgres isn't rolled back: an older orca runs on a newer schema
+    whose migrations since are additive. Only a migration that raises the floor needs the
+    backup restored (<a href={`${HETZNER}#rolling-back`} rel="noopener">Rolling back</a>).
+  </p>
+
+  <h2 id="settings">Settings and secrets</h2>
+  <p>
+    <strong>Settings from <code>hetzner.env</code></strong> (since 0.18.0). Every deploy,
+    rollbacks too, brings the server's settings and secret files in line with
+    <code>hetzner.env</code> and prints the names of what changed, never a value. So
+    <code>hetzner.env</code> is where a setting changes: a hand edit to
+    <code>/etc/orca/settings.env</code> is undone by the next deploy, and an extra line
+    belongs in <code>EXTRA_ENV_FILE</code>.
+  </p>
+  <p>
+    <strong>Secrets encrypted with SOPS</strong> (since 0.19.0). A secret file that
+    <code>hetzner.env</code> names as <code>*.sops</code> or <code>*.sops.&lt;ext&gt;</code>
+    is decrypted with <code>sops -d</code> on its way to the server and never written to a
+    file on the laptop, so the laptop keeps one age key instead of plain tokens
+    (<a href={`${HETZNER}#secrets-on-your-laptop-sops`} rel="noopener">Secrets on your
+    laptop</a>). Coming in <a href={`${O}/265`} rel="noopener">#265</a>: one
+    <code>SECRETS_FILE</code> for every secret, decrypted once, so a Secure Enclave key
+    asks for Touch ID once per deploy.
+  </p>
+
+  <h2 id="rescaling">Rescaling</h2>
+  <CodeBlock label="shell" code={`./rescale.sh up                        # CAX21 -> CAX41, keeping the disk
+./rescale.sh down                      # CAX41 -> CAX21`} />
+  <p>
+    For an import, <code>rescale.sh</code> changes the server's type. It pauses every
+    pipeline and waits for the running runs, those on remote workers too, since the UI
+    they talk to goes down with the server; backs up, changes the type, waits for the
+    scheduler and unpauses what it paused. The server is down for a few minutes
+    (<a href={`${HETZNER}#rescaling-for-an-import`} rel="noopener">Rescaling for an
+    import</a>).
+  </p>
+
+  <h2 id="next">Next</h2>
+  <ul class="docs-list">
+    <li>
+      <a href={`${O}/247`} rel="noopener">orca #247</a>: <code>orca deploy</code> in the CLI,
+      with the scripts built into the binary and the settings in the app's repository.
+    </li>
+    <li>
+      <a href={`${O}/250`} rel="noopener">orca #250</a>: a dev stack and a release flow
+      that promotes the image tested there to production.
+    </li>
+    <li>
+      <a href={`${O}/263`} rel="noopener">orca #263</a>: deploying on GCP's ARM machines
+      beside Hetzner, and the scripts working against any host with SSH.
+    </li>
+  </ul>
+</OrcaDocs>
