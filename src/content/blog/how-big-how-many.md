@@ -3,8 +3,8 @@ title: How big, how many
 description: Scaling an orchestrator in two dimensions, and the bugs a fake pipeline found in each.
 eyebrow: Orchestration
 date: 2026-11-11
-sourceUrl: https://github.com/magmalake/orca.mojo
-sourceLabel: orca.mojo
+sourceUrl: https://github.com/morca-dev/morca
+sourceLabel: morca-dev/morca
 related: []
 unlisted: false
 draft: true
@@ -119,7 +119,7 @@ out of memory, but only once the run's heartbeat goes stale. The heartbeat runs
 on its own thread, which barely allocates, so it stayed fresh while the main
 thread starved.
 
-**Fix** ([orca #279](https://github.com/magmalake/orca.mojo/pull/279)): every
+**Fix** ([orca #279](https://github.com/morca-dev/morca/pull/279)): every
 scheduler pass checks each run's cgroup. A run at its limit whose tasks are all
 stalled on memory at least half the time (PSI `full avg10 ≥ 50`) for two
 minutes in a row is killed and counts as out of memory. The rerun:
@@ -147,7 +147,7 @@ repeat the same doomed attempts. But nothing ever lowered it; only
 re-registering the pipeline with a different setting cleared it. This is
 exactly the decay Autopilot builds in and our simple rule left out.
 
-**Fix** ([orca #280](https://github.com/magmalake/orca.mojo/pull/280)): orca
+**Fix** ([orca #280](https://github.com/morca-dev/morca/pull/280)): orca
 records which run caused the raise and forgets it once 20 of the pipeline's
 runs after that one have succeeded. While the outlier is among the 20 runs the
 request is learned from, the floor protects the next runs; after that, 20 runs
@@ -169,7 +169,7 @@ and every run succeeded on its first try.
 | 64 | 318 MB | 256 → 384 MB | 112 s | held, killed, retried bigger |
 | 65–83 | 341 → 1313 MB | 384 → 1536 MB | 0 s | all first try |
 
-The stall column is new ([orca #283](https://github.com/magmalake/orca.mojo/pull/283)).
+The stall column is new ([orca #283](https://github.com/morca-dev/morca/pull/283)).
 It records how long each attempt's tasks waited on memory, from the cgroup's
 PSI totals. Here it splits cleanly: zero for every comfortable grant, nearly two
 minutes for the one that was too small. The 15% margin plus the rounding step
@@ -187,7 +187,7 @@ it can give a run at most one. From the seventh run on, every start waited with
 `needs 2 CPUs, more than the 1 this host grants at most`. It would have waited
 forever: a learned request can outgrow the machine it learned on.
 
-**Fix** ([orca #284](https://github.com/magmalake/orca.mojo/pull/284)): a
+**Fix** ([orca #284](https://github.com/morca-dev/morca/pull/284)): a
 learned CPU request is capped at what the host can give a run. Fewer cores only
 make a run slower. Memory isn't capped the same way, because a run that needs
 more memory than the host has would just be killed, and waiting with a clear
@@ -210,7 +210,7 @@ same 1 GB, four times, about two minutes each. Then it ended as `interrupted:
 its process stopped, and its retries are spent`, which hides the reason. A
 retry that asks for the same limit is the same attempt again.
 
-**Fix** ([orca #287](https://github.com/magmalake/orca.mojo/pull/287)): a run
+**Fix** ([orca #287](https://github.com/morca-dev/morca/pull/287)): a run
 killed at its maximum fails on that kill, with the kill as its error. On beta,
 the same day afterwards took one start, and the run's error is the
 out-of-memory reason.
@@ -222,7 +222,7 @@ pass to restart, and a paused pipeline starts nothing. It sat `running` for
 over two hours with its process gone. The next deploy waited an hour for it to
 finish, gave up, and left every pipeline on the server paused.
 
-**Fix** ([orca #291](https://github.com/magmalake/orca.mojo/pull/291)): while a
+**Fix** ([orca #291](https://github.com/morca-dev/morca/pull/291)): while a
 pipeline is paused, a run whose process has stopped goes back to the queue,
 keeping its start count, and unpausing starts it.
 
@@ -246,7 +246,7 @@ means "retry not scheduled yet", so the next scheduler pass scheduled one. On
 beta, a redeploy had hidden it. #287's test had checked too early, before the
 next pass.
 
-**Fix** ([orca #300](https://github.com/magmalake/orca.mojo/pull/300)): a run
+**Fix** ([orca #300](https://github.com/morca-dev/morca/pull/300)): a run
 that must not be retried records the start it failed on, and the scheduler
 skips it. The test now waits past the time a retry would start. On the lab,
 both over-cap runs failed once and stayed failed.
@@ -256,7 +256,7 @@ both over-cap runs failed once and stayed failed.
 - **Long partition lists.** A run over every day since 2023 printed hundreds of
   dates on its page and in the deploy's progress output. Now it shows the
   first, the last and the count
-  ([orca #277](https://github.com/magmalake/orca.mojo/pull/277)).
+  ([orca #277](https://github.com/morca-dev/morca/pull/277)).
 - **Settings drift.** The beta stack's settings named its storage bucket in the
   wrong Hetzner location, which surfaced as a 404 from the pre-deploy backup.
 - **Letting an agent deploy.** The test loop (change, build an image, deploy,
@@ -302,16 +302,16 @@ pipeline, **spread**, whose step fans out one dista task per day of a month.
 
 | Step | What changes | Machines | Result |
 | --- | --- | ---: | --- |
-| H1 · [#266](https://github.com/magmalake/orca.mojo/issues/266) | `max_runs = "auto"`: start another run while its request fits | 1 | done |
-| H2 · [#220](https://github.com/magmalake/orca.mojo/issues/220) | A pool of worker machines | 2+ | works; joining by hand later |
-| H3 · [#267](https://github.com/magmalake/orca.mojo/issues/267) | A pool that grows and shrinks with the queue | 0–N | done |
-| H4 · [#268](https://github.com/magmalake/orca.mojo/issues/268) | One run spread across machines | 2+ | done |
+| H1 · [#266](https://github.com/morca-dev/morca/issues/266) | `max_runs = "auto"`: start another run while its request fits | 1 | done |
+| H2 · [#220](https://github.com/morca-dev/morca/issues/220) | A pool of worker machines | 2+ | works; joining by hand later |
+| H3 · [#267](https://github.com/morca-dev/morca/issues/267) | A pool that grows and shrinks with the queue | 0–N | done |
+| H4 · [#268](https://github.com/morca-dev/morca/issues/268) | One run spread across machines | 2+ | done |
 
 ### H1, as many as fit: bug 7
 
 `max_runs = "auto"` starts another run whenever its request fits in what the
 host's running runs weren't granted
-([orca #302](https://github.com/magmalake/orca.mojo/pull/302)). Thirty days of
+([orca #302](https://github.com/morca-dev/morca/pull/302)). Thirty days of
 ballast ran 3 at once while the learned request was 2 CPUs and 1.5 GB, then 7
 at once (all the lab can grant) as the 1-core days took over the window. No
 orca.toml change but the one key.
@@ -322,7 +322,7 @@ pressure stall information counts a cgroup's stall at its own limit in every
 ancestor, so one starved run looked like a starved host. With one run at a
 time, which is how ballast ran before, it never showed.
 
-**Fix** ([orca #303](https://github.com/magmalake/orca.mojo/pull/303)):
+**Fix** ([orca #303](https://github.com/morca-dev/morca/pull/303)):
 admission subtracts the stall the runs held at their own limits explain. On
 the rerun the 29 normal days ran 7 at a time while the outlier was being killed
 and retried beside them.
@@ -337,15 +337,15 @@ against its own machine), and the 29 normal days took 55 seconds instead of
 
 The UI's "Hosts over time" chart still showed one host: it counted EC2
 instances and the control host, never a self-hosted worker (fixed in
-[orca #305](https://github.com/magmalake/orca.mojo/pull/305)). Adding a machine
+[orca #305](https://github.com/morca-dev/morca/pull/305)). Adding a machine
 by hand, with a one-command join and drain, is
-[#220](https://github.com/magmalake/orca.mojo/issues/220), for later.
+[#220](https://github.com/morca-dev/morca/issues/220), for later.
 
 ### H3, a pool that grows and shrinks: limit 1
 
 A pool is now declared in orca.toml, and the scheduler makes and removes its
-machines ([orca #313](https://github.com/magmalake/orca.mojo/pull/313); EC2 in
-[#321](https://github.com/magmalake/orca.mojo/pull/321)):
+machines ([orca #313](https://github.com/morca-dev/morca/pull/313); EC2 in
+[#321](https://github.com/morca-dev/morca/pull/321)):
 
 ```toml
 [pools.lab]
@@ -377,14 +377,14 @@ joined as a worker; it ran 8 at once; 300 seconds after its last run it was
 deleted. A second machine was refused, not for stock but for the project's
 core quota (`resource_limit_exceeded`), which orca reported rather than taking
 for a shortage. Falling back to a smaller type that fits came next
-([orca #348](https://github.com/magmalake/orca.mojo/pull/348)).
+([orca #348](https://github.com/morca-dev/morca/pull/348)).
 
 ### H4, one run over several machines: bug 9
 
 A run with dista tasks used to run on one machine. With `workers = N` on a pool
 pipeline it now spreads
-([orca #325](https://github.com/magmalake/orca.mojo/pull/325),
-[#334](https://github.com/magmalake/orca.mojo/pull/334)): the worker that
+([orca #325](https://github.com/morca-dev/morca/pull/325),
+[#334](https://github.com/morca-dev/morca/pull/334)): the worker that
 claims it starts a dista head, a dista worker and the run's driver; other
 workers of the pool with room claim "join run R" and start dista workers
 against that head; a run that wants more members than have joined is demand,
@@ -395,7 +395,7 @@ read its results. Ray's security docs make the same point about Ray, and Ray
 2.52 added a token mode. We did both of the things Ray recommends: the machines
 talk over a private network orca makes for the pool, and each run start gets a
 token that dista requires on every connection, head and worker-to-worker alike
-([dista #125](https://github.com/magmalake/dista.mojo/pull/125)).
+([dista #125](https://github.com/morca-dev/dista/pull/125)).
 
 On the lab, from an empty pool, two runs of spread: orca made two CAX21s on the
 private network; each run's head came up on a private address (10.77.0.2, then
@@ -422,8 +422,8 @@ The test did its job.
   another. The failing one was right.
 
 Left for later: machines a person adds by hand
-([#220](https://github.com/magmalake/orca.mojo/issues/220)). The small
+([#220](https://github.com/morca-dev/morca/issues/220)). The small
 follow-ups (fill runs sized like other runs, the pool's status in the UI, the
 quota fallback and clearer machine names,
-[#322](https://github.com/magmalake/orca.mojo/issues/322)) have since merged
+[#322](https://github.com/morca-dev/morca/issues/322)) have since merged
 and ship in orca 0.24.0.
