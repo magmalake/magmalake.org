@@ -192,9 +192,11 @@ env = { DISTA_WORKER_SLOTS = "3" }`} />
       the secrets and never carries their values.
     </li>
     <li>
-      <strong>Pools by hand.</strong> A worker is started by hand on each machine;
-      <code>[pools]</code> in orca.toml and <code>orca host join</code> are
-      <a href={`${ORCA_REPO}/issues/220`} rel="noopener">orca #220</a>.
+      <strong>Machines you already have.</strong> On these the worker is started by hand,
+      as above; <code>orca host join</code> is
+      <a href={`${ORCA_REPO}/issues/220`} rel="noopener">orca #220</a>. A pool whose
+      machines orca makes and removes on Hetzner Cloud or EC2 needs none of this: see
+      <a href="/s/orca/docs/pools">Pools and autoscaling</a>.
     </li>
     <li>
       <strong>Deploys.</strong> Since 0.18.0 a server deploy doesn't wait for a worker's

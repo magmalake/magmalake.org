@@ -8,7 +8,9 @@
  */
 import Base from "../layouts/Base.astro";
 
-export type DocsPage = { href: string; label: string; title: string };
+/** `group` names the part of the strip a page is in ("Guides",
+ * "Reference"); pages without one, and runs of the same group, sit together. */
+export type DocsPage = { href: string; label: string; title: string; group?: string };
 
 interface Props {
   /** The section's name: "Orca", "Dista". */
@@ -25,6 +27,13 @@ if (i < 0) throw new Error(`${href} is not among ${name}'s docs pages`);
 const page = docs[i];
 const prev = i > 0 ? docs[i - 1] : undefined;
 const next = i + 1 < docs.length ? docs[i + 1] : undefined;
+// The strip's runs of pages of one group, in order.
+const groups: { name?: string; pages: DocsPage[] }[] = [];
+for (const d of docs) {
+  const last = groups[groups.length - 1];
+  if (last && last.name === d.group) last.pages.push(d);
+  else groups.push({ name: d.group, pages: [d] });
+}
 ---
 
 <Base title={i === 0 ? `Docs · ${name}` : `${page.title} · ${name} docs`} description={description} bare chrome={false}>
@@ -33,8 +42,13 @@ const next = i + 1 < docs.length ? docs[i + 1] : undefined;
   <section class="section section--flush">
     <div class="wrap wrap--wide docs section-docs">
       <nav class="section-docs__pages" aria-label={`${name} docs`}>
-        {docs.map((d) => (
-          <a href={d.href} aria-current={d.href === href ? "page" : undefined}>{d.title}</a>
+        {groups.map((g) => (
+          <span class="section-docs__group">
+            {g.name && <span class="section-docs__group-name">{g.name}</span>}
+            {g.pages.map((d) => (
+              <a href={d.href} aria-current={d.href === href ? "page" : undefined}>{d.title}</a>
+            ))}
+          </span>
         ))}
       </nav>
       <slot />
@@ -92,6 +106,23 @@ const next = i + 1 < docs.length ? docs[i + 1] : undefined;
     padding-bottom: 0.9rem;
     border-bottom: 1px solid var(--rule);
     font-size: 0.875rem;
+  }
+  .section-docs__group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem 1.25rem;
+  }
+  .section-docs__group + .section-docs__group {
+    padding-left: 1.25rem;
+    border-left: 1px solid var(--rule);
+  }
+  .section-docs__group-name {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
   }
   .section-docs__pages a {
     color: var(--text-muted);

@@ -194,7 +194,9 @@ ORCA_WORKER_TOKEN=orca_... ./build/orca worker --pool bgent --remote https://orc
     (<a href={`${DOCS}/orca-toml.md#fills`} rel="noopener">orca-toml.md#fills</a>).
     Since 0.15.0 a pipeline placed on a worker pool fills too: its fill runs are queued
     in the same order and window for the pool's workers to claim, with at most
-    <code>fill_max_runs</code> across the whole pool.
+    <code>fill_max_runs</code> across the whole pool. From 0.24.0,
+    <code>fill_max_runs = "auto"</code> starts as many as fit, as
+    <code>max_runs = "auto"</code> does (<a href="/s/orca/docs/config#how-many-at-once">orca.toml</a>).
   </p>
 
   <h2 id="resources">Memory and CPU</h2>

@@ -13,13 +13,13 @@ const P = "https://github.com/magmalake/orca.mojo/pull";
 // recommender).
 const LEARNED = 269;
 
-// As of orca 0.19.0. `today` is HTML once backticks become <code>, so it can link the PR that shipped it.
+// As of orca 0.24.0. `today` is HTML once backticks become <code>, so it can link the PR that shipped it.
 const layers: { layer: string; does: string; today: string; next: [string, string, string][] }[] = [
   {
     layer: "Measure",
     does: "Know what each run actually used",
-    today: `Each run's peak memory, CPU time and peak cores are recorded and shown on the run, its steps and the pipeline's Resources card, over its last 20 runs (<a href="${P}/203" rel="noopener">#203</a>)`,
-    next: [[`orca #${LEARNED}`, `${O}/${LEARNED}`, "Requests learned from those peaks, as Autopilot's vertical recommender does"]],
+    today: `Each run's peak memory, CPU time and peak cores are recorded and shown on the run, its steps and the pipeline's Resources card (<a href="${P}/203" rel="noopener">#203</a>). \`cpus = "auto"\` and \`memory_gb = "auto"\` take requests learned from those peaks, as Autopilot's vertical recommender does (<a href="${O}/${LEARNED}" rel="noopener">#${LEARNED}</a>)`,
+    next: [],
   },
   {
     layer: "Admit",
@@ -46,7 +46,7 @@ const layers: { layer: string; does: string; today: string; next: [string, strin
   },
 ];
 
-// Horizontal scaling as it is in 0.19.0.
+// Horizontal scaling as it is in 0.24.0.
 const across: { what: string; today: string }[] = [
   {
     what: "Inside a run",
@@ -54,42 +54,57 @@ const across: { what: string; today: string }[] = [
   },
   {
     what: "Runs at once",
-    today: `\`max_runs\` and, for fills, \`fill_max_runs\` per pipeline, set by hand in orca.toml; on a pool, \`fill_max_runs\` counts across the pool and each worker's \`--max-runs\` caps its machine`,
+    today: `\`max_runs = "auto"\` and, from 0.24.0, \`fill_max_runs = "auto"\`: another run starts while its request fits in what's free, up to a ceiling (<a href="/s/orca/docs/scaling">Sizing and scaling</a>)`,
   },
   {
-    what: "Remote workers and pools",
-    today: `\`orca worker --pool\` claims a pool's runs over HTTPS, fills included, and a dead worker's runs are queued again (<a href="${O}/173" rel="noopener">#173</a>, <a href="${P}/221" rel="noopener">#221</a>). Ops › Pools lists each pool, its workers and their machines (<a href="${P}/224" rel="noopener">#224</a>). Each worker is started by hand (<a href="/s/orca/docs/workers">Remote workers</a>)`,
+    what: "Pools",
+    today: `\`[pools.&lt;name&gt;]\` with \`provider = "hetzner"\` or \`"ec2"\` makes machines when runs wait and removes them once idle, trying each type in \`machines\` in turn (<a href="/s/orca/docs/pools">Pools and autoscaling</a>). Machines joined by hand still run \`orca worker --pool\` (<a href="/s/orca/docs/workers">Remote workers</a>)`,
   },
   {
-    what: "Kubernetes and EC2",
+    what: "Across machines",
+    today: `From 0.24.0, \`workers = N\` spreads one run's dista cluster over N of a pool's machines, on a private network, with a token of its own`,
+  },
+  {
+    what: "Kubernetes and EC2 runners",
     today: `A dista cluster of its own per run, created and deleted with it; on EC2, \`--workers MIN..MAX\` adds and drains workers as the head's demand changes (<a href="/s/orca/docs/run#runners">On Kubernetes and EC2</a>). Kubernetes runs don't get their secrets yet (<a href="${O}/206" rel="noopener">#206</a>)`,
   },
 ];
 
-const milestones: { id: string; title: string; issue: [string, string]; body: string }[] = [
+const milestones: { id: string; title: string; issue: [string, string]; done: string; body: string }[] = [
   {
     id: "H1",
     title: "Across runs",
     issue: ["orca #266", `${O}/266`],
-    body: `\`max_runs = "auto"\` (and \`fill_max_runs\`): another run of the pipeline starts while its request fits in what's free, with the same admission as a single run, up to a ceiling. Each run's size stays as vertical scaling sets it; this decides only how many. Done when a backfill on a CAX41 runs about twice as many partitions at once as on a CAX21, with no orca.toml change.`,
-  },
-  {
-    id: "H2",
-    title: "Declared pools",
-    issue: ["orca #220", `${O}/220`],
-    body: `\`[pools.&lt;name&gt;]\` in orca.toml says what a pool's machines run (max runs, env, volumes), and \`orca host join\` makes a machine a worker once: it runs the worker at the server's image tag, upgrades after a deploy, reports the machine and drains on request. The worker follow-ups in <a href="${O}/177" rel="noopener">#177</a> come with it: long-poll claims, and requeuing manual runs on a dead worker.`,
+    done: "done in 0.22.0; fills from 0.24.0",
+    body: `\`max_runs = "auto"\`: another run of the pipeline starts while its request fits in what's free, with the same admission as a single run, up to a ceiling. \`fill_max_runs = "auto"\` does the same for fill runs.`,
   },
   {
     id: "H3",
     title: "Pools that add and remove machines",
     issue: ["orca #267", `${O}/267`],
-    body: `A pool declares a machine type, a minimum and a maximum. When runs wait for the pool and don't fit on its live workers, orca creates a machine that joins it; an idle machine is removed, down to the minimum, which can be zero. Hetzner Cloud first, then GCP (<a href="${O}/263" rel="noopener">#263</a>), EC2 and Kubernetes (<a href="${O}/206" rel="noopener">#206</a>), with each pool's machine-hours on its page.`,
+    done: "done in 0.23.0; quota fallback from 0.24.0",
+    body: `A pool lists machine types, each with how long to wait for it. When runs wait for the pool and don't fit on its live workers, orca makes a machine that boots into a worker of the pool, with the image for its CPU architecture; an idle one is removed. Hetzner Cloud and EC2; a type out of stock or over the project's quota is passed over for the next.`,
   },
   {
     id: "H4",
     title: "One run across several machines",
     issue: ["orca #268", `${O}/268`],
-    body: `A run on a pool is granted workers on more than one of its machines, and its dista cluster spans them, so one large backfill step uses the whole pool, with results identical to one machine. Later, a running job grows as the pool adds machines (<a href="${D}/76" rel="noopener">dista #76</a>).`,
+    done: "from 0.24.0",
+    body: `\`workers = N\`: a run on a pool gets workers on N of its machines, and its dista cluster spans them over a private network, with results identical to one machine. From 0.24.0 a run's page shows the machines it spread over.`,
+  },
+  {
+    id: "H2",
+    title: "Machines joined by hand",
+    issue: ["orca #220", `${O}/220`],
+    done: "next",
+    body: `\`orca host join\` makes a machine you already have a worker of a pool once: it runs the worker at the server's image tag, upgrades after a deploy, reports the machine and drains on request. The worker follow-ups in <a href="${O}/177" rel="noopener">#177</a> come with it.`,
+  },
+  {
+    id: "H5",
+    title: "More providers, and jobs that grow",
+    issue: ["orca #263", `${O}/263`],
+    done: "later",
+    body: `Pools on GCP (<a href="${O}/263" rel="noopener">#263</a>) and Kubernetes (<a href="${O}/206" rel="noopener">#206</a>), and a running job that grows as the pool adds machines (<a href="${D}/76" rel="noopener">dista #76</a>).`,
   },
 ];
 
@@ -193,7 +208,7 @@ const refs: { cite: string; half: string; takes: string; url?: string }[] = [
   <h3 id="layers">Four layers</h3>
   <div class="table-scroll">
     <table>
-      <thead><tr><th>Layer</th><th>What it does</th><th>Today (0.19.0)</th><th>Next</th></tr></thead>
+      <thead><tr><th>Layer</th><th>What it does</th><th>Today (0.24.0)</th><th>Next</th></tr></thead>
       <tbody>
         {layers.map((l) => (
           <tr>
@@ -219,10 +234,10 @@ const refs: { cite: string; half: string; takes: string; url?: string }[] = [
     Measure (orca #200), grants (#171), containment (#201) and admission by memory pressure
     (#202) are in 0.15.0, each built on the one before: grants need measurements,
     containment uses the grants as limits, and admission holds new runs off a machine that
-    is already short of memory. Next is dista #123, which needs both the grant and the
-    pressure signal, then requests learned from the measured peaks
-    (<a href={`${O}/${LEARNED}`} rel="noopener">orca #{LEARNED}</a>), so a pipeline gets
-    the right size without setting <code>memory_gb</code> at all.
+    is already short of memory. Requests learned from the measured peaks
+    (<a href={`${O}/${LEARNED}`} rel="noopener">orca #{LEARNED}</a>) followed, so a pipeline
+    gets the right size without setting <code>memory_gb</code> at all. Next is dista #123,
+    which needs both the grant and the pressure signal.
   </p>
 
   <h2 id="horizontal">Horizontal: the right number</h2>
@@ -232,10 +247,10 @@ const refs: { cite: string; half: string; takes: string; url?: string }[] = [
     or on a pool with one more worker, runs more at once without an orca.toml change, and
     a pool with nothing queued costs nothing.
   </p>
-  <p>Where it stands in 0.19.0:</p>
+  <p>Where it stands in 0.24.0:</p>
   <div class="table-scroll">
     <table>
-      <thead><tr><th></th><th>Today (0.19.0)</th></tr></thead>
+      <thead><tr><th></th><th>Today (0.24.0)</th></tr></thead>
       <tbody>
         {across.map((a) => (
           <tr>
@@ -248,11 +263,11 @@ const refs: { cite: string; half: string; takes: string; url?: string }[] = [
   </div>
 
   <h3 id="milestones">Milestones</h3>
-  <p>In order:</p>
+  <p>H1, H3 and H4 are done; H2 is next.</p>
   <ul class="docs-list">
     {milestones.map((m) => (
       <li>
-        <strong>{m.id}. {m.title}</strong> (<a href={m.issue[1]} rel="noopener">{m.issue[0]}</a>).{" "}
+        <strong>{m.id}. {m.title}</strong> (<a href={m.issue[1]} rel="noopener">{m.issue[0]}</a>, {m.done}).{" "}
         <span set:html={code(m.body)} />
       </li>
     ))}
