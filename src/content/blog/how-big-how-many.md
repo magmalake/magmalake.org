@@ -10,8 +10,8 @@ unlisted: false
 draft: true
 ---
 
-Every pipeline run answers two questions before it starts: how big should it
-be, and how many of it should run at once? Get the first wrong and runs die out
+Every data pipeline needs to answer two questions before a run starts: how many resources
+to reserve, and how many copies should run at once? Get the first wrong and runs die out
 of memory or hoard a machine. Get the second wrong and a backfill crawls on a
 server that sits half idle.
 
@@ -24,7 +24,7 @@ paper, which splits autoscaling into two axes:
 - **Vertical, how big:** the memory and CPUs one run asks for, learned from
   what earlier runs actually used.
 - **Horizontal, how many:** how many runs go at once, and on how many machines,
-  given what's free.
+  given the available resources.
 
 The vertical axis has to come first: you can't decide how many runs fit until
 you know how big each one is. This post tests both, in that order, and records
@@ -33,7 +33,7 @@ what broke.
 ## The rule
 
 A pipeline opts in with `memory_gb = "auto"` (or `"auto..6"` to cap it at
-6 GB). Before each start, orca looks at the pipeline's last 20 successful runs
+6 GB). Before each start, Orca looks at the pipeline's last 20 successful runs
 and asks for:
 
 ```text
