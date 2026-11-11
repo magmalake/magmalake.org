@@ -99,7 +99,7 @@ export const tins: Tin[] = [
     pkg: "orca-mojo",
     repo: "https://github.com/magmalake/orca.mojo",
     site: "/s/orca",
-    version: "0.3.2",
+    version: "0.23.0",
     tier: "execution",
     short: "pipelines as DAGs · cron schedules · backfills",
     what:
@@ -117,7 +117,7 @@ export const tins: Tin[] = [
     pkg: "dista-mojo",
     repo: "https://github.com/magmalake/dista.mojo",
     site: "/s/dista",
-    version: "0.2.1",
+    version: "0.3.0",
     tier: "execution",
     short: "distributed tasks · actors · results that stay on workers",
     what:
@@ -135,7 +135,7 @@ export const tins: Tin[] = [
     short: "metadata · scan planning · read · write · REST, SQL and filesystem catalogs",
     pkg: "iceberg-mojo",
     repo: "https://github.com/magmalake/iceberg.mojo",
-    version: "0.8.6",
+    version: "0.11.1",
     tier: "table",
     what:
       "Native Apache Iceberg. Read a table's metadata.json, pick a snapshot, decode its manifests, plan a scan and read the rows — then create, append, delete, overwrite and expire. No JVM, no Python, no Rust in the path.",
@@ -175,7 +175,7 @@ export const tins: Tin[] = [
     repo: "https://github.com/magmalake/parquet.mojo",
     benchmarks: "https://magmalake.github.io/parquet.mojo/benchmarks/",
     api: "src/parquet",
-    version: "0.11.7",
+    version: "0.13.0",
     tier: "format",
     what:
       "The first native Apache Parquet reader and writer in Mojo. It decodes the footer, the page headers, the levels and the values itself, and hands the result back in Arrow memory layout, exportable over the Arrow C Data Interface. That interface is the boundary, not a full Arrow library: there are no compute kernels, no IPC and no Flight.",
@@ -199,7 +199,7 @@ export const tins: Tin[] = [
     pkg: "parquet-full-mojo",
     repo: "https://github.com/magmalake/parquet.mojo",
     api: "full/src/parquet_full",
-    version: "0.1.8",
+    version: "0.1.11",
     tier: "format",
     what:
       "Every Parquet codec the spec defines: parquet-mojo, plus ZSTD, BROTLI and LZ4 through libzstd, libbrotli and liblz4. It lives in the full/ directory of the parquet repository and depends on parquet-mojo, so adding it gives you both, and the import is unchanged.",
@@ -217,7 +217,7 @@ export const tins: Tin[] = [
     repo: "https://github.com/magmalake/avro.mojo",
     api: "src/avro",
     benchmarks: "https://magmalake.github.io/avro.mojo/benchmarks/",
-    version: "0.4.4",
+    version: "0.4.5",
     tier: "format",
     what:
       "Pure-Mojo Apache Avro: schema parsing, the binary encoding, Object Container Files both ways, and schema resolution. No FFI: its one dependency is deflate-mojo, for the deflate codec.",
@@ -233,7 +233,7 @@ export const tins: Tin[] = [
     short: "local · HTTP · S3 · GCS · Azure · concurrent reads",
     pkg: "objectstore-mojo",
     repo: "https://github.com/magmalake/objectstore.mojo",
-    version: "0.4.1",
+    version: "0.4.2",
     tier: "storage",
     what:
       "Storage and HTTP for Iceberg tables: a FileIO abstraction over local files, HTTP(S) range reads and S3, with the pooled HTTP transport the rest of the stack was missing.",
@@ -417,7 +417,7 @@ export const tins: Tin[] = [
     short: "DEFLATE · gzip · pure Mojo",
     pkg: "deflate-mojo",
     repo: "https://github.com/magmalake/deflate.mojo",
-    version: "0.1.3",
+    version: "0.2.0",
     tier: "primitive",
     what:
       "DEFLATE (RFC 1951) and gzip (RFC 1952) in pure Mojo, the compression inside Avro's deflate codec and Parquet's GZIP codec. No FFI, no libz.",

@@ -1,7 +1,7 @@
 {
  "tin": "objectstore",
- "version": "0.4.1",
- "rev": "41fac2800882e5a64da09729262dfa22bbd4ad13",
+ "version": "0.4.2",
+ "rev": "ff66975c095f392695facc1b6dd56823dec914bc",
  "package": "objectstore",
  "path": "src/objectstore",
  "mojo": "Mojo 1.2.0 (2016d0cd)",

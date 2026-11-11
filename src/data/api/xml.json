@@ -1,7 +1,7 @@
 {
  "tin": "xml",
  "version": null,
- "rev": "26128827ae6fa11017192e40592c1604e4771595",
+ "rev": "a2cb3e5380a724442a0d9cf635e8fa7c12d6cdf6",
  "package": "xml",
  "path": "src/xml",
  "mojo": "Mojo 1.2.0 (2016d0cd)",

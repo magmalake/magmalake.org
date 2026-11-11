@@ -1,7 +1,7 @@
 {
  "tin": "avro",
- "version": "0.4.4",
- "rev": "db833d86ddbd7cbaba4dbd79377b0a06009181ec",
+ "version": "0.4.5",
+ "rev": "d5b26ccefa8c49cc3af517731f5df104762119e0",
  "package": "avro",
  "path": "src/avro",
  "mojo": "Mojo 1.2.0 (2016d0cd)",

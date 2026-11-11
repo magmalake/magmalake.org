@@ -1,32 +1,32 @@
 {
   "orca-mojo": {
-    "version": "0.3.2",
-    "commit": "1db5de9aab671bf1b4de0ff1f9525535b9810b1a"
+    "version": "0.23.0",
+    "commit": "32ee1ee691cc9fd09a8e2a2d0798a6381d432458"
   },
   "dista-mojo": {
-    "version": "0.2.1",
-    "commit": "9e4839937d82f36893285301bf9ce4338dcb14ec"
+    "version": "0.3.0",
+    "commit": "5b2a9b18674b9bc5d7fa03fb6f72f07967f7d871"
   },
   "iceberg-mojo": {
-    "version": "0.8.6",
-    "commit": "ec4f4e07605b687a2ea9e2fda5dfd4a01aa6ba97"
+    "version": "0.11.1",
+    "commit": "bb361f975f9f56d33218850a5f3d048202a85f02"
   },
   "parquet-mojo": {
-    "version": "0.11.7",
-    "commit": "c15f51aee06ccf73102810e7de143745abba6c90"
+    "version": "0.13.0",
+    "commit": "5d265f9004fdad1522b80c8770c8a7a7f5f9f089"
   },
   "parquet-full-mojo": {
-    "version": "0.1.8",
-    "commit": "c15f51aee06ccf73102810e7de143745abba6c90",
+    "version": "0.1.11",
+    "commit": "5d265f9004fdad1522b80c8770c8a7a7f5f9f089",
     "subdirectory": "full"
   },
   "avro-mojo": {
-    "version": "0.4.4",
-    "commit": "db833d86ddbd7cbaba4dbd79377b0a06009181ec"
+    "version": "0.4.5",
+    "commit": "d5b26ccefa8c49cc3af517731f5df104762119e0"
   },
   "objectstore-mojo": {
-    "version": "0.4.1",
-    "commit": "41fac2800882e5a64da09729262dfa22bbd4ad13"
+    "version": "0.4.2",
+    "commit": "ff66975c095f392695facc1b6dd56823dec914bc"
   },
   "sqlite-mojo": {
     "version": "0.3.5",
@@ -65,8 +65,8 @@
     "commit": "b8172ed0a4ef13911cc225d46e26676a5b8f1ccd"
   },
   "deflate-mojo": {
-    "version": "0.1.3",
-    "commit": "6639b18c58fad0e009f4224ec9f792cd919398b4"
+    "version": "0.2.0",
+    "commit": "c3dfb87f5b09fb2559449dcb8b748629da4908af"
   },
   "hashes-mojo": {
     "version": "0.1.3",

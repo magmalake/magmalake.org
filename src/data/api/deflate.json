@@ -1,22 +1,185 @@
 {
  "tin": "deflate",
- "version": "0.1.3",
- "rev": "6639b18c58fad0e009f4224ec9f792cd919398b4",
+ "version": "0.2.0",
+ "rev": "c3dfb87f5b09fb2559449dcb8b748629da4908af",
  "package": "deflate",
  "path": "src/deflate",
  "mojo": "Mojo 1.2.0 (2016d0cd)",
  "summary": "DEFLATE (RFC 1951) and gzip (RFC 1952) in pure Mojo — no FFI, no dependencies.",
- "description": "`deflate` compresses, `inflate` decompresses, and `inflate_at` decompresses\none stream out of several laid back to back, reporting where it ended.\n`gunzip` decodes a `.gz` file (every member, CRC-32 and length checked),\n`gunzip_at` one member of it, and `gzip` writes one.\n\n```mojo\nfrom deflate import deflate, inflate\n\nvar packed = deflate(Span(data))    # List[UInt8], raw DEFLATE\nvar back = inflate(Span(packed))    # List[UInt8], == data\n```\n\n`inflate` and `deflate` streams are *raw*: no zlib (RFC 1950) header, no\ngzip wrapper, no trailing checksum. Avro's `deflate` block codec is raw and\nneeds nothing more; gzip files go through `gunzip`.",
+ "description": "`deflate` compresses, `inflate` decompresses, and `inflate_at` decompresses\none stream out of several laid back to back, reporting where it ended.\n`gunzip` decodes a `.gz` file (every member, CRC-32 and length checked),\n`gunzip_at` one member of it, and `gzip` writes one. `GzipReader` and\n`Inflater` are the streaming forms: they decode a window at a time, from\ninput that may still be arriving.\n\n```mojo\nfrom deflate import deflate, inflate\n\nvar packed = deflate(Span(data))    # List[UInt8], raw DEFLATE\nvar back = inflate(Span(packed))    # List[UInt8], == data\n```\n\n`inflate` and `deflate` streams are *raw*: no zlib (RFC 1950) header, no\ngzip wrapper, no trailing checksum. Avro's `deflate` block codec is raw and\nneeds nothing more; gzip files go through `gunzip`.",
  "modules": [
   {
    "path": "deflate",
    "summary": "DEFLATE (RFC 1951) and gzip (RFC 1952) in pure Mojo — no FFI, no dependencies.",
-   "description": "`deflate` compresses, `inflate` decompresses, and `inflate_at` decompresses\none stream out of several laid back to back, reporting where it ended.\n`gunzip` decodes a `.gz` file (every member, CRC-32 and length checked),\n`gunzip_at` one member of it, and `gzip` writes one.\n\n```mojo\nfrom deflate import deflate, inflate\n\nvar packed = deflate(Span(data))    # List[UInt8], raw DEFLATE\nvar back = inflate(Span(packed))    # List[UInt8], == data\n```\n\n`inflate` and `deflate` streams are *raw*: no zlib (RFC 1950) header, no\ngzip wrapper, no trailing checksum. Avro's `deflate` block codec is raw and\nneeds nothing more; gzip files go through `gunzip`."
+   "description": "`deflate` compresses, `inflate` decompresses, and `inflate_at` decompresses\none stream out of several laid back to back, reporting where it ended.\n`gunzip` decodes a `.gz` file (every member, CRC-32 and length checked),\n`gunzip_at` one member of it, and `gzip` writes one. `GzipReader` and\n`Inflater` are the streaming forms: they decode a window at a time, from\ninput that may still be arriving.\n\n```mojo\nfrom deflate import deflate, inflate\n\nvar packed = deflate(Span(data))    # List[UInt8], raw DEFLATE\nvar back = inflate(Span(packed))    # List[UInt8], == data\n```\n\n`inflate` and `deflate` streams are *raw*: no zlib (RFC 1950) header, no\ngzip wrapper, no trailing checksum. Avro's `deflate` block codec is raw and\nneeds nothing more; gzip files go through `gunzip`."
   },
   {
    "path": "deflate.gzip",
    "summary": "gzip (RFC 1952) framing over the raw DEFLATE in `raw.mojo`.",
    "description": "`gunzip` decodes a whole `.gz` file: every member of a concatenated stream,\neach one's header (all five flags: FTEXT, FHCRC, FEXTRA, FNAME, FCOMMENT)\nparsed and skipped, and each one's CRC-32 and ISIZE checked against what it\ndecoded to. `gunzip_at` decodes one member and reports where it ended, as\n`inflate_at` does for raw streams. `gzip` writes a single member.\n\nThe CRC-32 is the zlib/gzip one (reflected polynomial 0xEDB88320), slice-by-8\nas in hashes.mojo's `crc32`. It is repeated here rather than imported so the\ntin keeps no sibling dependency: a consumer still needs nothing but\n`-I deflate.mojo/src`.",
+   "structs": [
+    {
+     "name": "GzipReader",
+     "signature": "struct GzipReader",
+     "summary": "A gzip file decoded a window at a time: every member of it, or just the first.",
+     "description": "The streaming form of `gunzip`, over `Inflater`: `run` decodes until the\nwindow (`output()`) holds `want` bytes, the input runs short or the file\nends; `compact` drops what the caller has used. The input may still be\narriving, and input already consumed may be discarded, exactly as for\n`Inflater`. Headers, CRC-32s and ISIZEs are checked as `gunzip` checks\nthem, with the same messages; the CRC is folded in as output is\nproduced, so it covers bytes long since compacted away.\n\n```mojo\nvar gz = GzipReader()\nvar have = 0  # how much of `data` has arrived\nwhile True:\n    var st = gz.run(Span(data)[:have], have == len(data), len(gz) + (1 << 20))\n    parse(gz.output())\n    _ = gz.compact(len(gz))\n    if st == InflateStatus.FINISHED:\n        break\n    if st == InflateStatus.NEED_INPUT:\n        have = ...  # wait for more\n```",
+     "traits": [
+      "Movable",
+      "Sized"
+     ],
+     "fields": [
+      {
+       "name": "inflater",
+       "type": "Inflater",
+       "summary": "Holds the window and the DEFLATE state of the member being decoded."
+      },
+      {
+       "name": "state",
+       "type": "Int"
+      },
+      {
+       "name": "multi_member",
+       "type": "Bool"
+      },
+      {
+       "name": "member",
+       "type": "Int"
+      },
+      {
+       "name": "member_at",
+       "type": "Int",
+       "summary": "Absolute input offset of the current member's header (for messages)."
+      },
+      {
+       "name": "crc32",
+       "type": "_Crc32"
+      },
+      {
+       "name": "crc",
+       "type": "UInt32"
+      },
+      {
+       "name": "crc_at",
+       "type": "Int",
+       "summary": "`output()[crc_at:]` is not in `crc` yet."
+      },
+      {
+       "name": "member_out",
+       "type": "Int"
+      },
+      {
+       "name": "padding_at",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, capacity: Int = Int(1048576), multi_member: Bool = True)",
+         "summary": "`capacity` is the window's starting size. With `multi_member` false, decoding stops after the first member, and whatever follows it is left alone (`input_used()` says where it ended)."
+        }
+       ]
+      },
+      {
+       "name": "output",
+       "overloads": [
+        {
+         "signature": "def output(self) -> Span[UInt8, origin_of(self.inflater.out.buf)]",
+         "summary": "Everything decoded and not yet compacted away."
+        }
+       ]
+      },
+      {
+       "name": "__len__",
+       "overloads": [
+        {
+         "signature": "def __len__(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "compact",
+       "overloads": [
+        {
+         "signature": "def compact(mut self, keep_from: Int) -> Int",
+         "summary": "`Inflater.compact`: drop `output()[0:keep_from]` as far as back-references allow; return how many bytes went."
+        }
+       ]
+      },
+      {
+       "name": "total_out",
+       "overloads": [
+        {
+         "signature": "def total_out(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "members",
+       "overloads": [
+        {
+         "signature": "def members(self) -> Int",
+         "summary": "Members decoded and verified so far."
+        }
+       ]
+      },
+      {
+       "name": "finished",
+       "overloads": [
+        {
+         "signature": "def finished(self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "finish",
+       "overloads": [
+        {
+         "signature": "def finish(deinit self) -> List[UInt8]",
+         "summary": "The window as a list, consuming the reader."
+        }
+       ]
+      },
+      {
+       "name": "input_used",
+       "overloads": [
+        {
+         "signature": "def input_used(self) -> Int",
+         "summary": "How many bytes of `data` the reader is done with; once finished, the offset just past the last trailer it read (or padding)."
+        }
+       ]
+      },
+      {
+       "name": "discard_input",
+       "overloads": [
+        {
+         "signature": "def discard_input(mut self) -> Int",
+         "summary": "`Inflater.discard_input`: forget the input before `input_used()` and return how many bytes that is."
+        }
+       ]
+      },
+      {
+       "name": "total_in",
+       "overloads": [
+        {
+         "signature": "def total_in(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "run",
+       "overloads": [
+        {
+         "signature": "def run(mut self, data: Span[UInt8], complete: Bool, want: Int = Int.MAX) -> InflateStatus",
+         "summary": "Decode from `data` until the window holds `want` bytes: `OUTPUT`, `NEED_INPUT` or `FINISHED`, as `Inflater.run`. Raises what `gunzip` raises, once `complete` says no more input is coming (and on corruption before that)."
+        }
+       ]
+      }
+     ]
+    }
+   ],
    "functions": [
     {
      "name": "crc32_backend",
@@ -63,6 +226,250 @@
    "path": "deflate.raw",
    "summary": "Raw DEFLATE (RFC 1951) — `inflate` and `deflate`, in pure Mojo.",
    "description": "*Raw* DEFLATE is the compressed stream on its own: no zlib (RFC 1950) header,\nno gzip (RFC 1952) wrapper, no trailing checksum. A caller that needs one of\nthose framings parses it itself and hands the body here — Avro's `deflate`\nblock codec is raw already, and Parquet's `GZIP` codec is this plus a gzip\nheader and trailer.\n\nImplementing it rather than binding zlib keeps the tin free of FFI and of any\nsibling dependency, so a consumer needs nothing but `-I ../deflate.mojo/src`.\n\n`inflate` handles all three block types (stored, fixed-Huffman,\ndynamic-Huffman). `deflate` emits fixed-Huffman blocks from a single-slot\nhash-chain LZ77 matcher — the same \"fast\" strategy `snappy.mojo` uses —\nwhich keeps the encoder small.",
+   "aliases": [
+    {
+     "name": "MARGIN",
+     "value": "Int(262144)",
+     "summary": "The input a block is started with when more is still to come (`run` with `complete=False`). zlib ends a block every 16 Ki or 32 Ki symbols, at most about 200 KB of input, so with 256 KiB in hand a block almost never runs past what has arrived; one that does is rolled back and decoded again once more input is there."
+    }
+   ],
+   "structs": [
+    {
+     "name": "InflateStatus",
+     "signature": "struct InflateStatus",
+     "summary": "Why `Inflater.run` or `GzipReader.run` returned.",
+     "traits": [
+      "Copyable",
+      "Equatable",
+      "ImplicitlyCopyable",
+      "Movable",
+      "RegisterPassable",
+      "TrivialRegisterPassable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "value",
+       "type": "Int"
+      }
+     ],
+     "aliases": [
+      {
+       "name": "OUTPUT",
+       "value": "InflateStatus(Int(0))",
+       "summary": "The window holds the output asked for (`n >= want`)."
+      },
+      {
+       "name": "NEED_INPUT",
+       "value": "InflateStatus(Int(1))",
+       "summary": "More input is needed before anything more can be decoded."
+      },
+      {
+       "name": "FINISHED",
+       "value": "InflateStatus(Int(2))",
+       "summary": "The stream (every gzip member) has been decoded and checked."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__eq__",
+       "overloads": [
+        {
+         "signature": "def __eq__(self, other: Self) -> Bool"
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Inflater",
+     "signature": "struct Inflater",
+     "summary": "A raw DEFLATE stream decoded a window at a time.",
+     "description": "The output collects in a window, `output()`. `run` decodes\nblocks until the window holds `want` bytes, the input runs short or the\nstream ends; the caller uses what is there, then `compact`s away what it\nno longer needs. The window keeps the last 32 KiB whatever is dropped,\nsince later back-references may reach that far.\n\nThe input may still be arriving. `run` takes the input so far and\nwhether that is all of it; a block that runs past the bytes there is\nrolled back to its start and decoded again on a later call, with more.\nThe caller may drop input the inflater has finished with: see\n`discard_input`.\n\n```mojo\nvar inf = Inflater()\nwhile True:\n    var st = inf.run(Span(input), complete, want=len(inf) + (1 << 20))\n    use(inf.output())\n    _ = inf.compact(len(inf))\n    if st == InflateStatus.FINISHED:\n        break\n    if st == InflateStatus.NEED_INPUT:\n        ...  # append more to `input` (or set complete)\n```\n\n`inflate` and `inflate_at` are this with the whole input and a window\nthat is never compacted.",
+     "traits": [
+      "Movable",
+      "Sized"
+     ],
+     "fields": [
+      {
+       "name": "out",
+       "type": "_Out"
+      },
+      {
+       "name": "pos",
+       "type": "Int",
+       "summary": "The next input byte not yet in the bit buffer, as an offset into the `data` passed to `run`."
+      },
+      {
+       "name": "bitbuf",
+       "type": "UInt64"
+      },
+      {
+       "name": "bitcnt",
+       "type": "Int"
+      },
+      {
+       "name": "state",
+       "type": "Int"
+      },
+      {
+       "name": "margin",
+       "type": "Int",
+       "summary": "Input to have in hand before starting a block while more is still to come (`MARGIN`). 0 starts every block at once and rolls back each one that outruns the input, which tests use."
+      },
+      {
+       "name": "dropped_in",
+       "type": "Int",
+       "summary": "Input bytes `discard_input` has released: what `pos` is relative to."
+      },
+      {
+       "name": "dropped_out",
+       "type": "Int",
+       "summary": "Output bytes `compact` has dropped."
+      },
+      {
+       "name": "t",
+       "type": "_Tables"
+      },
+      {
+       "name": "fixed_lit",
+       "type": "_Huffman"
+      },
+      {
+       "name": "fixed_dist",
+       "type": "_Huffman"
+      },
+      {
+       "name": "dyn_lit",
+       "type": "_Huffman"
+      },
+      {
+       "name": "dyn_dist",
+       "type": "_Huffman"
+      },
+      {
+       "name": "dyn_clen",
+       "type": "_Huffman",
+       "summary": "A dynamic block's three codes, rebuilt in place block after block."
+      },
+      {
+       "name": "lengths",
+       "type": "List[Int]",
+       "summary": "Scratch for a dynamic block's code lengths."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, capacity: Int = Int(1048576))",
+         "summary": "`capacity` is the window's starting size; it grows as needed."
+        }
+       ]
+      },
+      {
+       "name": "output",
+       "overloads": [
+        {
+         "signature": "def output(self) -> Span[UInt8, origin_of(self.out.buf)]",
+         "summary": "The window: everything decoded and not yet compacted away."
+        }
+       ]
+      },
+      {
+       "name": "__len__",
+       "overloads": [
+        {
+         "signature": "def __len__(self) -> Int",
+         "summary": "`len(output())`."
+        }
+       ]
+      },
+      {
+       "name": "compact",
+       "overloads": [
+        {
+         "signature": "def compact(mut self, keep_from: Int) -> Int",
+         "summary": "Drop `output()[0:keep_from]`, as far as back-references allow, and return how many bytes went: subtract it from any offsets into the window the caller holds."
+        }
+       ]
+      },
+      {
+       "name": "total_out",
+       "overloads": [
+        {
+         "signature": "def total_out(self) -> Int",
+         "summary": "Bytes decoded so far, compacted or not."
+        }
+       ]
+      },
+      {
+       "name": "finished",
+       "overloads": [
+        {
+         "signature": "def finished(self) -> Bool",
+         "summary": "Whether the final block has been decoded."
+        }
+       ]
+      },
+      {
+       "name": "finish",
+       "overloads": [
+        {
+         "signature": "def finish(deinit self) -> List[UInt8]",
+         "summary": "The window as a list (trimmed to `n`), consuming the inflater."
+        }
+       ]
+      },
+      {
+       "name": "input_used",
+       "overloads": [
+        {
+         "signature": "def input_used(self) -> Int",
+         "summary": "How many bytes of `data` the inflater is done with. Once the stream has finished this is where it ended (rounded up to a byte), as `inflate_at` reports."
+        }
+       ]
+      },
+      {
+       "name": "discard_input",
+       "overloads": [
+        {
+         "signature": "def discard_input(mut self) -> Int",
+         "summary": "Forget the input before `input_used()` and return how many bytes that is: the next `run` must be passed `data` without them. A long stream can then be fed through a bounded input buffer."
+        }
+       ]
+      },
+      {
+       "name": "total_in",
+       "overloads": [
+        {
+         "signature": "def total_in(self) -> Int",
+         "summary": "Input consumed so far, discarded or not."
+        }
+       ]
+      },
+      {
+       "name": "run",
+       "overloads": [
+        {
+         "signature": "def run(mut self, data: Span[UInt8], complete: Bool, want: Int = Int.MAX) -> InflateStatus",
+         "summary": "Decode from `data` (the input so far, from where the last call left off unless `discard_input` said otherwise; all of it if `complete`) until the window holds `want` bytes.",
+         "description": "Returns `OUTPUT` when it does, `NEED_INPUT` when a block is waiting\nfor more input than `data` has, or `FINISHED` after the final block.\nRaises on corrupt input, and on input that ends early once\n`complete` is set."
+        }
+       ]
+      }
+     ]
+    }
+   ],
    "functions": [
     {
      "name": "inflate",

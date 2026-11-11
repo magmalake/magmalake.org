@@ -1,7 +1,7 @@
 {
  "tin": "iceberg",
- "version": "0.8.6",
- "rev": "ec4f4e07605b687a2ea9e2fda5dfd4a01aa6ba97",
+ "version": "0.11.1",
+ "rev": "bb361f975f9f56d33218850a5f3d048202a85f02",
  "package": "iceberg",
  "path": "src/iceberg",
  "mojo": "Mojo 1.2.0 (2016d0cd)",
@@ -21,6 +21,18 @@
     {
      "name": "OP_APPEND",
      "value": "String(\"append\")"
+    },
+    {
+     "name": "MANIFEST_MERGE_ENABLED",
+     "value": "String(\"commit.manifest-merge.enabled\")"
+    },
+    {
+     "name": "MANIFEST_MIN_COUNT_TO_MERGE",
+     "value": "String(\"commit.manifest.min-count-to-merge\")"
+    },
+    {
+     "name": "MANIFEST_TARGET_SIZE_BYTES",
+     "value": "String(\"commit.manifest.target-size-bytes\")"
     }
    ],
    "structs": [
@@ -76,6 +88,16 @@
    ],
    "functions": [
     {
+     "name": "merge_small_manifests",
+     "overloads": [
+      {
+       "signature": "def merge_small_manifests(io: FileIO, metadata: TableMetadata, snapshot_id: Int64, sequence_number: Int64, var carried: List[ManifestFile]) -> List[ManifestFile]",
+       "summary": "Java's merge-append: once a table's small data manifests of the default spec number `commit.manifest.min-count-to-merge` (100), rewrite them into manifests of up to `commit.manifest.target-size-bytes` (8 MB).",
+       "description": "Without it every append adds a manifest that is never folded, so the\nmanifest list every commit reads and rewrites, and every scan plans,\ngrows by one entry per commit for ever. Merged entries are EXISTING and\nkeep their snapshot and sequence numbers, so nothing a reader or a\ndelete file's scope sees changes. DELETED entries, which only describe\nan older snapshot's change, are dropped as Java drops them.\n`commit.manifest-merge.enabled=false` turns it off. Format v3 tables\nare left as they are: a v3 manifest's first row id is inherited by its\nadded files, and folding would have to write it into each entry."
+      }
+     ]
+    },
+    {
      "name": "prepare_append",
      "overloads": [
       {
@@ -116,12 +138,13 @@
   {
    "path": "iceberg.batch",
    "summary": "Building an Arrow `RecordBatch` from Mojo values.",
-   "description": "The write path takes Arrow, which is the right input when the data already\n*is* Arrow — a scan of another table, a Parquet file, anything speaking the C\nData Interface. When it is not, this is the bridge: a `ColumnBuilder` per\ncolumn, a `Datum` per cell, and `batch_of` to tie them together.\n\n```mojo\nvar ids = ColumnBuilder(String(\"id\"), 1, P_LONG)\nvar region = ColumnBuilder(String(\"region\"), 2, P_STRING)\nfor k in range(n):\n    ids.add(Datum.long_(Int64(k)))\n    region.add(Datum.string_(names[k]))\nvar batch = batch_of([ids^, region^])\n```\n\nThis is deliberately the *slow* side of the library — one tagged value per\ncell, which is exactly what `iceberg.kernels` exists to avoid on the read\npath. It is here because the alternative is asking a caller to lay out\nvalidity bitmaps and offset buffers by hand, and a batch built once and\nwritten once is not where the time goes.",
+   "description": "The write path takes Arrow, which is the right input when the data already\n*is* Arrow — a scan of another table, a Parquet file, anything speaking the C\nData Interface. When it is not, this is the bridge: a `ColumnBuilder` per\ncolumn, a `Datum` per cell, and `batch_of` to tie them together.\n\n```mojo\nvar ids = ColumnBuilder(String(\"id\"), 1, P_LONG)\nvar region = ColumnBuilder(String(\"region\"), 2, P_STRING)\nfor k in range(n):\n    ids.add(Datum.long_(Int64(k)))\n    region.add(Datum.string_(names[k]))\nvar batch = batch_of([ids^, region^])\n```\n\n`add(Datum)` is the convenient side — one tagged value per cell, which is\nexactly what `iceberg.kernels` exists to avoid on the read path. A builder\nfed by a parser that already holds the bytes or the integer should use\n`add_bytes` / `add_int` / `add_float` / `add_bool` instead, which append the\nvalue straight to the Arrow buffers, and `take` the array at the end rather\nthan `build` a copy of it. Either way nobody lays out validity bitmaps and\noffset buffers by hand.",
    "structs": [
     {
      "name": "ColumnBuilder",
      "signature": "struct ColumnBuilder",
      "summary": "One column's values, before they become an Arrow array.",
+     "description": "`add` takes a `Datum` per cell. `add_bytes`, `add_int`, `add_float` and\n`add_bool` take the value itself and append it straight to the Arrow\nbuffers, with no tagged value at all — what a parser that already holds\nthe bytes or the integer should use. The two may be mixed: `Datum`s wait\nin `values` and are folded into `array`, in order, before the next direct\nappend and when the column is built.",
      "traits": [
       "Copyable",
       "Movable",
@@ -158,7 +181,13 @@
       },
       {
        "name": "values",
-       "type": "List[Datum]"
+       "type": "List[Datum]",
+       "summary": "`Datum`s added since the last direct append, not yet in `array`."
+      },
+      {
+       "name": "array",
+       "type": "ArrayData",
+       "summary": "Everything before `values`. Its last validity byte may be short until the column is built."
       }
      ],
      "functions": [
@@ -196,6 +225,42 @@
        ]
       },
       {
+       "name": "add_bytes",
+       "overloads": [
+        {
+         "signature": "def add_bytes(mut self, value: Span[UInt8])",
+         "summary": "A `string` or `binary` value, as its bytes (UTF-8 for a string)."
+        }
+       ]
+      },
+      {
+       "name": "add_int",
+       "overloads": [
+        {
+         "signature": "def add_int(mut self, value: Int64)",
+         "summary": "An `int`, `long`, `date`, `time` or timestamp value, in the units the column stores (days, microseconds, nanoseconds)."
+        }
+       ]
+      },
+      {
+       "name": "add_float",
+       "overloads": [
+        {
+         "signature": "def add_float(mut self, value: Float64)",
+         "summary": "A `float` or `double` value."
+        }
+       ]
+      },
+      {
+       "name": "add_bool",
+       "overloads": [
+        {
+         "signature": "def add_bool(mut self, value: Bool)",
+         "summary": "A `boolean` value."
+        }
+       ]
+      },
+      {
        "name": "__len__",
        "overloads": [
         {
@@ -216,7 +281,17 @@
        "name": "build",
        "overloads": [
         {
-         "signature": "def build(self) -> ArrayData"
+         "signature": "def build(self) -> ArrayData",
+         "summary": "The column as an Arrow array, leaving the builder as it was."
+        }
+       ]
+      },
+      {
+       "name": "take",
+       "overloads": [
+        {
+         "signature": "def take(deinit self) -> ArrayData",
+         "summary": "The column as an Arrow array, without `build`'s copy of it."
         }
        ]
       }
@@ -1061,6 +1136,24 @@
          "signature": "def blank(field_id: Int) -> Self"
         }
        ]
+      },
+      {
+       "name": "encode",
+       "overloads": [
+        {
+         "signature": "def encode(self, mut out: List[UInt8])",
+         "summary": "Appends these metrics in iceberg's wire form (`iceberg.wire`), every field in declaration order."
+        }
+       ]
+      },
+      {
+       "name": "decode",
+       "overloads": [
+        {
+         "signature": "def decode(buf: Span[UInt8], mut pos: Int) -> Self",
+         "summary": "Reads what `encode` wrote at `buf[pos]` and advances `pos`."
+        }
+       ]
       }
      ]
     },
@@ -1267,6 +1360,74 @@
    ],
    "structs": [
     {
+     "name": "IOCounts",
+     "signature": "struct IOCounts",
+     "summary": "Requests a `FileIO` (and every copy of it) has made, by kind.",
+     "description": "One whole-file read, one ranged read, one existence check and one listing\nare each one request on object storage, which is the cost that matters\nthere. `read_all_many` counts each file it reads.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable",
+      "Writable"
+     ],
+     "fields": [
+      {
+       "name": "reads",
+       "type": "Int"
+      },
+      {
+       "name": "ranged_reads",
+       "type": "Int"
+      },
+      {
+       "name": "exists",
+       "type": "Int"
+      },
+      {
+       "name": "lists",
+       "type": "Int"
+      },
+      {
+       "name": "writes",
+       "type": "Int"
+      },
+      {
+       "name": "deletes",
+       "type": "Int"
+      },
+      {
+       "name": "bytes_read",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "requests",
+       "overloads": [
+        {
+         "signature": "def requests(self) -> Int"
+        }
+       ]
+      },
+      {
+       "name": "write_to",
+       "overloads": [
+        {
+         "signature": "def write_to(self, mut writer: T)"
+        }
+       ]
+      }
+     ]
+    },
+    {
      "name": "FileIO",
      "signature": "struct FileIO",
      "summary": "Resolves Iceberg locations to bytes.",
@@ -1295,6 +1456,23 @@
         },
         {
          "signature": "def __init__(out self, var resolver: FileIOResolver)"
+        }
+       ]
+      },
+      {
+       "name": "counts",
+       "overloads": [
+        {
+         "signature": "def counts(self) -> IOCounts",
+         "summary": "What this `FileIO` and its copies have requested so far."
+        }
+       ]
+      },
+      {
+       "name": "reset_counts",
+       "overloads": [
+        {
+         "signature": "def reset_counts(self)"
         }
        ]
       },
@@ -1530,6 +1708,16 @@
          "signature": "def list_names(self, directory: String) -> List[String]",
          "summary": "The immediate children of a directory, by name.",
          "description": "Object stores have no directories, so the names are derived from the\nkeys: everything under the prefix, cut at the first `/`, deduplicated.\nA local directory is listed directly."
+        }
+       ]
+      },
+      {
+       "name": "list_names_with_prefix",
+       "overloads": [
+        {
+         "signature": "def list_names_with_prefix(self, directory: String, name_prefix: String) -> List[String]",
+         "summary": "The files directly in `directory` whose names start with `name_prefix`.",
+         "description": "On object storage this is one `LIST` of that key prefix, so its cost\ndoes not grow with the number of other files in the directory, which\nis what lets a commit look for one metadata version without listing\nevery version there is. A local directory is read directly."
         }
        ]
       }
@@ -2334,8 +2522,94 @@
   {
    "path": "iceberg.maintain",
    "summary": "Expiring snapshots, and deleting the files that nothing points at any more.",
-   "description": "Expiry is two decisions, in this order:\n\n1. **Which snapshots go.** Never the current one, never one a branch or tag\n   names, and never so many that fewer than `keep_last` are left. Of what\n   remains, the ones older than `older_than_ms`.\n2. **Which files go with them.** A file is deleted only when *no retained\n   snapshot still lists it live*. That is stronger than \"it was in an expired\n   snapshot\": a data file added five snapshots ago is in every snapshot since,\n   and expiring the oldest of them must not touch it. So the retained\n   snapshots are walked first and every manifest list, manifest and live entry\n   they name is put in a keep set; only then is the expired snapshots' own\n   inventory subtracted from it.\n\nA `DELETED` entry does not protect a file — that is the entry that says it is\ngone — but an older *retained* snapshot that still lists it `ADDED` or\n`EXISTING` does, which is why the keep set is a union over all of them.\n\nThe new metadata is written **before** any file is deleted. A crash in between\nleaves orphans, which cost storage; the other order leaves a snapshot pointing\nat files that are not there, which costs the table. `dry_run` stops after the\ndecision and returns the list, which is the only safe way to find out what an\nexpiry would do.\n\nMetadata files (`*.metadata.json`) are left alone. Java deletes them under\n`write.metadata.delete-after-commit.enabled` with its own retention count, and\nthat is a separate policy from snapshot expiry: the metadata log is how a\nreader reaches a snapshot by timestamp in the first place.",
+   "description": "Expiry is two decisions, in this order:\n\n1. **Which snapshots go.** The spec's retention rules, as Java applies them:\n   every branch keeps its head, its last `min-snapshots-to-keep` ancestors and\n   every ancestor newer than `max-snapshot-age-ms` (the branch's own values,\n   or the table's `history.expire.*` properties, or the caller's); every tag\n   keeps the snapshot it names; a branch or tag older than `max-ref-age-ms`\n   is dropped first (never `main`). A snapshot no ref reaches is kept only\n   while it is newer than the age cut. A caller can also pin snapshot ids\n   outright (`retain`), which is how a scheduler keeps the snapshots a live\n   run has read.\n2. **Which files go with them.** A file is deleted only when *no retained\n   snapshot still lists it live*.\n\nThe second decision is where expiry used to be quadratic: it read every\nretained snapshot's manifest list and then every manifest on it, so a table\nwith one manifest per commit cost snapshots x manifests reads. It is now set\narithmetic on manifest *paths*, which is linear:\n\n* Every manifest list is read once (they are batched on object storage).\n  That gives the manifests the retained snapshots reference, and the ones the\n  expired snapshots reference. A manifest is immutable and its path names it,\n  so a manifest some retained snapshot lists is needed, whole, and is never\n  opened to find that out.\n* Only the manifests that expired snapshots list and no retained one does are\n  deleted, and only they are opened: what they name are the candidates.\n* A candidate data file is still needed if a retained manifest lists it live.\n  It can only be listed there because a rewrite (a copy-on-write delete, a\n  partition overwrite, a manifest merge, a compaction) carried it as an\n  *existing* entry: a file is added once, by one snapshot, under a path no\n  other file gets. The snapshot that rewrote a manifest is the one that\n  dropped it from the list, and the manifest it wrote is credited to it. So\n  on one line of history (every snapshot an ancestor of the current one,\n  the retained ones the newest), only the retained manifests added by the\n  snapshots that dropped an unreferenced manifest, and that carry existing\n  or deleted entries, are opened to check the candidates against. With\n  other branches or tags, or snapshots off the line, every retained\n  manifest is opened once instead — still linear, never per snapshot.\n\nA `DELETED` entry does not protect a file — that is the entry that says it is\ngone. With every retained manifest opened, a file a retained snapshot marks\n`DELETED` that no retained manifest lists live is an orphan and is deleted\ntoo; with the shortcut it waits for the snapshot that deleted it to expire.\n\nThe new metadata is written **before** any file is deleted. A crash in between\nleaves orphans, which cost storage; the other order leaves a snapshot pointing\nat files that are not there, which costs the table. `dry_run` stops after the\ndecision and returns the list, which is the only safe way to find out what an\nexpiry would do.\n\nMetadata files (`*.metadata.json`) are not this module's business: the\ncatalog's commit trims the `metadata-log` to `write.metadata.previous-versions-max`\nand, with `write.metadata.delete-after-commit.enabled`, deletes the files that\nfell off it.",
+   "aliases": [
+    {
+     "name": "MAX_SNAPSHOT_AGE_MS",
+     "value": "String(\"history.expire.max-snapshot-age-ms\")"
+    },
+    {
+     "name": "MIN_SNAPSHOTS_TO_KEEP",
+     "value": "String(\"history.expire.min-snapshots-to-keep\")"
+    },
+    {
+     "name": "MAX_REF_AGE_MS",
+     "value": "String(\"history.expire.max-ref-age-ms\")"
+    },
+    {
+     "name": "DEFAULT_MAX_SNAPSHOT_AGE_MS",
+     "value": "Int64(432000000)",
+     "summary": "Five days, Java's default."
+    },
+    {
+     "name": "DEFAULT_MIN_SNAPSHOTS_TO_KEEP",
+     "value": "1"
+    },
+    {
+     "name": "NO_AGE_LIMIT",
+     "value": "Int64.MAX"
+    }
+   ],
    "structs": [
+    {
+     "name": "ExpirePolicy",
+     "signature": "struct ExpirePolicy",
+     "summary": "What an expiry keeps. The defaults expire nothing but history: every snapshot that is not a ref's head and not among the last one.",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "older_than_ms",
+       "type": "Int64",
+       "summary": "Snapshots at or after this timestamp are kept; `NO_AGE_LIMIT` lets age protect nothing (only `keep_last` and refs do)."
+      },
+      {
+       "name": "keep_last",
+       "type": "Int",
+       "summary": "The fewest ancestors each branch keeps, its head included."
+      },
+      {
+       "name": "max_ref_age_ms",
+       "type": "Int64",
+       "summary": "Branches and tags (not `main`) whose snapshot is older than this are removed; -1 keeps them all."
+      },
+      {
+       "name": "now_ms",
+       "type": "Int64"
+      },
+      {
+       "name": "retain",
+       "type": "List[Int64]",
+       "summary": "Snapshot ids never expired, whatever their age."
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        },
+        {
+         "signature": "def __init__(out self, older_than_ms: Int64, keep_last: Int)",
+         "summary": "The two arguments `expire_snapshots` always took; a negative `older_than_ms` is no age limit."
+        }
+       ]
+      },
+      {
+       "name": "from_properties",
+       "overloads": [
+        {
+         "signature": "def from_properties(metadata: TableMetadata) -> Self",
+         "summary": "The table's own policy: `history.expire.max-snapshot-age-ms` (five days), `history.expire.min-snapshots-to-keep` (1) and `history.expire.max-ref-age-ms` (forever)."
+        }
+       ]
+      }
+     ]
+    },
     {
      "name": "ExpireResult",
      "signature": "struct ExpireResult",
@@ -2356,6 +2630,11 @@
        "type": "List[Int64]"
       },
       {
+       "name": "removed_refs",
+       "type": "List[String]",
+       "summary": "Branches and tags dropped for `max-ref-age-ms`."
+      },
+      {
        "name": "deleted_files",
        "type": "List[String]",
        "summary": "Data and delete files nothing retained points at any more."
@@ -2366,8 +2645,26 @@
        "summary": "Manifests and manifest lists, likewise."
       },
       {
+       "name": "deleted_statistics",
+       "type": "List[String]",
+       "summary": "Statistics files of expired snapshots."
+      },
+      {
        "name": "dry_run",
        "type": "Bool"
+      },
+      {
+       "name": "manifest_lists_read",
+       "type": "Int"
+      },
+      {
+       "name": "manifests_read",
+       "type": "Int"
+      },
+      {
+       "name": "reachable",
+       "type": "Bool",
+       "summary": "Whether every retained manifest had to be opened (other branches or tags, or a history that is not one line)."
       }
      ],
      "functions": [
@@ -2388,16 +2685,54 @@
        ]
       }
      ]
+    },
+    {
+     "name": "ExpiryPlan",
+     "signature": "struct ExpiryPlan",
+     "traits": [
+      "Copyable",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "expired",
+       "type": "List[Int64]"
+      },
+      {
+       "name": "removed_refs",
+       "type": "List[String]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      }
+     ]
     }
    ],
    "functions": [
+    {
+     "name": "plan_expiry",
+     "overloads": [
+      {
+       "signature": "def plan_expiry(metadata: TableMetadata, policy: ExpirePolicy) -> ExpiryPlan",
+       "summary": "The snapshots and refs an expiry would remove; snapshots oldest first."
+      }
+     ]
+    },
     {
      "name": "choose_expired",
      "overloads": [
       {
        "signature": "def choose_expired(metadata: TableMetadata, older_than_ms: Int64, keep_last: Int) -> List[Int64]",
        "summary": "The snapshot ids an expiry would remove, oldest first.",
-       "description": "The current snapshot and every snapshot a ref names are never candidates,\nand `keep_last` is a floor on how many survive in total."
+       "description": "A ref's head is never a candidate, and each branch keeps at least\n`keep_last` of its ancestors. A negative `older_than_ms` is no age limit."
       }
      ]
     },
@@ -2406,8 +2741,17 @@
      "overloads": [
       {
        "signature": "def expire_snapshots(io: FileIO, metadata: TableMetadata, older_than_ms: Int64 = Int64(-1), keep_last: Int = Int(1), dry_run: Bool = False) -> Tuple[TableMetadata, ExpireResult]",
-       "summary": "Decide the expiry and, unless `dry_run`, carry out the deletions.",
-       "description": "Returns the pruned metadata and a report. The caller commits the metadata\n— and must do so *before* the files go, which is why deletion is the last\nthing this does rather than the first."
+       "summary": "`expire_with_policy` with an age cut (negative: none) and a floor."
+      }
+     ]
+    },
+    {
+     "name": "expire_with_policy",
+     "overloads": [
+      {
+       "signature": "def expire_with_policy(io: FileIO, metadata: TableMetadata, policy: ExpirePolicy, dry_run: Bool = False) -> Tuple[TableMetadata, ExpireResult]",
+       "summary": "Decide the expiry and the files it frees.",
+       "description": "Returns the pruned metadata and a report. The caller commits the metadata\n— and must do so *before* the files go (`delete_expired_files`), which is\nwhy nothing is deleted here."
       }
      ]
     },
@@ -2459,6 +2803,11 @@
     {
      "name": "STATUS_DELETED",
      "value": "Int(2)"
+    },
+    {
+     "name": "DATA_FILE_WIRE_VERSION",
+     "value": "UInt8(1)",
+     "summary": "The layout `DataFile.encode` writes. A change to it, a field added or moved, bumps this, and `DataFile.decode` refuses any other."
     }
    ],
    "structs": [
@@ -2740,6 +3089,44 @@
          "signature": "def write_to(self, mut writer: T)"
         }
        ]
+      },
+      {
+       "name": "encode",
+       "overloads": [
+        {
+         "signature": "def encode(self, mut out: List[UInt8])",
+         "summary": "Appends this entry in iceberg's wire form (`iceberg.wire`): the version byte `DATA_FILE_WIRE_VERSION`, then every field in declaration order, the partition values and metrics included.",
+         "description": "For sending an entry to another process, such as a data file a\nworker wrote and a coordinator commits; it isn't a manifest, and no\nother Iceberg implementation reads it."
+        }
+       ]
+      },
+      {
+       "name": "decode",
+       "overloads": [
+        {
+         "signature": "def decode(buf: Span[UInt8], mut pos: Int) -> Self",
+         "summary": "Reads what `encode` wrote at `buf[pos]` and advances `pos`.",
+         "description": "Raises on a version other than `DATA_FILE_WIRE_VERSION`, and on a\nbuffer that ends early or holds a length that can't fit."
+        }
+       ]
+      },
+      {
+       "name": "to_bytes",
+       "overloads": [
+        {
+         "signature": "def to_bytes(self) -> List[UInt8]",
+         "summary": "This entry's wire form on its own (`encode`)."
+        }
+       ]
+      },
+      {
+       "name": "from_bytes",
+       "overloads": [
+        {
+         "signature": "def from_bytes(buf: Span[UInt8]) -> Self",
+         "summary": "The entry `to_bytes` wrote; raises if `buf` holds anything more."
+        }
+       ]
       }
      ]
     },
@@ -3012,6 +3399,24 @@
     }
    ],
    "functions": [
+    {
+     "name": "encode_data_files",
+     "overloads": [
+      {
+       "signature": "def encode_data_files(files: List[DataFile], mut out: List[UInt8])",
+       "summary": "Appends a list of data file entries: their count, then each (`DataFile.encode`)."
+      }
+     ]
+    },
+    {
+     "name": "decode_data_files",
+     "overloads": [
+      {
+       "signature": "def decode_data_files(buf: Span[UInt8], mut pos: Int) -> List[DataFile]",
+       "summary": "Reads what `encode_data_files` wrote at `buf[pos]` and advances `pos`."
+      }
+     ]
+    },
     {
      "name": "read_manifest_list",
      "overloads": [
@@ -4099,6 +4504,71 @@
    ]
   },
   {
+   "path": "iceberg.metadata_log",
+   "summary": "How many previous metadata files a table remembers, and whether it deletes the ones it forgets.",
+   "description": "Every commit writes a whole new `*.metadata.json` and adds the one it replaced\nto the `metadata-log`. Left alone, both grow by one per commit for ever: the\nlog inside every new file, and the files themselves in `metadata/`. Two table\nproperties bound them, with Java's defaults:\n\n* `write.metadata.previous-versions-max` (100) — the log keeps the newest\n  this many entries. This applies to every commit, as in Java.\n* `write.metadata.delete-after-commit.enabled` (false) — after a successful\n  commit, the files that fell off the log are deleted. Off, they stay where\n  they are and nothing points at them.\n\nDeleting happens only after the new metadata is in place, and a file that is\nalready gone is not an error, so a crash in between leaves at worst a few\nunreferenced files.",
+   "aliases": [
+    {
+     "name": "PREVIOUS_VERSIONS_MAX",
+     "value": "String(\"write.metadata.previous-versions-max\")"
+    },
+    {
+     "name": "DELETE_AFTER_COMMIT",
+     "value": "String(\"write.metadata.delete-after-commit.enabled\")"
+    },
+    {
+     "name": "DEFAULT_PREVIOUS_VERSIONS_MAX",
+     "value": "100"
+    }
+   ],
+   "functions": [
+    {
+     "name": "previous_versions_max",
+     "overloads": [
+      {
+       "signature": "def previous_versions_max(metadata: TableMetadata) -> Int"
+      }
+     ]
+    },
+    {
+     "name": "delete_after_commit",
+     "overloads": [
+      {
+       "signature": "def delete_after_commit(metadata: TableMetadata) -> Bool"
+      }
+     ]
+    },
+    {
+     "name": "record_previous",
+     "overloads": [
+      {
+       "signature": "def record_previous(mut metadata: TableMetadata, previous: String, previous_updated_ms: Int64)",
+       "summary": "Make sure the file this commit replaces is the log's last entry.",
+       "description": "The `prepare_*` functions add it themselves; a commit made from metadata\nedited by hand (expiry, a property change) may not have."
+      }
+     ]
+    },
+    {
+     "name": "trim_metadata_log",
+     "overloads": [
+      {
+       "signature": "def trim_metadata_log(mut metadata: TableMetadata) -> List[String]",
+       "summary": "Keep the newest `previous-versions-max` entries; return the files of the ones dropped, oldest first."
+      }
+     ]
+    },
+    {
+     "name": "delete_metadata_files",
+     "overloads": [
+      {
+       "signature": "def delete_metadata_files(io: FileIO, files: List[String]) -> Int",
+       "summary": "Delete what `trim_metadata_log` dropped; returns how many went."
+      }
+     ]
+    }
+   ]
+  },
+  {
    "path": "iceberg.nested",
    "summary": "Nested columns — struct, list and map — as Arrow trees.",
    "description": "parquet.mojo hands a nested column back as an `ArrayData` whose children are\n*indices into an `ArrayArena`*, because Mojo cannot put a `List` of a struct\ninside that same struct. A scan therefore has to carry a whole arena per\ncolumn, not one array, and every kernel `iceberg.kernels` provides for a flat\ncolumn needs a counterpart that walks children and offsets.\n\nThat is what this module is. A column is a `ColumnTree`: an arena plus the\nindex of its root. Each kernel reads one `(arena, node)` pair and writes its\nresult into another arena, appending children before their parent — which\nkeeps a subtree contiguous and ending at its root, the invariant\n`read.mojo` relies on when it moves decoded columns out of a batch.\n\n| kernel | flat counterpart |\n|---|---|\n| `cast_column` / `cast_tree` | `kernels.cast_array` |\n| `filter_tree` | `kernels.filter_array` |\n| `concat_tree` | `kernels.concat_into` |\n| `null_tree` / `empty_tree` | `kernels.constant_array` / `empty_array` |\n| `flatten_leaf` | — (a struct leaf, seen as a flat column) |\n| `cell_json` | `Datum.to_json` |\n\n**Buffer layouts** are Arrow's, exactly as parquet.mojo writes them: a struct\nis a validity bitmap and N children of the struct's own length; a list is a\nvalidity bitmap, `length + 1` 32-bit offsets and one child; a map is a list\nwhose child is a non-nullable two-field struct (`key`, `value`).",
@@ -4327,6 +4797,16 @@
      "overloads": [
       {
        "signature": "def cast_tree(src: ArrayArena, node: Int, store: TypeStore, ti: Int, name: String, field_id: Int, nullable: Bool, mut dst: ArrayArena) -> Int"
+      }
+     ]
+    },
+    {
+     "name": "tree_matches",
+     "overloads": [
+      {
+       "signature": "def tree_matches(src: ArrayArena, node: Int, store: TypeStore, ti: Int, name: String, field_id: Int, nullable: Bool) -> Bool",
+       "summary": "Is this column already what `cast_tree` would make of it?",
+       "description": "True only when every node has the table's name, field id and Arrow type,\na container has the nullability it would be given, and a nested column's\nchildren are the table's fields in the table's order — so that writing\nthe column as it is and writing `cast_tree`'s copy of it give the same\nfile. Anything this cannot vouch for answers False and takes the cast."
       }
      ]
     },
@@ -7426,6 +7906,24 @@
          "summary": "Appendix D, JSON half."
         }
        ]
+      },
+      {
+       "name": "encode",
+       "overloads": [
+        {
+         "signature": "def encode(self, mut out: List[UInt8])",
+         "summary": "Appends this value in iceberg's wire form (`iceberg.wire`): every field, in declaration order, so a value decodes to exactly itself, including a NaN's payload and an invalid value's leftovers."
+        }
+       ]
+      },
+      {
+       "name": "decode",
+       "overloads": [
+        {
+         "signature": "def decode(buf: Span[UInt8], mut pos: Int) -> Self",
+         "summary": "Reads what `encode` wrote at `buf[pos]` and advances `pos`."
+        }
+       ]
       }
      ]
     }
@@ -7626,6 +8124,143 @@
    ]
   },
   {
+   "path": "iceberg.wire",
+   "summary": "The byte primitives of iceberg's own wire form for data file entries.",
+   "description": "`DataFile.encode` / `DataFile.decode` (and `Datum`'s and `ColumnMetrics`'\nin them) send a data file entry from one process to another without writing\na manifest: a worker writes Parquet files and returns their entries, and\nanother process commits them. That form is built out of these:\n\n* an integer is 8 bytes, little-endian two's complement (`Int`, `Int64`);\n* a `Float64` is its 8 IEEE 754 bytes, little-endian, NaN payloads kept;\n* a `UInt8` is one byte, and a `Bool` one byte, 0 or 1;\n* a byte string is its length as an integer, then the bytes; a `String` is\n  a byte string of its UTF-8;\n* a list is its length as an integer, then each element.\n\nThe layout of a `DataFile` is versioned: its first byte is\n`iceberg.manifest.DATA_FILE_WIRE_VERSION`, and a reader refuses a version it\ndoesn't know rather than misreading it, so two builds that disagree say so. Every read is\nbounds-checked, and a length that doesn't fit what's left raises, so a\ntruncated or corrupt buffer is an error, never a read past the end.\n\nThe signatures follow one shape, `encode(self, mut out: List[UInt8])` and\n`@staticmethod decode(buf: Span[UInt8, _], mut pos: Int) raises -> Self`,\nwhich is the shape of dista's `Codec` trait. iceberg doesn't depend on\ndista, so its types don't declare `Codec`; a wrapper that does is two\none-line methods (orca's `orca.tables.DataFiles` is one).",
+   "functions": [
+    {
+     "name": "need",
+     "overloads": [
+      {
+       "signature": "def need(buf: Span[UInt8], pos: Int, n: Int)",
+       "summary": "Raises unless `n` bytes are left at `pos`."
+      }
+     ]
+    },
+    {
+     "name": "put_u8",
+     "overloads": [
+      {
+       "signature": "def put_u8(mut out: List[UInt8], v: UInt8)"
+      }
+     ]
+    },
+    {
+     "name": "get_u8",
+     "overloads": [
+      {
+       "signature": "def get_u8(buf: Span[UInt8], mut pos: Int) -> UInt8"
+      }
+     ]
+    },
+    {
+     "name": "put_bool",
+     "overloads": [
+      {
+       "signature": "def put_bool(mut out: List[UInt8], v: Bool)"
+      }
+     ]
+    },
+    {
+     "name": "get_bool",
+     "overloads": [
+      {
+       "signature": "def get_bool(buf: Span[UInt8], mut pos: Int) -> Bool"
+      }
+     ]
+    },
+    {
+     "name": "put_i64",
+     "overloads": [
+      {
+       "signature": "def put_i64(mut out: List[UInt8], v: Int64)"
+      }
+     ]
+    },
+    {
+     "name": "get_i64",
+     "overloads": [
+      {
+       "signature": "def get_i64(buf: Span[UInt8], mut pos: Int) -> Int64"
+      }
+     ]
+    },
+    {
+     "name": "put_int",
+     "overloads": [
+      {
+       "signature": "def put_int(mut out: List[UInt8], v: Int)"
+      }
+     ]
+    },
+    {
+     "name": "get_int",
+     "overloads": [
+      {
+       "signature": "def get_int(buf: Span[UInt8], mut pos: Int) -> Int"
+      }
+     ]
+    },
+    {
+     "name": "put_f64",
+     "overloads": [
+      {
+       "signature": "def put_f64(mut out: List[UInt8], v: Float64)"
+      }
+     ]
+    },
+    {
+     "name": "get_f64",
+     "overloads": [
+      {
+       "signature": "def get_f64(buf: Span[UInt8], mut pos: Int) -> Float64"
+      }
+     ]
+    },
+    {
+     "name": "get_count",
+     "overloads": [
+      {
+       "signature": "def get_count(buf: Span[UInt8], mut pos: Int, min_size: Int) -> Int",
+       "summary": "A list length, refused if its elements, of at least `min_size` bytes each, can't fit in what's left."
+      }
+     ]
+    },
+    {
+     "name": "put_bytes",
+     "overloads": [
+      {
+       "signature": "def put_bytes(mut out: List[UInt8], b: List[UInt8])"
+      }
+     ]
+    },
+    {
+     "name": "get_bytes",
+     "overloads": [
+      {
+       "signature": "def get_bytes(buf: Span[UInt8], mut pos: Int) -> List[UInt8]"
+      }
+     ]
+    },
+    {
+     "name": "put_string",
+     "overloads": [
+      {
+       "signature": "def put_string(mut out: List[UInt8], s: String)"
+      }
+     ]
+    },
+    {
+     "name": "get_string",
+     "overloads": [
+      {
+       "signature": "def get_string(buf: Span[UInt8], mut pos: Int) -> String"
+      }
+     ]
+    }
+   ]
+  },
+  {
    "path": "iceberg.write",
    "summary": "Writing data files: Arrow in, Parquet out, a `DataFile` record back.",
    "description": "`write_data_files` takes Arrow `RecordBatch`es, aligns their columns to the\ntable's schema **by name** (falling back to the field id when the batch carries\none), partitions each batch by the spec's transforms, writes one Parquet file\nper partition per batch through parquet.mojo's writer, and returns the\n`data_file` records a manifest needs — record count, file size, split offsets,\nand the per-column sizes, value counts, null counts and Appendix-D bounds that\n`InclusiveMetricsEvaluator` prunes on.\n\nThe statistics come from the Parquet footer the writer just produced rather\nthan from a second pass over the values: whatever the writer decided the\nmin and max were is what the manifest reports, which is the only way the two\ncan agree. Bounds are truncated the way `write.metadata.metrics.default`'s\n`truncate(16)` says — a lower bound is cut, an upper bound is cut and then\nincremented so it stays an upper bound, and dropped when it cannot be.",
@@ -7641,6 +8276,16 @@
     {
      "name": "PROP_COMPRESSION",
      "value": "String(\"write.parquet.compression-codec\")"
+    },
+    {
+     "name": "PROP_COMPRESSION_LEVEL",
+     "value": "String(\"write.parquet.compression-level\")",
+     "summary": "Iceberg's name for the codec level. Honoured for ZSTD (1 to 22); the other codecs have no level here and ignore it."
+    },
+    {
+     "name": "PROP_DICT_SIZE",
+     "value": "String(\"write.parquet.dict-size-bytes\")",
+     "summary": "Iceberg's dictionary-page cap. parquet.mojo sizes its dictionary by value count rather than bytes, so only the one answer that means the same thing in both is honoured: `0` switches dictionary encoding off, anything else leaves it on, as the writer decides per column chunk whether a dictionary pays."
     },
     {
      "name": "PROP_PAGE_SIZE",
@@ -7679,9 +8324,24 @@
        "summary": "Target *uncompressed* bytes of values per data page."
       },
       {
+       "name": "compression_level",
+       "type": "Int",
+       "summary": "The codec's level: `0` is the codec's own default. ZSTD takes 1 to 22 and is the only codec that reads it. A higher level writes a smaller file more slowly and changes nothing for readers."
+      },
+      {
+       "name": "use_dictionary",
+       "type": "Bool",
+       "summary": "Whether column chunks may be dictionary-encoded. On, the writer still falls back to plain for any chunk where a dictionary would not pay."
+      },
+      {
        "name": "truncate",
        "type": "Int",
        "summary": "`write.metadata.metrics.default = truncate(N)`; 0 disables truncation."
+      },
+      {
+       "name": "num_workers",
+       "type": "Int",
+       "summary": "Threads that encode each data file's pages (parquet.mojo's `WriterOptions.num_workers`): 1, the default, encodes on the calling thread, 0 on every core. The files are the same either way."
       }
      ],
      "functions": [
@@ -7772,7 +8432,7 @@
       {
        "signature": "def align_batch(batch: RecordBatch, schema: Schema) -> List[ColumnTree]",
        "summary": "The batch's columns in the table's schema order, at the table's types.",
-       "description": "A nested column is matched child by child **by field id**, so a batch\nwhose struct has its fields in another order, under other names, or one\nfield short still lines up with the table — the same resolution the read\npath does, run the other way."
+       "description": "A nested column is matched child by child **by field id**, so a batch\nwhose struct has its fields in another order, under other names, or one\nfield short still lines up with the table — the same resolution the read\npath does, run the other way.\n\nEvery column comes back in an arena of its own, so this copies each one\nonce. `write_data_files` does not go through here: it uses `_align`,\nwhich leaves a column that already matches where it is."
       }
      ]
     },
@@ -7785,11 +8445,38 @@
      ]
     },
     {
+     "name": "encode_parquet",
+     "overloads": [
+      {
+       "signature": "def encode_parquet(arena: ArrayArena, roots: List[Int], schema: Schema, options: WriteOptions) -> List[UInt8]",
+       "summary": "One Parquet file of the arrays at `roots`, which are already aligned to `schema`. The arena may hold other arrays too; only `roots` and what they reach are written."
+      }
+     ]
+    },
+    {
+     "name": "write_parquet_to",
+     "overloads": [
+      {
+       "signature": "def write_parquet_to[S: ByteSink](arena: ArrayArena, roots: List[Int], schema: Schema, options: WriteOptions, mut sink: S) -> WrittenFile",
+       "summary": "`encode_parquet`, handing each row group to `sink` as soon as it is encoded, and returning the footer the writer wrote — which is what the `data_file` is built from."
+      }
+     ]
+    },
+    {
      "name": "data_file_from_parquet",
      "overloads": [
       {
        "signature": "def data_file_from_parquet(data: List[UInt8], path: String, schema: Schema, spec: PartitionSpec, partition: List[Datum], sort_order_id: Int, options: WriteOptions) -> DataFile",
-       "summary": "Read back the footer we just wrote and turn it into a `data_file`."
+       "summary": "Read back the footer of a file already in memory and turn it into a `data_file`. Only the footer is parsed, from `data` where it lies."
+      }
+     ]
+    },
+    {
+     "name": "data_file_from_footer",
+     "overloads": [
+      {
+       "signature": "def data_file_from_footer(meta: FileMetaData, file_size: Int, path: String, schema: Schema, spec: PartitionSpec, partition: List[Datum], sort_order_id: Int, options: WriteOptions) -> DataFile",
+       "summary": "A `data_file` from a Parquet footer: the one the writer hands back from `finish_to`, so nothing is read back out of the file at all."
       }
      ]
     },
@@ -7829,6 +8516,15 @@
     {
      "name": "GZ_METADATA_SUFFIX",
      "value": "String(\".gz.metadata.json\")"
+    },
+    {
+     "name": "CLAIM_SUFFIX",
+     "value": "String(\".claim\")"
+    },
+    {
+     "name": "CLAIM_STALE_MS",
+     "value": "Int64(60000)",
+     "summary": "How old a claim on a metadata version is when its writer is taken to have died before finishing its commit."
     }
    ],
    "structs": [
@@ -7896,7 +8592,8 @@
        "name": "refresh",
        "overloads": [
         {
-         "signature": "def refresh(mut self)"
+         "signature": "def refresh(mut self)",
+         "summary": "Reload, stepping forward from the version this table already has (or from `version-hint.text`, when that is further on): no listing of the metadata directory."
         }
        ]
       },
@@ -7962,7 +8659,26 @@
         {
          "signature": "def expire_snapshots(mut self, older_than_ms: Int64 = Int64(-1), keep_last: Int = Int(1), dry_run: Bool = False) -> ExpireResult",
          "summary": "Drop old snapshots and the files nothing points at any more.",
-         "description": "The pruned metadata is committed **first** and the files go after, so\nan interruption leaves orphans rather than a snapshot with holes in\nit. `dry_run` stops after the decision and returns the list."
+         "description": "`older_than_ms` is an age cut (negative: none) and `keep_last` the\nfewest ancestors each branch keeps; refs keep their own settings."
+        }
+       ]
+      },
+      {
+       "name": "expire_by_properties",
+       "overloads": [
+        {
+         "signature": "def expire_by_properties(mut self, dry_run: Bool = False) -> ExpireResult",
+         "summary": "Expire by the table's own `history.expire.*` properties (Java's defaults where unset: five days, at least one snapshot)."
+        }
+       ]
+      },
+      {
+       "name": "expire",
+       "overloads": [
+        {
+         "signature": "def expire(mut self, policy: ExpirePolicy, dry_run: Bool = False) -> ExpireResult",
+         "summary": "Expire by `policy`.",
+         "description": "The pruned metadata is committed **first** and the files go after, so\nan interruption leaves orphans rather than a snapshot with holes in\nit. A concurrent commit makes this reload and decide again: the files\nto delete are only ever decided from the metadata that was committed.\n`dry_run` stops after the decision and returns the list."
         }
        ]
       },
@@ -7991,7 +8707,7 @@
         {
          "signature": "def commit_metadata(mut self, var metadata: TableMetadata)",
          "summary": "Persist table metadata as a new `<V>-<uuid>.metadata.json`.",
-         "description": "The new file is written with *create* semantics — it must not already\nexist — which is what makes two writers racing on the same version\ndetectable. A local filesystem really provides that; an object store\ndoes not, and the spec says so, so this is unsafe over `s3://` in\nexactly the way every other filesystem-table writer is."
+         "description": "Writers racing on version `V` settle it before any of them writes a\nmetadata file: each writes a claim (`<V>-<uuid>.<ms>.claim`), lists\nthe version's files, and goes on only if it finds no other claim and\nno metadata file of `V`; otherwise it removes its claim and raises,\nhaving written nothing a reader could load. Of two claims, the later\none's listing sees the earlier, so at most one writer goes on; it\nwrites its metadata file and then removes its claim.\n\nReaders never see a loser's metadata. They did when the metadata\nfile was itself the claim: a reader could load it in the moment\nbefore its writer saw the clash and deleted it, and commit the next\nversion on top of it, so a commit its writer retried landed twice,\nor one that won was lost (orca.mojo#164).\n\nA claim older than a minute is from a writer that died before\nfinishing and is ignored (and removed). This is still a\ncheck-then-act protocol: it needs a listing that sees every write\nbefore it (a local filesystem, or S3 since 2020), and is unsafe over\nan object store that lacks one, as every filesystem-table writer is."
         }
        ]
       }
@@ -8201,6 +8917,44 @@
        "signature": "def find_latest_metadata(io: FileIO, table_location: String) -> String",
        "summary": "Locate the current metadata file for a filesystem table.",
        "description": "`table_location` may be the table directory, its `metadata/` directory, or\nthe metadata file itself."
+      }
+     ]
+    },
+    {
+     "name": "metadata_files_of_version",
+     "overloads": [
+      {
+       "signature": "def metadata_files_of_version(io: FileIO, metadata_dir: String, version: Int, hadoop: Bool = False) -> List[String]",
+       "summary": "The metadata files of one version, as paths: `<V>-<uuid>` names found with one prefix listing, and with `hadoop`, `v<V>.metadata.json` and its spellings checked by name too.",
+       "description": "One request (plus three with `hadoop`) however many versions the\ndirectory holds, which is what keeps a commit's cost flat as a table's\nhistory grows."
+      }
+     ]
+    },
+    {
+     "name": "claim_file_name",
+     "overloads": [
+      {
+       "signature": "def claim_file_name(version: Int, at_ms: Int64) -> String",
+       "summary": "`<V>-<uuid>.<ms>.claim`: a writer's claim on metadata version `V`, made at `at_ms`. Readers ignore it: it isn't a `*.metadata.json`."
+      }
+     ]
+    },
+    {
+     "name": "rivals_of_version",
+     "overloads": [
+      {
+       "signature": "def rivals_of_version(io: FileIO, metadata_dir: String, version: Int, hadoop: Bool, mine: String, now: Int64) -> Int",
+       "summary": "What stands in the way of the claim `mine` on `version`: the other claims on it and its metadata files, found with one prefix listing (and with `hadoop`, `v<V>.metadata.json` and its spellings checked by name). Claims older than `CLAIM_STALE_MS` don't count, and are removed."
+      }
+     ]
+    },
+    {
+     "name": "latest_from_version",
+     "overloads": [
+      {
+       "signature": "def latest_from_version(io: FileIO, metadata_dir: String, version: Int) -> String",
+       "summary": "The newest metadata file at or after `version`, or \"\" when that version has no file.",
+       "description": "Versions are dense — every commit writes the one after the one it read —\nso the newest is found by stepping forward from a known one until a\nversion is missing: a request or two per step, never a listing of the\nwhole directory."
       }
      ]
     },
