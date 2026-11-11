@@ -1,7 +1,7 @@
 {
  "tin": "parquet",
- "version": "0.11.7",
- "rev": "c15f51aee06ccf73102810e7de143745abba6c90",
+ "version": "0.13.0",
+ "rev": "5d265f9004fdad1522b80c8770c8a7a7f5f9f089",
  "package": "parquet",
  "path": "src/parquet",
  "mojo": "Mojo 1.2.0 (2016d0cd)",
@@ -643,6 +643,15 @@
         {
          "signature": "def compress(codec: Int32, data: Span[UInt8]) -> List[UInt8]",
          "summary": "Compress one page body. Used by `parquet.writer`."
+        }
+       ]
+      },
+      {
+       "name": "compress_level",
+       "overloads": [
+        {
+         "signature": "def compress_level(codec: Int32, data: Span[UInt8], level: Int) -> List[UInt8]",
+         "summary": "`compress` at an explicit compression level, which is what `WriterOptions.compression_level` asks for. `0` means the codec's default. A set that has no notion of levels needs nothing: this default ignores `level` and calls `compress`."
         }
        ]
       }
@@ -2446,7 +2455,7 @@
   {
    "path": "parquet.writer",
    "summary": "`ParquetWriter` — write Arrow arrays back out as a Parquet file.",
-   "description": "The writer takes exactly what the reader produces: an `ArrayArena` and the\nindices of the top-level arrays in it. That makes a round trip one line, and it\nmeans anything the reader can decode, the writer can write back.\n\n```mojo\nfrom parquet import ParquetReader, ParquetWriter, WriterOptions\n\nvar r = ParquetReader.open(\"in.parquet\")\nvar t = r.read_table()\n\nvar opts = WriterOptions()\nopts.codec = CompressionCodec.SNAPPY.value\nvar w = ParquetWriter(opts^)\nfor b in t.batches:\n    w.write_batch(b.arena, b.roots)\nvar bytes = w^.finish()\n```\n\nWhat it writes: Parquet 2.6 metadata with v1 data pages, `PLAIN` and\n`RLE_DICTIONARY` values, `RLE` levels, three-level lists, `key_value` maps,\nstructs, field ids, per-chunk statistics with the sort order each logical type\nrequires, an `OffsetIndex` and a `ColumnIndex` per chunk, and key/value\nmetadata. Decimals go out as `FIXED_LEN_BYTE_ARRAY(16)`, which is legal for\nevery precision Arrow can hold.",
+   "description": "The writer takes exactly what the reader produces: an `ArrayArena` and the\nindices of the top-level arrays in it. That makes a round trip one line, and it\nmeans anything the reader can decode, the writer can write back.\n\n```mojo\nfrom parquet import ParquetReader, ParquetWriter, WriterOptions\n\nvar r = ParquetReader.open(\"in.parquet\")\nvar t = r.read_table()\n\nvar opts = WriterOptions()\nopts.codec = CompressionCodec.SNAPPY.value\nvar w = ParquetWriter(opts^)\nfor b in t.batches:\n    w.write_batch(b.arena, b.roots)\nvar bytes = w^.finish()\n```\n\nA file does not have to be held whole: `write_batch_to` hands each row group to\na `ByteSink` as soon as it is encoded, and `finish_to` writes the page indexes\nand footer and returns the `FileMetaData` it wrote, so the caller has every\nchunk's sizes and statistics without reading the file back.\n\n```mojo\nvar sink = FileSink(\"out.parquet\")\nvar w = ParquetWriter(WriterOptions())\nfor b in t.batches:\n    w.write_batch_to(b.arena, b.roots, sink)\nvar written = w^.finish_to(sink)   # written.metadata, written.file_size\nsink.close()\n```\n\n`WriterOptions.num_workers` encodes the pages of a row group on that many\nthreads; the bytes are the same at any setting.\n\nWhat it writes: Parquet 2.6 metadata with v1 data pages, `PLAIN` and\n`RLE_DICTIONARY` values, `RLE` levels, three-level lists, `key_value` maps,\nstructs, field ids, per-chunk statistics with the sort order each logical type\nrequires, an `OffsetIndex` and a `ColumnIndex` per chunk, and key/value\nmetadata. Decimals go out as `FIXED_LEN_BYTE_ARRAY(16)`, which is legal for\nevery precision Arrow can hold.",
    "aliases": [
     {
      "name": "WN_PRIM",
@@ -2519,6 +2528,11 @@
        "type": "Bool"
       },
       {
+       "name": "compression_level",
+       "type": "Int",
+       "summary": "The codec's compression level, where the codec has one (ZSTD: 1 to 22). `0`, the default, is the codec's own default. A higher level is slower to write and smaller; reading is unaffected. Ignored by codecs without levels."
+      },
+      {
        "name": "write_statistics",
        "type": "Bool"
       },
@@ -2529,6 +2543,11 @@
       {
        "name": "created_by",
        "type": "String"
+      },
+      {
+       "name": "num_workers",
+       "type": "Int",
+       "summary": "Threads that encode a row group: `1` (the default) encodes on the calling thread, `0` means one per core."
       }
      ],
      "functions": [
@@ -2793,9 +2812,114 @@
      ]
     },
     {
+     "name": "ListSink",
+     "signature": "struct ListSink",
+     "summary": "Collects the output in memory. What `ParquetWriter.finish` uses.",
+     "traits": [
+      "ByteSink",
+      "Defaultable",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "bytes",
+       "type": "List[UInt8]"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self)"
+        }
+       ]
+      },
+      {
+       "name": "write_bytes",
+       "overloads": [
+        {
+         "signature": "def write_bytes(mut self, data: Span[UInt8])"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "FileSink",
+     "signature": "struct FileSink",
+     "summary": "Writes the output to a local file as it is produced.",
+     "traits": [
+      "ByteSink",
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "handle",
+       "type": "FileHandle"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, path: StringSpan)"
+        }
+       ]
+      },
+      {
+       "name": "write_bytes",
+       "overloads": [
+        {
+         "signature": "def write_bytes(mut self, data: Span[UInt8])"
+        }
+       ]
+      },
+      {
+       "name": "close",
+       "overloads": [
+        {
+         "signature": "def close(mut self)"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "WrittenFile",
+     "signature": "struct WrittenFile",
+     "summary": "What `ParquetWriter.finish_to` wrote: the footer and the file's size.",
+     "description": "`metadata` is the `FileMetaData` the footer was serialised from — row\ncounts, every column chunk's sizes, value counts, statistics and page\noffsets — so a caller that needs them (an Iceberg `data_file`, say) can\ntake them from here rather than parsing the bytes it just wrote.",
+     "traits": [
+      "Movable"
+     ],
+     "fields": [
+      {
+       "name": "metadata",
+       "type": "FileMetaData"
+      },
+      {
+       "name": "file_size",
+       "type": "Int"
+      }
+     ],
+     "functions": [
+      {
+       "name": "__init__",
+       "overloads": [
+        {
+         "signature": "def __init__(out self, var metadata: FileMetaData, file_size: Int)"
+        }
+       ]
+      }
+     ]
+    },
+    {
      "name": "ParquetWriter",
      "signature": "struct ParquetWriter[Codecs: CodecSet = DefaultCodecs]",
      "summary": "Writes Arrow arrays out as Parquet. One `write_batch` per record batch.",
+     "description": "Finished row groups wait in the writer until they are handed to a\n`ByteSink`: `flush_to` hands over what is ready, `write_batch_to` does it\nafter every row group, and `finish_to` writes the rest and the footer.\n`finish` is the in-memory spelling of the same thing. A writer that is\nflushed as it goes holds at most one row group's encoded bytes, rather\nthan the whole file.",
      "traits": [
       "Movable"
      ],
@@ -2809,8 +2933,18 @@
        "type": "WriteSchema"
       },
       {
-       "name": "out",
-       "type": "List[UInt8]"
+       "name": "pending",
+       "type": "List[List[UInt8]]",
+       "summary": "Encoded bytes not yet handed to a sink, in file order."
+      },
+      {
+       "name": "pending_bytes",
+       "type": "Int"
+      },
+      {
+       "name": "flushed",
+       "type": "Int",
+       "summary": "Bytes already handed to a sink. With `pending_bytes`, the position."
       },
       {
        "name": "row_groups",
@@ -2851,11 +2985,48 @@
        ]
       },
       {
+       "name": "position",
+       "overloads": [
+        {
+         "signature": "def position(self) -> Int",
+         "summary": "Bytes of the file produced so far, flushed or not."
+        }
+       ]
+      },
+      {
+       "name": "flush_to",
+       "overloads": [
+        {
+         "signature": "def flush_to[S: ByteSink](mut self, mut sink: S)",
+         "summary": "Hand every finished byte to `sink` and stop holding it."
+        }
+       ]
+      },
+      {
        "name": "write_batch",
        "overloads": [
         {
          "signature": "def write_batch(mut self, arena: ArrayArena, roots: List[Int])",
-         "summary": "Write one record batch, split into row groups of `row_group_size`."
+         "summary": "Write one record batch, split into row groups of `row_group_size`.",
+         "description": "The encoded row groups stay in the writer until `flush_to`,\n`finish_to` or `finish`; `write_batch_to` flushes as it goes."
+        }
+       ]
+      },
+      {
+       "name": "write_batch_to",
+       "overloads": [
+        {
+         "signature": "def write_batch_to[S: ByteSink](mut self, arena: ArrayArena, roots: List[Int], mut sink: S)",
+         "summary": "`write_batch`, handing each row group to `sink` as soon as it is encoded, so the writer never holds more than one of them."
+        }
+       ]
+      },
+      {
+       "name": "finish_to",
+       "overloads": [
+        {
+         "signature": "def finish_to[S: ByteSink](deinit self, mut sink: S) -> WrittenFile",
+         "summary": "Write what is left — row groups not yet flushed, the page indexes and the footer — to `sink`, and return the footer that was written."
         }
        ]
       },
@@ -2864,7 +3035,25 @@
        "overloads": [
         {
          "signature": "def finish(deinit self) -> List[UInt8]",
-         "summary": "Close the file and return its bytes."
+         "summary": "Close the file and return its bytes — those not already flushed."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "traits": [
+    {
+     "name": "ByteSink",
+     "summary": "Somewhere a `ParquetWriter` can hand finished bytes to, in file order.",
+     "description": "The writer never seeks: every call appends to what the previous call\nwrote, so a file, a socket, a multipart upload or a `List` all fit.",
+     "functions": [
+      {
+       "name": "write_bytes",
+       "overloads": [
+        {
+         "signature": "def write_bytes(mut self, data: Span[UInt8])",
+         "summary": "Append `data` to the output."
         }
        ]
       }

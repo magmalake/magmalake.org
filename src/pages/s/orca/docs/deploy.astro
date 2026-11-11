@@ -111,9 +111,9 @@ ssh root@<ip> orca-stack apply --app console=<sha>   # only an app`} />
     is decrypted with <code>sops -d</code> on its way to the server and never written to a
     file on the laptop, so the laptop keeps one age key instead of plain tokens
     (<a href={`${HETZNER}#secrets-on-your-laptop-sops`} rel="noopener">Secrets on your
-    laptop</a>). Coming in <a href={`${O}/265`} rel="noopener">#265</a>: one
-    <code>SECRETS_FILE</code> for every secret, decrypted once, so a Secure Enclave key
-    asks for Touch ID once per deploy.
+    laptop</a>). One <code>SECRETS_FILE</code> can hold every secret, decrypted once,
+    so a Secure Enclave key asks for Touch ID once per deploy
+    (<a href={`${O}/265`} rel="noopener">#265</a>).
   </p>
 
   <h2 id="rescaling">Rescaling</h2>

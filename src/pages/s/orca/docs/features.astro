@@ -1,0 +1,242 @@
+---
+import OrcaDocs from "../../../../components/OrcaDocs.astro";
+
+const description =
+  "Everything Orca does, on one page: the major features first, each with a paragraph and a link to where it is explained, then the smaller ones by area. As of orca 0.24.0.";
+
+// Backtick spans become <code>.
+const code = (s: string) => s.split("`").map((t, i) => (i % 2 ? `<code>${t}</code>` : t)).join("");
+
+type Feature = { name: string; what: string; href: string; since?: string };
+
+// The features a user picks Orca for, in the order a pipeline meets them.
+const major: Feature[] = [
+  {
+    name: "Pipelines in Mojo, checked when they compile",
+    what: "Steps are Mojo functions, and a pipeline is the list of them. The compiler checks that each step's input matches what the step before it makes, so a broken DAG doesn't build.",
+    href: "/s/orca/docs/build#steps",
+  },
+  {
+    name: "Partitions and schedules",
+    what: "A pipeline runs one partition at a time: a month, a day, an hour, or a key named by a dataset's column. Cron schedules can be set in a time zone.",
+    href: "/s/orca/docs/build#partitions",
+  },
+  {
+    name: "Iceberg tables, committed once",
+    what: "Steps read and write Iceberg tables in object storage. Every attempt reads the same snapshot, a commit is recognised when a step retries, and `replaces=` makes a rerun replace its partition rather than add to it.",
+    href: "/s/orca/docs/build#tables",
+  },
+  {
+    name: "Sensors and lineage",
+    what: "A sensor pipeline runs when a dataset it reads gets a new snapshot. Lineage shows which pipelines read and write each dataset, and a rebuild reruns everything downstream of one.",
+    href: "/s/orca/docs/build#sensors",
+  },
+  {
+    name: "Backfills and fills",
+    what: "Backfill a range by hand, or let a pipeline fill its whole range by itself, in an order you choose, within a daily budget and a window of hours.",
+    href: "/s/orca/docs/run#fills",
+  },
+  {
+    name: "Runs that resume",
+    what: "Every run and step is recorded in Postgres, or in a SQLite file for local use. A run that stopped resumes at the step that failed, and a deploy doesn't lose runs.",
+    href: "/s/orca/docs/run#state",
+  },
+  {
+    name: "The web UI",
+    what: "Pipelines, runs, logs, coverage and lineage. Start, resume, rerun, backfill, cancel and rebuild from the UI, with a JSON twin of every page.",
+    href: "/s/orca/docs/ui",
+  },
+  {
+    name: "Run anywhere",
+    what: "Runs go on the scheduler's machine, on a control host, on EC2 or Kubernetes with a Dista cluster per run, or on remote workers that need only outbound HTTPS.",
+    href: "/s/orca/docs/run#placement",
+  },
+  {
+    name: "Runs sized to what they need",
+    what: "Requests for CPUs and memory, or requests learned from past runs, decide when a run can start. A cgroup per run keeps an overrun to that run, and memory pressure holds back new runs.",
+    href: "/s/orca/docs/scaling#vertical",
+  },
+  {
+    name: "As many runs as fit",
+    what: '`max_runs = "auto"`, and `fill_max_runs = "auto"` for fill runs, start another run while there is room for it, up to a ceiling.',
+    href: "/s/orca/docs/config#how-many-at-once",
+  },
+  {
+    name: "Pools that grow and shrink",
+    what: "A pool on Hetzner Cloud or EC2 makes machines when runs wait and removes them once they're idle. It tries each machine type you list in turn, among those the worker image is built for.",
+    href: "/s/orca/docs/pools#autoscaling",
+  },
+  {
+    name: "One run over several machines",
+    what: "`workers = N` spreads one run's Dista cluster over N of a pool's machines, on a private network, with a token for that run alone.",
+    href: "/s/orca/docs/pools#one-run-many-machines",
+    since: "0.24.0",
+  },
+  {
+    name: "Deploys without downtime",
+    what: "On one Hetzner server, a deploy replaces only what changed and doesn't pause runs. An older image runs on a newer database, so a rollback needs no restore.",
+    href: "/s/orca/docs/deploy",
+  },
+  {
+    name: "The watchdog and alerts",
+    what: "The watchdog pauses a pipeline that keeps failing or runs away with its budget, and alerts reach your phone through ntfy.",
+    href: "/s/orca/docs/monitoring#watchdog",
+  },
+];
+
+// The rest, by area.
+const minor: { area: string; items: Feature[] }[] = [
+  {
+    area: "Writing pipelines",
+    items: [
+      { name: "Keyed pipelines", what: "Partitions named by a dataset's column instead of dates, backfilled many keys to a run (`keys_per_run`).", href: "/s/orca/docs/build#keyed" },
+      { name: "Hourly partitions", what: "`Hourly[...]` gives a pipeline a partition per hour.", href: "/s/orca/docs/build#partitions" },
+      { name: "Datasets", what: "Named outputs between steps and pipelines, with their snapshots tracked.", href: "/s/orca/docs/build#datasets" },
+      { name: "Step versions", what: "Raising a step's `version=` makes its outputs again, and fills its partitions again.", href: "/s/orca/docs/build#versions" },
+      { name: "Dista inside steps", what: "A step can fan out over the run's Dista workers.", href: "/s/orca/docs/build#dista" },
+      { name: "The Mojo API", what: "Every module of the `orca` package, from the published release.", href: "/s/orca/api" },
+    ],
+  },
+  {
+    area: "Configuring",
+    items: [
+      { name: "orca.toml", what: "Placement, sizes, fills, secrets and env for each pipeline, and pools, in one file that `orca register` reads.", href: "/s/orca/docs/config" },
+      { name: "Refused settings", what: "`orca register` rejects unknown keys and bad values, naming the keys a table does have.", href: "/s/orca/docs/config#refused" },
+      { name: "config show and export", what: "What a pipeline is running with, and an orca.toml that reproduces it.", href: "/s/orca/docs/config#config-show" },
+      { name: "Fill limits", what: "`fill_budget_per_day`, `fill_window` and `fill_lag`, and why a fill is idle.", href: "/s/orca/docs/config#fills" },
+    ],
+  },
+  {
+    area: "Running",
+    items: [
+      { name: "The command line", what: "A pipeline binary's own commands, the `orca` command, and `orca login` with `--remote` from a laptop.", href: "/s/orca/docs/cli" },
+      { name: "Logs and machine metrics", what: "Each run's driver, head and worker logs, and the machine's samples while it runs.", href: "/s/orca/docs/run#logs" },
+      { name: "Out of memory at the maximum", what: "A run killed at `memory_gb`'s maximum fails at once, saying so, instead of retrying.", href: "/s/orca/docs/scaling#cgroups" },
+      { name: "Snapshot expiry", what: "`orca expire` and the scheduler's sweep remove old Iceberg snapshots.", href: "/s/orca/docs/run#state" },
+      { name: "Debugging a failed run", what: "Errors with context, symbolized crash dumps, and running a partition locally.", href: "/s/orca/docs/debug" },
+    ],
+  },
+  {
+    area: "Workers and pools",
+    items: [
+      { name: "Remote workers", what: "`orca worker --pool` on a machine you have, claiming runs over HTTPS, fills included.", href: "/s/orca/docs/workers" },
+      { name: "Quota fallback", what: "A machine type the project's quota refuses is passed over for the next one in `machines`.", href: "/s/orca/docs/pools#out-of-stock", since: "0.24.0" },
+      { name: "Machine names", what: "A pool's machines are named `orca-pool-<pool>-<n>`.", href: "/s/orca/docs/pools#making-a-machine", since: "0.24.0" },
+      { name: "A gone worker's runs", what: "Runs of a worker that stopped are queued again, with why, in the audit log too.", href: "/s/orca/docs/workers" },
+    ],
+  },
+  {
+    area: "The UI",
+    items: [
+      { name: "Coverage", what: "Which partitions of each pipeline are done, at a glance.", href: "/s/orca/docs/ui#coverage" },
+      { name: "Acting on many runs", what: "Filter the runs, then resume, rerun or cancel them together.", href: "/s/orca/docs/ui#lists" },
+      { name: "Code on hover", what: "A step's source, at the commit the run was built from.", href: "/s/orca/docs/ui#hover" },
+      { name: "Ops › Pools", what: "Each pool's workers and machines, and hosts over time. From 0.24.0, a card for each pool Orca grows.", href: "/s/orca/docs/ui#ops" },
+      { name: "A run's Cluster card", what: "The machines a run's Dista cluster spread over.", href: "/s/orca/docs/formats#run-json", since: "0.24.0" },
+      { name: "The HTTP API", what: "Every page's JSON, the actions, and the worker API.", href: "/s/orca/docs/formats#http-api" },
+    ],
+  },
+  {
+    area: "Operating",
+    items: [
+      { name: "Rollbacks without a restore", what: "Migrations are additive, so an older image runs on a newer schema.", href: "/s/orca/docs/upgrades#rolling-back" },
+      { name: "Upgrade steps", what: "A release's `upgrade.toml` lists what to do before a deploy, and `deploy.sh` reads it.", href: "/s/orca/docs/upgrades#deploying" },
+      { name: "A check after each deploy", what: "`orca-stack check` after `deploy.sh`, and `promote.sh`.", href: "/s/orca/docs/deploy#deploys" },
+      { name: "Overlapping schedulers", what: "A new scheduler takes over from the old one without running a run twice.", href: "/s/orca/docs/deploy#overlap" },
+      { name: "Rescaling", what: "`rescale.sh` moves the server to a bigger type for an import, and back.", href: "/s/orca/docs/deploy#rescaling" },
+      { name: "Tokens and secrets", what: "Logins, worker and machine tokens, a token per run's cluster, and secrets kept in SOPS.", href: "/s/orca/docs/security" },
+      { name: "Proofs of the tricky parts", what: "Lean models of retries, pinned reads, fencing and the schema floor, with proofs.", href: "https://github.com/magmalake/orca.mojo/tree/main/formal" },
+    ],
+  },
+];
+---
+
+<OrcaDocs href="/s/orca/docs/features" description={description}>
+  <p class="eyebrow">Docs</p>
+  <h1 class="section-title">Features</h1>
+  <p class="lede">
+    What Orca does, as of 0.24.0. The major features come first, each with a link to
+    where it is explained; the smaller ones follow by area. Features marked 0.24.0 are
+    new in that release.
+  </p>
+
+  <nav class="docs-toc" aria-label="On this page">
+    <a href="#major">Major</a>
+    {minor.map((g) => <a href={`#${g.area.toLowerCase().replaceAll(" ", "-")}`}>{g.area}</a>)}
+  </nav>
+
+  <h2 id="major">Major features</h2>
+  <dl class="features">
+    {major.map((f) => (
+      <div class="features__item">
+        <dt>
+          <a href={f.href}>{f.name}</a>
+          {f.since && <span class="features__since">{f.since}</span>}
+        </dt>
+        <dd set:html={code(f.what)} />
+      </div>
+    ))}
+  </dl>
+
+  <h2 id="minor">Other features</h2>
+  {minor.map((g) => (
+    <>
+      <h3 id={g.area.toLowerCase().replaceAll(" ", "-")}>{g.area}</h3>
+      <div class="table-scroll">
+        <table>
+          <tbody>
+            {g.items.map((f) => (
+              <tr>
+                <td>
+                  <a href={f.href}>{f.name}</a>
+                  {f.since && <span class="features__since">{f.since}</span>}
+                </td>
+                <td set:html={code(f.what)} />
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  ))}
+</OrcaDocs>
+
+<style>
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+    gap: 1rem 1.5rem;
+    margin: 1rem 0 0;
+  }
+  .features__item {
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+  }
+  .features dt {
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+  }
+  .features dt a { text-decoration: none; }
+  .features dt a:hover { text-decoration: underline; }
+  .features dd {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.9375rem;
+  }
+  .features__since {
+    margin-left: 0.5rem;
+    padding: 0.05rem 0.4rem;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    color: var(--text-faint);
+    white-space: nowrap;
+  }
+  td:first-child { white-space: nowrap; }
+  @media (max-width: 40rem) {
+    td:first-child { white-space: normal; }
+  }
+</style>

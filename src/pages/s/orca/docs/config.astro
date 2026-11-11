@@ -1,0 +1,507 @@
+---
+import OrcaDocs from "../../../../components/OrcaDocs.astro";
+import CodeBlock from "../../../../components/CodeBlock.astro";
+import { ORCA_REPO } from "../../../../data/orca";
+
+const DOCS = `${ORCA_REPO}/blob/main/docs`;
+const SRC = `${ORCA_REPO}/blob/main/src/orca`;
+
+const description =
+  "The orca.toml reference: its tables, every key of [defaults] and [pipelines.<name>] with its type and default, worker pools in [pools.<name>], fills, how many runs at once, requests and grants, what orca register refuses, which file it reads, and orca config show, check and export.";
+
+const tables = [
+  ["[defaults]", "values for every pipeline the file names; pipelines the file leaves out don't get them"],
+  ["[pipelines.<name>]", "one pipeline's own values, by the name its describe gives; an empty table puts the pipeline in the file with [defaults]"],
+  ["[pools.<name>]", "a pool of remote workers that orca grows and shrinks itself"],
+  ["[stack]", "reserved for orca aws up, which doesn't read it yet; it is accepted and not checked"],
+];
+
+// key, type, default, meaning
+const where = [
+  ["placement", "\"default\", \"control\", \"ec2\" or \"worker:<pool>\"", "default (the scheduler's ORCA_RUNNER)", "Which machine starts the pipeline's runs. control is the scheduler's host; worker:<pool> is a remote worker of that pool."],
+  ["head_type", "string, an instance type", "ORCA_EC2_HEAD_TYPE, else c7g.large", "The head instance's type, used only on EC2."],
+  ["worker_type", "string, an instance type", "ORCA_EC2_WORKER_TYPE, else c7g.xlarge", "The worker instances' type, used only on EC2."],
+  ["workers", "integer N (at least 1), or \"MIN..MAX\"", "the code's workers, else 2; 0 without tasks", "Dista workers a run gets. With a range the run scales between the two. On worker:<pool>, the extra machines one run may spread over."],
+  ["worker_procs", "integer 1 to 256, or \"auto\"", "1", "Dista processes per worker machine; auto is one per vCPU."],
+  ["max_runs", "integer 1 to 10000, \"auto\" or \"auto..N\"", "the code's max_runs, else 1", "Live runs of the pipeline at once, overriding the code. auto follows the host's room, up to 64 or N."],
+  ["keys_per_run", "integer 1 to 10000", "the code's keys_per_run, else 1", "Keys one run takes: a backfill's runs, a sensor's runs above 1, and fill runs."],
+];
+
+const sizing = [
+  ["cpus", "integer 1 to 1024, \"MIN..MAX\", \"auto\" or \"auto..MAX\"", "none: no request", "Whole CPUs a run needs to start and can use. auto takes the request learned from its runs."],
+  ["memory_gb", "number over 0 up to 65536, \"MIN..MAX\", \"auto\" or \"auto..MAX\"", "none: no request", "GB of memory a run needs to start and can use; decimals are allowed."],
+  ["learn", "boolean", "true", "false keeps auto at no request, though the recommendation is still shown."],
+];
+
+const fills = [
+  ["fills", "\"all\" or \"since_registration\"", "since_registration", "all makes the scheduler fill the pipeline's whole range by itself."],
+  ["fill_order", "\"oldest\" or \"newest\"", "oldest", "Which end of the range fills first."],
+  ["fill_max_runs", "integer 1 to 10000; \"auto\" or \"auto..N\" from 0.24.0", "1", "Fill runs at once, on top of max_runs. auto follows the host's room, up to 64 or N."],
+  ["fill_budget_per_day", "number 0 to 100000, US dollars", "none", "Estimated spend of fill runs per UTC day. Fill runs on EC2 or Kubernetes don't start without it."],
+  ["fill_window", "\"A..B\", UTC hours: A 0 to 23, B 1 to 24", "\"0..24\", all day", "The hours fill runs may start in. \"22..6\" wraps past midnight."],
+  ["fill_lag", "a duration: whole s, m, h or d up to 31d, or 0", "0", "How long after its end a partition is filled, for sources that publish late."],
+];
+
+const maps = [
+  ["secrets", "table of NAME = \"orca/<id>\"", "none", "Secret IDs, never values, read when a run starts and passed as NAME. A --secret flag replaces the whole set."],
+  ["env", "table of NAME = \"value\"", "none", "Variables for this pipeline's runs only, on every runner. Numbers and booleans become text; \"auto\" sizes from the grant."],
+];
+
+const pools = [
+  ["provider", "\"hetzner\" or \"ec2\"", "required", "Where the machines are made."],
+  ["machines", "list of { type, wait }", "required", "Machine types in order of preference. wait (0 to 86400) is how many seconds orca keeps trying a type before the next; every entry but the last needs one."],
+  ["locations", "list of strings", "none (required on Hetzner)", "Where each type is tried, in order: Hetzner locations, or EC2 subnet IDs (none: the default subnet or ORCA_EC2_SUBNET)."],
+  ["max_machines", "integer 1 to 100", "1", "The most machines the pool has at once."],
+  ["idle_seconds", "integer 10 to 86400", "900", "How long a machine may sit idle, with nothing queued for the pool, before it's removed."],
+];
+
+const poolEnv = [
+  ["ORCA_HCLOUD_TOKEN, ORCA_HCLOUD_TOKEN_SECRET", "Hetzner's API token for the scheduler, or the secret that holds it."],
+  ["ORCA_HCLOUD_FIREWALL, ORCA_HCLOUD_SSH_KEYS, ORCA_HCLOUD_IMAGE", "the firewall and SSH keys (by name) each Hetzner machine gets, and its OS image (ubuntu-24.04)."],
+  ["ORCA_HCLOUD_NETWORK, ORCA_HCLOUD_NETWORK_ZONE, ORCA_HCLOUD_NETWORK_RANGE", "the private network every Hetzner machine joins (orca-<stack id> in eu-central over 10.77.0.0/16 unless set; none for none)."],
+  ["AWS_REGION and credentials, or an instance role", "EC2's API, for provider = \"ec2\"."],
+  ["ORCA_POOL_EC2_SECURITY_GROUP, ORCA_POOL_EC2_PROFILE", "each EC2 machine's security group and instance profile, else ORCA_EC2_SECURITY_GROUP and ORCA_EC2_PROFILE."],
+  ["ORCA_POOL_EC2_AMI_ARM64, ORCA_POOL_EC2_AMI_AMD64", "the EC2 image per architecture, else Ubuntu 24.04 from Canonical's public SSM parameter."],
+  ["ORCA_WORKER_IMAGE", "the image pool machines run, the server's own (scheduler and UI)."],
+  ["ORCA_UI_URL, or ORCA_POOL_REMOTE", "where pool machines reach the UI."],
+  ["ORCA_REGISTRY_USER, ORCA_REGISTRY_TOKEN_SECRET", "the login for a private image: the UI hands it to a booting machine, and the scheduler reads the image's architectures with it."],
+  ["ORCA_POOL_SCALE_SECONDS (15), ORCA_POOL_GROW_AFTER (20), ORCA_POOL_TRY_SECONDS (60)", "how often the autoscaler looks, how long runs wait before it grows, and the time between tries."],
+  ["ORCA_POOL_BOOT_SECONDS (900), ORCA_POOL_LOST_SECONDS (300), ORCA_POOL_IMAGE_SECONDS (600)", "how long a machine has to join, how long a worker may go silent, and how often the image's architectures are read."],
+];
+
+const idle = [
+  ["complete", "every partition of the range is done, or the last ones are running"],
+  ["paused", "the pipeline is paused, by hand or by the watchdog, whose rule the reason names"],
+  ["outside its window", "the UTC hour is outside fill_window; a fill run already going goes on"],
+  ["no budget", "the runs cost money (EC2 or Kubernetes) and fill_budget_per_day isn't set"],
+  ["price unknown", "orca.fleet's price table can't price the run, or it runs on Kubernetes; the estimate fails closed"],
+  ["budget", "today's estimated spend plus the next run's would go over fill_budget_per_day; it starts again at 00:00 UTC"],
+  ["waiting", "other runs of the pipeline are queued, and they start first"],
+  ["at fill_max_runs", "as many fill runs are going as fill_max_runs allows"],
+];
+
+const sources = [
+  ["orca register --config F", "F"],
+  ["ORCA_CONFIG=F", "F"],
+  ["neither", "./orca.toml, if it exists"],
+  ["--no-config", "none"],
+];
+---
+
+<OrcaDocs href="/s/orca/docs/config" description={description}>
+  <p class="eyebrow">Reference</p>
+  <h1 class="section-title">orca.toml</h1>
+  <p class="lede">
+    <code>orca.toml</code> sits at the root of a project's repository and says how each
+    pipeline runs: where, on what, how much it uses and how it fills. The pipeline's code
+    still says what it does. <code>orca register</code> reads the file, checks every key,
+    and records each value with where it came from.
+  </p>
+
+  <nav class="docs-toc" aria-label="On this page">
+    <a href="#example">An example</a>
+    <a href="#tables">Tables</a>
+    <a href="#pipelines">[pipelines.&lt;name&gt;]</a>
+    <a href="#how-many-at-once">How many at once</a>
+    <a href="#requests">Requests and grants</a>
+    <a href="#memory-pressure">Memory pressure</a>
+    <a href="#env">env and secrets</a>
+    <a href="#fills">Fills</a>
+    <a href="#pools">[pools.&lt;name&gt;]</a>
+    <a href="#refused">What is refused</a>
+    <a href="#register">How orca register reads it</a>
+    <a href="#config-show">orca config show, check and export</a>
+  </nav>
+
+  <h2 id="example">An example</h2>
+  <CodeBlock label="orca.toml" code={`[defaults]
+placement = "ec2"
+head_type = "t4g.medium"
+
+[pipelines.gharchive]
+worker_type = "c7g.xlarge"
+workers = "0..4"
+max_runs = 2
+env = { DISTA_WORKER_SLOTS = "4", GHARCHIVE_PARALLEL = "16" }
+fills = "all"                # fill the whole range by itself
+fill_max_runs = 2
+fill_budget_per_day = 5.0    # estimated US dollars a UTC day
+fill_window = "22..6"        # UTC hours fill runs start in
+fill_lag = "2h"              # a day fills 2 hours after it ends
+
+[pipelines.mojo_repos]
+placement = "worker:lab"
+secrets = { GITHUB_TOKEN = "orca/github-token" }
+cpus = "1..2"                # starts once 1 CPU and 0.5 GB fit,
+memory_gb = "0.5..2"         # and is given up to 2 of each
+
+[pools.lab]
+provider = "hetzner"
+machines = [{ type = "cax31", wait = 600 }, { type = "cpx32" }]
+locations = ["hel1", "nbg1"]
+max_machines = 3`} />
+  <p>
+    The full reference, with every rule, is
+    <a href={`${DOCS}/orca-toml.md`} rel="noopener">docs/orca-toml.md</a>; the code that
+    reads the file is <a href={`${SRC}/config.mojo`} rel="noopener">config.mojo</a> and
+    <a href={`${SRC}/pool_config.mojo`} rel="noopener">pool_config.mojo</a>.
+  </p>
+
+  <h2 id="tables">Tables</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Table</th><th>What it is</th></tr></thead>
+      <tbody>
+        {tables.map(([k, v]) => (
+          <tr><td><code>{k}</code></td><td>{v}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <p>
+    Any other table, and any key at the top level, is refused. orca reads the part of
+    TOML 1.0 a config needs: comments, dotted and quoted keys, basic and literal strings,
+    decimal integers, floats, booleans, arrays (over several lines, with a trailing
+    comma), inline tables and arrays of them. Multi-line strings, dates,
+    <code>[[arrays of tables]]</code>, hexadecimal, octal and binary integers,
+    <code>inf</code> and <code>nan</code> are refused with a message that says so, as is
+    a key or table defined twice.
+  </p>
+
+  <h2 id="pipelines">[pipelines.&lt;name&gt;]</h2>
+  <p>
+    Every key below can go in <code>[defaults]</code> or in a pipeline's own table. A
+    value comes from the first of these that sets it: a flag to <code>orca register</code>
+    (recorded as an override), the pipeline's table, <code>[defaults]</code>, the
+    environment, then the code. <code>env</code> and <code>secrets</code> merge one name at
+    a time. <code>image</code> and <code>--spot</code> stay flags only, and no flag sets
+    the <code>fill*</code> keys or <code>learn</code>.
+  </p>
+
+  <h3 id="placement-keys">Placement and size</h3>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        {where.map(([k, t, d, m]) => (
+          <tr><td><code>{k}</code></td><td>{t}</td><td class="ref">{d}</td><td>{m}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <p>
+    <a href={`${DOCS}/placement.md`} rel="noopener">placement.md</a> describes the four
+    placements, and <a href="/s/orca/docs/workers">Remote workers</a> covers
+    <code>worker:&lt;pool&gt;</code>.
+  </p>
+
+  <h3 id="request-keys">Requests</h3>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        {sizing.map(([k, t, d, m]) => (
+          <tr><td><code>{k}</code></td><td>{t}</td><td class="ref">{d}</td><td>{m}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h3 id="fill-keys">Fills</h3>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        {fills.map(([k, t, d, m]) => (
+          <tr><td><code>{k}</code></td><td>{t}</td><td class="ref">{d}</td><td>{m}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h3 id="map-keys">Secrets and environment</h3>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        {maps.map(([k, t, d, m]) => (
+          <tr><td><code>{k}</code></td><td>{t}</td><td class="ref">{d}</td><td>{m}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="how-many-at-once">How many at once</h2>
+  <p>
+    <code>max_runs = "auto"</code> starts another run of the pipeline whenever its
+    request fits in what this host's running runs weren't granted, up to a ceiling of 64;
+    <code>"auto..N"</code> sets the ceiling to N. A bigger host then runs more at once with
+    no change to the file: at 2 GB a run, 4 on a host with 8 GB to grant, 12 on one with
+    24.
+  </p>
+  <CodeBlock label="orca.toml" code={`[pipelines.gharchive]
+memory_gb = "auto"       # learned from its runs
+max_runs = "auto"
+fill_max_runs = "auto"   # from 0.24.0`} />
+  <p>
+    It needs a request to weigh, declared or learned. Until it has one, it starts one run
+    at a time, and its queued runs say so. On EC2, Kubernetes and remote workers, where
+    there is no host's room to weigh, the ceiling is the limit; a worker still admits what
+    it takes against its own host. From 0.24.0, <code>fill_max_runs = "auto"</code> does
+    the same for fill runs (migration 55 records it as
+    <code>orca.pipelines.fill_max_runs_auto</code>). An older orca reads
+    <code>"auto"</code> as its ceiling.
+  </p>
+
+  <h2 id="requests">Requests and grants</h2>
+  <p>
+    <code>cpus</code> and <code>memory_gb</code> are a request: the least a run needs to
+    start and the most it can use (a single number is both). On the local runner, for
+    control-placed runs and on remote workers, a run starts only if its minimum fits what
+    the host can grant, less what the runs going there were granted. The host's grant is
+    its CPUs and memory (its cgroup's limits if set, or <code>ORCA_HOST_CPUS</code> and
+    <code>ORCA_HOST_MEMORY_MB</code>) less <code>ORCA_RESERVE_CPUS</code> (1) and
+    <code>ORCA_RESERVE_MEMORY_MB</code> (1536); a worker's reserve is 0 and 512. A run
+    that starts gets up to its maximum of what's left, fixed for that start, in
+    <code>ORCA_GRANT_CPUS</code> and <code>ORCA_GRANT_MEMORY_MB</code>.
+  </p>
+  <ul class="docs-list">
+    <li>A pipeline without a request runs as before, unchecked and not counted against
+      the others, so on a shared host give every pipeline one.</li>
+    <li>On EC2 and Kubernetes the request is kept but not used yet.</li>
+    <li>Where orca can make cgroups, a run's grant is its memory limit, and the kernel
+      kills it <code>ORCA_RUN_MEMORY_MARGIN</code> (25) percent above that. Its retry and
+      later runs then ask for <code>ORCA_RUN_MEMORY_GROWTH</code> (1.5) times as much, up
+      to <code>memory_gb</code>'s maximum.</li>
+    <li><code>"auto"</code> takes the request from the pipeline's last 20 successful
+      measured runs: memory at their 95th percentile plus 15%, CPUs at the 90th percentile
+      of peak cores. With fewer than 3 such runs there is no request yet.
+      <code>"auto..24"</code> caps it at 24.</li>
+    <li>An <code>env</code> value <code>"auto"</code> lets the run size itself from its
+      grant (<code>orca.auto_count</code>). <code>DISTA_WORKER_SLOTS = "auto"</code>
+      becomes the granted CPUs over the run's local Dista workers, or 0 (one per core)
+      without a grant.</li>
+  </ul>
+  <p>
+    <a href="/s/orca/docs/run#resources">Scheduling and running</a> explains this in
+    prose, and <a href={`${DOCS}/orca-toml.md#requests-and-grants`} rel="noopener">orca-toml.md</a>
+    has every rule.
+  </p>
+
+  <h2 id="memory-pressure">Memory pressure</h2>
+  <p>
+    On top of <code>max_runs</code>, <code>fill_max_runs</code> and grants, no new run
+    starts on the local runner, the control host or a worker while Linux's pressure stall
+    information reads <code>some avg10</code> over <code>ORCA_ADMIT_MEMORY_PRESSURE</code>
+    (10%; 0 turns it off). Runs already going go on. The hold ends under half the limit,
+    or after 30 s at most at the limit. One that lasts
+    <code>ORCA_ADMIT_PRESSURE_GRACE_SECONDS</code> (600) with none of orca's runs going
+    raises the <code>memory-pressure</code> alert and lets runs start one at a time.
+    Without PSI, as on macOS, nothing is held. These are environment variables, not
+    orca.toml keys.
+  </p>
+
+  <h2 id="env">env and secrets</h2>
+  <ul class="docs-list">
+    <li>A pipeline's <code>env</code> goes only to its own runs: their process
+      environment on the local runner, the control host and a worker, each pod's
+      <code>env</code> on Kubernetes, and each instance's script and containers on
+      EC2.</li>
+    <li><code>ORCA_RUN_ENV</code> still copies the scheduler's named variables to every
+      run; a pipeline's <code>env</code> wins for a name it sets.</li>
+    <li>On EC2 the env is part of the warm pool's key, so changing it launches new
+      instances.</li>
+    <li>Stack settings (database, warehouse, logs, runner, budget) stay in the
+      scheduler's environment file, not in <code>env</code>.</li>
+    <li><code>secrets</code> are read with <code>ORCA_SECRET_FETCH</code> when it is set
+      (<code>&lt;command&gt; &lt;id&gt;</code> through <code>sh -c</code>), else from
+      Secrets Manager. IDs always start with <code>orca/</code>.</li>
+  </ul>
+
+  <h2 id="fills">Fills</h2>
+  <p>
+    With <code>fills = "all"</code>, on every tick and after the pipeline's other runs
+    have started, the scheduler queues fill runs over its range: its first partition
+    through the last one that ended at least <code>fill_lag</code> ago. Each fill run
+    takes <code>keys_per_run</code> partitions in <code>fill_order</code>, with trigger
+    <code>fill</code>. A fill never runs a partition twice: one done in any of the
+    pipeline's code, in a live run, or ever queued as a fill is taken. Fill runs don't
+    count against <code>max_runs</code>, never start while other runs of the pipeline are
+    queued, and on a worker pool are left for the pool's workers to claim, with
+    <code>fill_max_runs</code> across the whole pool.
+  </p>
+  <p>
+    The cost estimate fails closed: an hour of the head plus the most workers at
+    on-demand prices, times 1.2, against today's spend on fill runs' instances. Runs on
+    the control host or a local process cost nothing and need no budget. Keyed pipelines,
+    sensors and pipelines with no first partition can't fill, and <code>orca register</code>
+    refuses <code>fills = "all"</code> for them. The pipeline page's Fill line and
+    <code>fill</code> in its JSON say why a fill is idle:
+  </p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Idle because</th><th>Meaning</th></tr></thead>
+      <tbody>
+        {idle.map(([k, v]) => (
+          <tr><td><code>{k}</code></td><td>{v}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="pools">[pools.&lt;name&gt;]</h2>
+  <p>
+    A <code>[pools.&lt;name&gt;]</code> table makes a pool of remote workers that orca
+    grows and shrinks itself. Pipelines run on it with
+    <code>placement = "worker:&lt;name&gt;"</code>, as on workers started by hand.
+    <code>orca register</code> records the file's pools in <code>orca.pools</code>; a pool
+    the file no longer has is deleted there, and its machines go once idle.
+  </p>
+  <CodeBlock label="orca.toml" code={`[pools.lab]
+provider = "hetzner"
+machines = [
+  { type = "cax31", wait = 600 },   # prefer this; keep trying it for 10 min
+  { type = "cax21", wait = 600 },
+  { type = "cpx32" },               # the last: no wait
+]
+locations = ["hel1", "nbg1", "fsn1"]
+max_machines = 3
+idle_seconds = 900`} />
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        {pools.map(([k, t, d, m]) => (
+          <tr><td><code>{k}</code></td><td>{t}</td><td class="ref">{d}</td><td>{m}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <ul class="docs-list">
+    <li><strong>Grow.</strong> While runs of the pool's pipelines have waited 20 s that a
+      worker could start, no machine is still booting and the pool has fewer than
+      <code>max_machines</code>, the leading scheduler makes one. It tries the current
+      type in each location in turn for its <code>wait</code>, then the next type, and
+      skips a type whose architecture the worker image lacks. From 0.24.0, a type the
+      provider refuses for the project's quota (Hetzner's
+      <code>resource_limit_exceeded</code>) moves it on to the next usable type at
+      once.</li>
+    <li><strong>Boot.</strong> A machine holds only a worker token of its own and asks
+      <code>/api/worker/boot</code> for the image, its login and the bucket's variables.
+      From 0.24.0 machines are named <code>orca-pool-&lt;pool&gt;-&lt;n&gt;</code>.</li>
+    <li><strong>Shrink.</strong> A machine idle for <code>idle_seconds</code> with nothing
+      waiting is removed, its token revoked first. So is one whose worker never shows up
+      (15 min) or goes silent (5 min), and one with the pool's labels that orca doesn't
+      know.</li>
+    <li>A running machine is never replaced by a type higher in the list: the order only
+      matters when orca adds one.</li>
+  </ul>
+  <p>What the scheduler and the UI need in their environment for pools:</p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Variable</th><th>What it sets</th></tr></thead>
+      <tbody>
+        {poolEnv.map(([k, v]) => (
+          <tr><td><code>{k}</code></td><td>{v}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <p>
+    <a href="/s/orca/docs/pools">Pools and autoscaling</a> covers running them.
+  </p>
+
+  <h2 id="refused">What is refused</h2>
+  <p>Each refusal names the file and line, and nothing is registered:</p>
+  <CodeBlock label="output" code={`orca.toml:7: [pipelines.gharchive] has no key workrs (it has placement, head_type, ...)
+orca.toml:3: [pipelines.toy] workers: not a count or a range MIN..MAX: 4..2`} />
+  <ul class="docs-list">
+    <li>Unknown keys and tables, and a value of the wrong type.</li>
+    <li>A <code>workers</code>, <code>cpus</code> or <code>memory_gb</code> range like
+      <code>"4..2"</code>; <code>cpus = 0</code>, <code>cpus = 1.5</code> or
+      <code>memory_gb = 0</code>; <code>auto</code> anywhere but alone or as a range's
+      lower end, or <code>"auto.."</code> without its maximum.</li>
+    <li>A secret ID outside <code>orca/</code>.</li>
+    <li>A <code>fill_window</code> like <code>"6..6"</code> or <code>"1..30"</code>, a
+      negative <code>fill_budget_per_day</code>, or <code>fill_max_runs = 0</code>.</li>
+    <li>A <code>fill_lag</code> without a unit, with an unknown one (<code>"2w"</code>),
+      or over <code>31d</code>.</li>
+    <li><code>fills = "all"</code> for a keyed pipeline, a sensor, or one with no first
+      partition.</li>
+    <li>An <code>env</code> name that isn't a valid variable name, that looks like a
+      secret (<code>*TOKEN*</code>, <code>*SECRET*</code>, <code>*PASSWORD*</code>,
+      <code>*DATABASE_URL*</code>), or that orca sets itself: <code>ORCA_DATABASE_URL</code>,
+      <code>ORCA_IMAGE</code>, <code>ORCA_SECRETS</code>, <code>ORCA_WORKERS</code>,
+      <code>DISTA_ROLE</code>, <code>DISTA_HEAD</code>, <code>DISTA_ADVERTISE</code>,
+      <code>ORCA_GRANT_CPUS</code>, <code>ORCA_GRANT_MEMORY_MB</code>,
+      <code>ORCA_MEMORY_PRESSURE_FILE</code>.</li>
+    <li>A pool without <code>provider</code> or <code>machines</code>, a provider other
+      than <code>hetzner</code> or <code>ec2</code>, a machine entry with a key other than
+      <code>type</code> and <code>wait</code>, a type that isn't 1 to 64 of
+      <code>a-z</code>, <code>0-9</code>, <code>.</code>, <code>-</code> and
+      <code>_</code>, a type listed twice, a missing <code>wait</code> on any entry but
+      the last, a Hetzner pool without <code>locations</code>, or
+      <code>max_machines</code> or <code>idle_seconds</code> out of range.</li>
+  </ul>
+
+  <h2 id="register">How orca register reads it</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>How</th><th>File read</th></tr></thead>
+      <tbody>
+        {sources.map(([k, v]) => (
+          <tr><td><code>{k}</code></td><td>{v}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <ul class="docs-list">
+    <li><strong>A pipeline the file names</strong> is registered with exactly what the
+      file and flags say. A key removed from the file goes back to its default, and a
+      flag applies to that registration only.</li>
+    <li><strong>A pipeline the file doesn't name</strong> keeps what was registered for
+      a flag left out, and <code>orca register</code> warns that it isn't in the
+      file.</li>
+    <li><strong>Without paths</strong>, <code>orca register</code> registers every
+      <code>[pipelines.&lt;name&gt;]</code> as <code>&lt;dir&gt;/&lt;name&gt;</code>, where
+      the directory is <code>ORCA_PIPELINES_DIR</code> or <code>pipelines/</code> next to
+      the file. A missing binary is an error, and nothing is registered. A project's
+      image sets <code>ORCA_CONFIG</code>, <code>ORCA_PIPELINES_DIR</code>,
+      <code>ORCA_COMMIT</code> and <code>ORCA_SOURCE</code>, so <code>orca register</code>
+      alone registers the whole file.</li>
+    <li><strong><code>orca aws register</code></strong> takes the same
+      <code>--config</code> and <code>--no-config</code>, checks the file locally, and
+      sends it whole to the control instance with its git commit.</li>
+    <li><strong>What's recorded</strong>: <code>orca.pipelines.config</code> keeps the
+      file's name, SHA-256, git commit and whether it had uncommitted changes, the flags
+      that overrode it, and the source of every value.</li>
+  </ul>
+
+  <h2 id="config-show">orca config show, check and export</h2>
+  <CodeBlock label="output" code={`$ orca config show gharchive
+gharchive  registered from orca.toml @ 3f2a9c1d0b7e, sha256 b0e8af31ea3e
+  overrides: --workers 0..8
+  placement               ec2         orca.toml [defaults]
+  worker_type             c7g.xlarge  orca.toml [pipelines.gharchive]
+  workers                 0..8        flag --workers
+  keys_per_run            1           code default (the pipeline's keys_per_run)
+  env.DISTA_WORKER_SLOTS  4           orca.toml [pipelines.gharchive]`} />
+  <ul class="docs-list">
+    <li><code>orca config show [pipeline]</code> prints each registered value with its
+      source: <code>code default</code>, <code>orca.toml</code>, <code>flag</code> or
+      <code>environment</code>, and a learned request after the settings.
+      <code>--json</code> prints one object, or <code>{`{"pipelines": [...]}`}</code>
+      without a name. The pipeline page's Configuration card and <code>config</code> in
+      <code>/api/pipelines/&lt;name&gt;</code> show the same.</li>
+    <li><code>orca config check [file] [--secrets]</code> refuses what
+      <code>orca register</code> would, with no database, for a project's CI. It warns
+      about an instance type missing from orca's price table, and with
+      <code>--secrets</code> reads each secret without printing it. It exits 1 on any
+      problem.</li>
+    <li><code>orca config export [--out -] [--force]</code> writes an
+      <code>orca.toml</code> with a table per registered pipeline, holding what is
+      registered beyond the defaults, so registering from it gives the same registration
+      back. It writes no <code>[defaults]</code>. Use it to move from register flags to a
+      file.</li>
+  </ul>
+</OrcaDocs>

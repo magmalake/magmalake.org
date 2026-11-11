@@ -1,7 +1,7 @@
 {
  "tin": "parquet-full",
- "version": "0.1.8",
- "rev": "c15f51aee06ccf73102810e7de143745abba6c90",
+ "version": "0.1.11",
+ "rev": "5d265f9004fdad1522b80c8770c8a7a7f5f9f089",
  "package": "parquet_full",
  "path": "full/src/parquet_full",
  "mojo": "Mojo 1.2.0 (2016d0cd)",
@@ -43,6 +43,14 @@
        "overloads": [
         {
          "signature": "def compress(codec: Int32, data: Span[UInt8]) -> List[UInt8]"
+        }
+       ]
+      },
+      {
+       "name": "compress_level",
+       "overloads": [
+        {
+         "signature": "def compress_level(codec: Int32, data: Span[UInt8], level: Int) -> List[UInt8]"
         }
        ]
       }

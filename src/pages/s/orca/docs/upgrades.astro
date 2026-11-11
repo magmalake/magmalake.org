@@ -1,0 +1,236 @@
+---
+import OrcaDocs from "../../../../components/OrcaDocs.astro";
+import CodeBlock from "../../../../components/CodeBlock.astro";
+import { ORCA_REPO } from "../../../../data/orca";
+
+const DOCS = `${ORCA_REPO}/blob/main/docs`;
+const HETZNER = `${DOCS}/hetzner.md`;
+
+const description =
+  "Upgrading Orca: releases and the images built from them, deploying a new image with its upgrade steps and the check after it, additive migrations so an older image runs on a newer schema, rollbacks without restoring the database, floor-raising migrations, backups and restores, two schedulers overlapping during a deploy, and keeping workers on the server's tag.";
+---
+
+<OrcaDocs href="/s/orca/docs/upgrades" description={description}>
+  <p class="eyebrow">Operations</p>
+  <h1 class="section-title">Upgrades and rollbacks</h1>
+  <p class="lede">
+    An upgrade is a new image. Orca keeps the database working for the image before it,
+    so going back is another deploy rather than a restore. This page covers releases,
+    the deploy, the schema rules that make rollbacks cheap, backups, and the workers.
+  </p>
+
+  <nav class="docs-toc" aria-label="On this page">
+    <a href="#releases">Releases and images</a>
+    <a href="#deploying">Deploying a new image</a>
+    <a href="#migrations">Additive migrations</a>
+    <a href="#rolling-back">Rolling back</a>
+    <a href="#backups">Backups</a>
+    <a href="#overlap">Overlapping schedulers</a>
+    <a href="#workers">Workers on the same tag</a>
+  </nav>
+
+  <h2 id="releases">Releases and images</h2>
+  <p>
+    Each Orca release has a version, the <code>orca-mojo</code> version a project pins,
+    and an entry in
+    <a href={`${ORCA_REPO}/blob/main/CHANGELOG.md`} rel="noopener">CHANGELOG.md</a>. With
+    it come:
+  </p>
+  <ul class="docs-list">
+    <li>
+      <code>ghcr.io/magmalake/orca-runtime:&lt;version&gt;</code> (from 0.24.0), for
+      linux/arm64 and linux/amd64, with <code>orca</code>, its tools and the <code>/opt/orca</code>
+      layout;
+    </li>
+    <li>
+      <code>orca-hetzner.tar.gz</code>, the deploy scripts, which print the version they
+      came with (<a href="/s/orca/docs/deploy#scripts">The scripts</a>).
+    </li>
+  </ul>
+  <p>
+    A project's image builds <code>FROM</code> the runtime of the Orca version it pins
+    and adds its own pipelines. Images are tagged by the project's short commit sha, not
+    by version, so moving a project to a new Orca is a commit that bumps the pin, and its
+    image is the thing you deploy
+    (<a href={`${HETZNER}#images`} rel="noopener">Images</a>).
+  </p>
+
+  <h2 id="deploying">Deploying a new image</h2>
+  <CodeBlock label="shell" code={`./deploy.sh a1b2c3d                    # the image at that tag; starts again what changed
+./deploy.sh --rollback                 # back to the tags deployed before`} />
+  <p>
+    <a href="/s/orca/docs/deploy#deploys">Deploying</a> has what a deploy replaces and
+    how the UI and apps change without downtime. Three parts matter for an upgrade:
+  </p>
+  <ul class="docs-list">
+    <li>
+      <strong>A backup first.</strong> Each deploy that replaces anything backs the
+      database up just before it applies, and prints the dump's key (since 0.16.0).
+    </li>
+    <li>
+      <strong>Upgrade steps</strong> (since 0.23.0). A release that needs something done
+      around its deploy, such as a backfill after it or a new secret before it, lists it
+      in its image's <code>/opt/orca/upgrade.toml</code>. When the Orca tag changes,
+      <code>deploy.sh</code> reads the new image's <code>before</code> steps first and
+      stops until each is done, then runs the <code>after</code> steps once the pipelines
+      are registered and before they are unpaused. <code>orca upgrade --from &lt;old&gt;
+      --to &lt;new&gt;</code> prints the steps between two versions, skipped versions'
+      included.
+    </li>
+    <li>
+      <strong>The check after it.</strong> Every deploy, a rollback too, ends with
+      <code>orca-stack check</code>: Postgres answers, each container runs the image it
+      should, there is one scheduler, every pipeline's binary is in the image, and, on a
+      dev stack, <code>CANARY</code> runs succeed. It undoes nothing; a failed check means
+      <code>--rollback</code> is the way back
+      (<a href={`${HETZNER}#the-check-after-each-deploy`} rel="noopener">The check after
+      each deploy</a>).
+    </li>
+  </ul>
+
+  <h2 id="migrations">Additive migrations</h2>
+  <p>
+    The new image migrates the schema when its scheduler or UI starts. Postgres is never
+    rolled back with the image, so the older image has to run on the newer schema. It can,
+    as long as every migration it doesn't know is additive. Orca's own rule for its
+    migrations (<a href={`${ORCA_REPO}/blob/main/AGENTS.md`} rel="noopener">AGENTS.md</a>,
+    "Migrations"):
+  </p>
+  <ul class="docs-list">
+    <li>add columns only nullable or with a default;</li>
+    <li>
+      add tables and indexes freely; a foreign key onto a table Orca deletes from needs
+      <code>ON DELETE CASCADE</code> or <code>SET NULL</code>;
+    </li>
+    <li>
+      don't rename, drop or retype anything, tighten a constraint, change a key an
+      <code>ON CONFLICT</code> names, write a status older code acts on, or give an old
+      column a new meaning.
+    </li>
+  </ul>
+  <p>
+    Queries name their columns and read rows by name, so a new column never shifts what
+    older code reads.
+  </p>
+
+  <h3 id="schema-ahead">An older binary on a newer schema</h3>
+  <p>
+    When a binary starts on a database ahead of it, it checks the schema's floor: the
+    fewest migrations a binary must know to run on it, which is the newest migration
+    listed in <code>_floor_raisers</code> in <code>src/orca/migrations.mojo</code>. If
+    the binary knows at least that many, it logs that it is running on a newer schema and
+    goes on:
+  </p>
+  <CodeBlock label="log" code={`orca: the database is at schema version 41, ahead of this binary's 40; its migrations since are additive, so running on it`} />
+  <p>
+    If not, it refuses to start, naming the version it needs. The floor raisers so far
+    are migration 1, which creates the schema, and 24, the EC2 warm pool's change to
+    <code>orca.instances</code>' key. This holds from Orca 0.16.0, the first that
+    records floors: an image with an older Orca stops at any newer schema, additive or
+    not.
+  </p>
+
+  <h3 id="floor-raisers">Floor-raising migrations</h3>
+  <p>
+    A migration that has to break the rule adds its version to
+    <code>_floor_raisers</code>, saying why. From then on, a rollback to an image from before it needs the database restored from the
+    backup taken before the upgrade, and a deploy across it can't
+    <a href="#overlap">overlap</a> schedulers.
+  </p>
+
+  <h2 id="rolling-back">Rolling back</h2>
+  <p>
+    Each deploy keeps the tags it replaced. <code>./deploy.sh --rollback</code> applies
+    the previous Orca and app tags and, if it replaced the scheduler, registers the
+    pipelines again from the older image, so runs start with the code that is deployed.
+    A second rollback goes forward again. Rolling back only an app leaves the scheduler
+    alone (<a href="/s/orca/docs/deploy#rollbacks">Rollbacks</a>).
+  </p>
+  <p>
+    Across a floor-raising migration, restore the backup, then roll back:
+  </p>
+  <CodeBlock label="shell" code={`ssh root@<ip> orca-stack list-backups      # the dumps, by time
+ssh root@<ip> orca-stack restore --force backups/pg/20261108T101500Z.dump
+ssh root@<ip> orca-stack rollback --force  # the old images on it, registered again`} />
+  <p>
+    The restore unpauses the pipelines the deploy paused and leaves those paused by hand
+    or by the watchdog paused. What happened in Orca's database since the dump is lost:
+    runs, registrations, users and tokens added. The warehouse isn't in the dump, so
+    snapshots committed since stay in the tables
+    (<a href={`${HETZNER}#rolling-back`} rel="noopener">Rolling back</a>).
+  </p>
+  <p>
+    A run with steps done by the newer code fails after a rollback, saying how to resume
+    it with <code>--allow-new-code</code>. And register without <code>"auto"</code>
+    requests before rolling back to an Orca before 0.21.0, which refuses them.
+  </p>
+
+  <h2 id="backups">Backups</h2>
+  <p>
+    The Hetzner server runs <code>orca-stack backup</code> every night at 02:30 UTC: a
+    <code>pg_dump</code> of the <code>orca</code> schema, checked to read back, uploaded to
+    <code>s3://&lt;bucket&gt;/backups/pg/&lt;time&gt;.dump</code>, keeping the newest 14.
+    Beside each dump is a file saying which pipelines were paused by hand and which by a
+    deploy. A failed backup sends an alert.
+  </p>
+  <CodeBlock label="shell" code={`./backup.sh                               # now, e.g. before a risky step
+./backup.sh list
+./up.sh --restore latest                  # onto a new server and an empty Volume`} />
+  <p>
+    Only Orca's own state (runs, pipelines, users) is in the dump. The warehouse is in the
+    bucket and needs no restore. Test a restore before you need one
+    (<a href={`${HETZNER}#backups-and-restore`} rel="noopener">Backups and restore</a>).
+  </p>
+
+  <h2 id="overlap">Overlapping schedulers</h2>
+  <p>
+    Restarting the scheduler kills the local runs it holds, so by default a deploy that
+    replaces it pauses the pipelines and waits for those runs. With
+    <code>orca-stack configure OVERLAP=1</code> (since 0.18.0, off by default) it
+    doesn't. The new scheduler starts beside the old one on the same Postgres:
+  </p>
+  <ol class="docs-list">
+    <li>
+      <code>orca scheduler can-overlap</code>, from the new image, says yes only if a live
+      scheduler leads and every live one knows at least the new binary's floor. On no,
+      the deploy pauses and waits as before, saying why.
+    </li>
+    <li>
+      The new scheduler migrates (additively) and joins. The newest live scheduler leads,
+      by a Postgres advisory lock, so the old one gives up the lead and drains: it starts
+      nothing more and finishes its runs under its own image.
+    </li>
+    <li>
+      The deploy waits for the new one to lead (<code>orca scheduler wait-lead</code>),
+      then registers the pipelines, so new runs start with the new code.
+    </li>
+    <li>
+      The old scheduler exits once its runs end, or after
+      <code>ORCA_DRAIN_SECONDS</code> (3600) kills what is left; those runs are queued
+      again.
+    </li>
+  </ol>
+  <p>
+    A draining scheduler never takes the lead back. If the new one dies first, nothing
+    starts until a newer one runs: the container's restart, or a rollback
+    (<a href={`${DOCS}/overlap.md`} rel="noopener">overlap.md</a>).
+  </p>
+
+  <h2 id="workers">Workers on the same tag</h2>
+  <p>
+    A remote worker runs the code of its own image, so keep it on the server's tag.
+    Deploy the server first, then restart the worker on the same tag. A server deploy
+    doesn't wait for a worker's runs, and they go on to the new UI
+    (<a href="/s/orca/docs/workers#limits">Remote workers</a>).
+  </p>
+  <p>
+    If the pipelines are registered with <code>--image</code>, a worker of another image
+    is given none of their runs, which stay queued saying why, so nothing runs on a
+    mismatched worker. Without <code>--image</code>, a worker still on the old tag runs
+    the old code until it is restarted. Machines of an
+    <a href="/s/orca/docs/pools#autoscaling">autoscaled pool</a> run the image the UI
+    gives them when they boot (<code>ORCA_WORKER_IMAGE</code>, the server's own), so
+    machines made after a deploy get the new one; a machine already up keeps the image it
+    booted with until it is removed.
+  </p>
+</OrcaDocs>
