@@ -10,7 +10,7 @@ import { tins, slugOf } from "../data/tins";
 import { SECTIONS } from "../data/search";
 
 const names = Object.fromEntries(tins.map((t) => [slugOf(t), t.name]));
-const description = "Search every page of magmalake: the getting-started guides, Orca, Dista, every tin's docs and API, and the blog.";
+const description = "Search every page of magmalake: every tin's docs and API, the maintainers' runbook, and the blog.";
 ---
 
 <Base title="Search" description={description}>

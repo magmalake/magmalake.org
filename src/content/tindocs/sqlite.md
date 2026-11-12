@@ -4,7 +4,7 @@ checked: 0.3.5
 
 ## What it's for
 
-sqlite is an embedded SQL database for Mojo: a `Database`, prepared `Statement`s, `Row` snapshots and a `Transaction` guard over libsqlite3. It's the store behind the SQL catalog in [iceberg](/s/iceberg), the one PyIceberg calls `SqlCatalog`, and the way most local Iceberg setups start. [Orca](/s/orca) and [Dista](/s/dista) depend on it too. It's a fork of ehsanmok/sqlite with the ORM removed, so it depends on nothing but conda-forge's `libsqlite`.
+sqlite is an embedded SQL database for Mojo: a `Database`, prepared `Statement`s, `Row` snapshots and a `Transaction` guard over libsqlite3. It's the store behind the SQL catalog in [iceberg](/s/iceberg), the one PyIceberg calls `SqlCatalog`, and the way most local Iceberg setups start. [Morca](https://morca.dev) and [Dista](https://morca.dev/dista/) depend on it too. It's a fork of ehsanmok/sqlite with the ORM removed, so it depends on nothing but conda-forge's `libsqlite`.
 
 ## Install
 

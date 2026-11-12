@@ -2,35 +2,37 @@
 import "../../styles/getting-started.css";
 import Base from "../../layouts/Base.astro";
 import CodeBlock from "../../components/CodeBlock.astro";
-import GettingStartedPager from "../../components/GettingStartedPager.astro";
-import { ORCA_REPO } from "../../data/orca";
+import { ORCA_REPO } from "../../data/gharchive";
 import { GHARCHIVE_REPO } from "../../data/gharchive";
 
 const description =
-  "Run the magmalake stack without an assistant: the pull-request routine and the known flaky tests, releasing tins with shelf release, releasing the shelf CLI, operating Orca and the census in production, and where everything lives.";
+  "Maintain magmalake without an assistant: the pull-request routine and the known flaky tests, releasing tins with shelf release, releasing the shelf CLI, and where everything lives.";
 
 const SHELF_REPO = "https://github.com/mojoshelf/mojoshelf";
 const GH = "https://github.com/magmalake";
 ---
 
-<Base title="Maintain and release — Getting started" description={description}>
+<Base title="Maintain and release" description={description}>
   <section class="section section--flush">
     <div class="wrap wrap--wide docs gs">
-      <p class="eyebrow"><a href="/getting-started">Getting started</a></p>
+      <p class="eyebrow">Maintainers</p>
       <h1 class="section-title">Maintain and release</h1>
       <p class="lede">
         A runbook for the person who owns the stack: the pull-request routine, releasing tins
-        and the <code>shelf</code> CLI, operating Orca and the census, and where things are.
+        and the <code>shelf</code> CLI, and where things are.
         Every command was checked against the source on 2026-11-06 (shelf 0.7.0); where
-        something is a known caveat, it says so. For laying out the checkouts and running the
-        tests, see <a href="/getting-started/develop">Develop locally</a>.
+        something is a known caveat, it says so. Orca, Dista and the census are now Morca's,
+        at <a href="https://morca.dev" rel="noopener">morca.dev</a>: its
+        <a href="https://morca.dev/getting-started/maintain" rel="noopener">runbook</a> covers
+        running them in production, and
+        <a href="https://morca.dev/getting-started/develop" rel="noopener">Develop locally</a>
+        lays out the checkouts and runs the tests.
       </p>
 
       <nav class="docs-toc" aria-label="On this page">
         <a href="#prs">Day-to-day pull requests</a>
         <a href="#release">Releasing tins</a>
         <a href="#cli">Releasing the shelf CLI</a>
-        <a href="#prod">Orca and the census in production</a>
         <a href="#where">Where things are</a>
       </nav>
 
@@ -98,19 +100,6 @@ shelf changes check                      # what CI runs; compares HEAD with orig
         design is in <a href={`${SHELF_REPO}/issues/36`} rel="noopener">mojoshelf #36</a>; it
         needs <code>shelf</code> 0.8.0 or later.
       </p>
-      <h3 id="migrations">Orca's database migrations</h3>
-      <p>
-        <code>_migrations()</code> in <code>src/orca/state.mojo</code> is a list, and the
-        schema version is a migration's <em>index plus one</em>, so append only; never insert,
-        edit or reorder. <code>tests/test_state.mojo</code> asserts the latest number (30 on
-        2026-11-06), so a PR that adds a migration bumps that number in the same commit. When
-        two open PRs each add one, they collide in both files: renumber in merge order, the
-        second PR rebasing onto main, moving its migration after the first's and bumping the
-        asserted number by one. A binary refuses a database whose version is newer than its
-        own ("the database is at schema version N, newer than this binary's M"), so deploy
-        the scheduler and UI together.
-      </p>
-
       <h2 id="release">Releasing tins with shelf release</h2>
       <p>
         Tins pin each other by git revision, so releasing one means releasing its dependents
@@ -260,98 +249,16 @@ npx wrangler deploy`} />
         </li>
       </ol>
 
-      <h2 id="prod">Orca and the census in production</h2>
-      <h3 id="hetzner">Where it runs</h3>
-      <p>
-        The AWS project was paused twice by its spend limit in November 2026, so the census
-        and Orca are moving to one Hetzner Cloud ARM server with a fixed monthly cost
-        (<a href={`${ORCA_REPO}/issues/166`} rel="noopener">orca #166</a>). The runbook for it
-        is <a href={`${ORCA_REPO}/blob/main/docs/hetzner.md`} rel="noopener"><code>docs/hetzner.md</code></a>
-        in orca.mojo; it lands with <a href={`${ORCA_REPO}/pull/167`} rel="noopener">PR #167</a>,
-        so that link is a 404 until that PR merges. Until then the old AWS stack and
-        <a href="/getting-started/step-by-step#aws"><code>orca aws</code></a> still describe what
-        is running. In short, the design is:
-      </p>
-      <ul>
-        <li>one server (CAX21: 4 ARM vCPU, 8 GB), rescaled CPU and RAM only to a CAX41 for the initial import and any full rebuild, then back;</li>
-        <li>the <code>local</code> runner, with Dista threaded workers (<code>DISTA_WORKER_SLOTS</code>), so Orca launches no instances and spend cannot run away;</li>
-        <li>the warehouse and logs on Hetzner Object Storage (S3-compatible, through <code>AWS_ENDPOINT_URL_S3</code>), Postgres in a container on a Volume with a nightly <code>pg_dump</code> to Object Storage;</li>
-        <li>no open ports but SSH: a Cloudflare Tunnel serves orca.mojourney.dev and mojourney.dev; secrets come from files through <code>ORCA_SECRET_FETCH</code>.</li>
-      </ul>
-      <h3 id="cutover">Cutover checklist</h3>
-      <p>From #166; the issue is the source if it has changed since.</p>
-      <ol>
-        <li>Prerequisites merged and released: orca #165, iceberg-mojo 0.11.1 (the fix for <a href={`${ORCA_REPO}/issues/164`} rel="noopener">#164</a>), then orca-mojo 0.10.0; mojo-census re-pinned to those commits (the <a href="#release">release steps</a>); the mojoshelf Worker deployed so shelf 0.7.0 installs (<a href="#cli">the CLI steps</a>).</li>
-        <li>Accounts and credentials, yours to create: a Hetzner Cloud project and read/write API token (for <code>hcloud</code> on the laptop only), an Object Storage bucket with S3 keys, a Cloudflare Tunnel and token with routes for orca.mojourney.dev and mojourney.dev, and a GitHub token for the census's mojo_repos.</li>
-        <li><code>deploy/hetzner/up.sh</code> on the small server; the two hostnames move to the tunnel.</li>
-        <li><code>orca user add &lt;name&gt;</code> (it reads the password from stdin), then register the census pipelines from its <code>orca.toml</code>.</li>
-        <li><code>rescale.sh up</code>, let the fill run (the pipeline page's Fill line shows progress), then <code>rescale.sh down</code>.</li>
-        <li>Check the census console and the row counts per day.</li>
-        <li>Tear down the AWS stack only when AWS support has answered and you have decided what to do with the old S3 data. It may hold duplicate or missing hours (#164), so it is not migrated.</li>
-      </ol>
-      <h3 id="settings">Census settings for the re-import</h3>
-      <p>
-        The census registers from its <code>orca.toml</code>. Until iceberg 0.11.1 is pinned
-        everywhere, the fill is limited so that concurrent commits cannot claim the same
-        snapshot (#164). For each pipeline that fills:
-      </p>
-      <CodeBlock label="orca.toml" code={`fills = "all"
-max_runs = 1
-fill_max_runs = 1
-# and, in the scheduler's environment (the env block or the env file):
-# DISTA_WORKER_SLOTS=<slots per worker>`} />
-      <p>
-        Check the exact keys and where each sits with <code>orca config show</code> (what is
-        registered and where each value came from) and Orca's
-        <a href={`${ORCA_REPO}/blob/main/docs/orca-toml.md`} rel="noopener">orca-toml reference</a>.
-        Change a fill's limits in <code>orca.toml</code> and <code>orca register</code> again;
-        raise them back only once 0.11.1 is pinned. Register by hand with
-        <code>orca register --config orca.toml &lt;pipeline binary&gt; ...</code>.
-      </p>
-      <h3 id="operate">Operating</h3>
-      <p>
-        The UI is at <a href="https://orca.mojourney.dev" rel="noopener">orca.mojourney.dev</a>:
-        <strong>Ops &gt; Control</strong> for the scheduler host, <strong>Ops &gt; Fleet</strong>
-        for launched instances (empty on the <code>local</code> runner, and its cost rules are
-        off there), and the <strong>watchdog</strong> page for the rules, their values and
-        active trips. Operations go through the UI or the remote CLI, which keep audit rows.
-        Log in once, then pass <code>--remote</code>:
-      </p>
-      <CodeBlock label="shell" code={`orca login https://orca.mojourney.dev [--user NAME] [--days N] [--label L]
-orca --remote https://orca.mojourney.dev status
-orca --remote https://orca.mojourney.dev watchdog status
-orca --remote https://orca.mojourney.dev watchdog snooze <rule> 2h        # 30m, 1d; "off" ends it
-orca --remote https://orca.mojourney.dev pause gharchive
-orca --remote https://orca.mojourney.dev unpause gharchive
-orca --remote https://orca.mojourney.dev backfill --preview gharchive 2024-01-01..2024-01-31
-orca --remote https://orca.mojourney.dev backfill gharchive 2024-01-01..2024-01-31
-orca --remote https://orca.mojourney.dev backfill --rerun gharchive 2024-01-05   # done keys too
-orca --remote https://orca.mojourney.dev cancel gharchive 2024-01-01..2024-01-31  # or: cancel <run>
-orca --remote https://orca.mojourney.dev resume <run>                      # rerun <run> <step> starts from a step`} />
-      <p>
-        Without <code>--remote</code> the same commands act on the database named by
-        <code>ORCA_DATABASE_URL</code> (or set <code>ORCA_REMOTE</code>). <code>backfill</code>
-        prints "queued N runs"; keys skipped, and why, go to stderr. <code>--preview</code>
-        queues nothing. A rerun of a step that appends is refused unless you add
-        <code>--allow-append</code> (it would duplicate rows; see the README's "Reruns that
-        replace a partition"). A mistyped command prints the full usage text. Running
-        <code>docker exec ... orca ...</code> on the server directly is for debugging only.
-      </p>
-      <p>
-        Caveat: the pipeline name above is an example; list real ones with
-        <code>orca status</code>.
-      </p>
-
       <h2 id="where">Where things are</h2>
       <div class="table-scroll">
         <table>
           <thead><tr><th>Repository</th><th>What it is</th></tr></thead>
           <tbody>
-            <tr><td><a href={`${ORCA_REPO}`} rel="noopener">magmalake/orca.mojo</a></td><td>The orchestrator: scheduler, UI, CLI, <code>orca aws</code>. Tin <code>orca-mojo</code>. Database migrations live here.</td></tr>
-            <tr><td><a href={GHARCHIVE_REPO} rel="noopener">magmalake/mojo-census</a></td><td>The example and production workload: three pipelines and the console. Pins every library by commit in <code>pixi.toml</code>; not a tin.</td></tr>
+            <tr><td><a href={`${ORCA_REPO}`} rel="noopener">morca-dev/morca</a></td><td>Morca, the orchestrator, formerly magmalake/orca.mojo. Tin <code>orca-mojo</code>. Its own site is <a href="https://morca.dev" rel="noopener">morca.dev</a>.</td></tr>
+            <tr><td><a href={GHARCHIVE_REPO} rel="noopener">morca-dev/census</a></td><td>The census behind <a href="https://mojourney.dev" rel="noopener">mojourney.dev</a>: three pipelines and the console. Pins every library by commit in <code>pixi.toml</code>; not a tin.</td></tr>
             <tr><td><a href={`${GH}/iceberg.mojo`} rel="noopener">magmalake/iceberg.mojo</a></td><td>Iceberg tables, reads and writes. Tin <code>iceberg-mojo</code>.</td></tr>
             <tr><td><a href={`${GH}/parquet.mojo`} rel="noopener">magmalake/parquet.mojo</a></td><td>Parquet reader and writer; <code>full/</code> adds the compression codecs. Tins <code>parquet-mojo</code>, <code>parquet-full-mojo</code>.</td></tr>
-            <tr><td><a href={`${GH}/dista.mojo`} rel="noopener">magmalake/dista.mojo</a></td><td>Distributed tasks and actors. Tin <code>dista-mojo</code>.</td></tr>
+            <tr><td><a href="https://github.com/morca-dev/dista" rel="noopener">morca-dev/dista</a></td><td>Distributed tasks and actors, formerly magmalake/dista.mojo. Tin <code>dista-mojo</code>.</td></tr>
             <tr><td><a href={SHELF_REPO} rel="noopener">mojoshelf/mojoshelf</a></td><td>The registry (a Cloudflare Worker plus D1), the <code>shelf</code> CLI and the conda channel. <code>OPERATIONS.md</code> has the Worker's secrets, deploy and database steps. It is in the <em>mojoshelf</em> organisation, not magmalake.</td></tr>
             <tr><td><a href={`${GH}/magmalake.org`} rel="noopener">magmalake/magmalake.org</a></td><td>This site.</td></tr>
           </tbody>
@@ -363,13 +270,9 @@ orca --remote https://orca.mojourney.dev resume <run>                      # rer
         tracked per repository, in each one's Issues tab. There are no priority labels, so
         read the open issues list as it is, and the
         <code>release</code> label where a repository has one. Pull requests are the other
-        queue: <code>gh pr list -R magmalake/orca.mojo</code>.
+        queue: <code>gh pr list -R magmalake/iceberg.mojo</code>.
       </p>
 
-      <GettingStartedPager
-        prev={{ href: "/getting-started/develop", label: "Develop locally" }}
-        next={{ href: "/getting-started", label: "Back to getting started" }}
-      />
     </div>
   </section>
 </Base>

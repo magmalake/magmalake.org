@@ -4,7 +4,7 @@ checked: 0.6.1
 
 ## What it's for
 
-threads is how a Mojo program uses more than one core today: it wraps pthreads with spawn and join, 64-bit atomics, a mutex and condition variable, `parallel_for` over a bounded set of tasks, and pools of long-running workers. [parquet](/s/parquet) and [iceberg](/s/iceberg) fan reads out with `parallel_for`, [postgres](/s/postgres) blocks pool checkouts on its condition variable, and [restate](/s/restate), [k8s](/s/k8s), [flare_mlake](/s/flare_mlake) and [Orca](/s/orca) build on it too. It's a stopgap until the standard library has threads of its own.
+threads is how a Mojo program uses more than one core today: it wraps pthreads with spawn and join, 64-bit atomics, a mutex and condition variable, `parallel_for` over a bounded set of tasks, and pools of long-running workers. [parquet](/s/parquet) and [iceberg](/s/iceberg) fan reads out with `parallel_for`, [postgres](/s/postgres) blocks pool checkouts on its condition variable, and [restate](/s/restate), [k8s](/s/k8s), [flare_mlake](/s/flare_mlake) and [Morca](https://morca.dev) build on it too. It's a stopgap until the standard library has threads of its own.
 
 ## Install
 

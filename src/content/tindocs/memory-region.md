@@ -4,7 +4,7 @@ checked: 0.1.1
 
 ## What it's for
 
-memory-region gives you a fixed range of bytes, on the heap or in a file mapped `MAP_SHARED`, and a bump allocator that carves it up by offset rather than by pointer. Whatever you lay out inside it refers to the rest of it by offset, so another process can map the same file at a different address and read it unchanged. [arrow-mlake](/s/arrow-mlake) uses it to hand Arrow batches to another process without a copy on the reading side, and [Dista](/s/dista) uses it in its object store.
+memory-region gives you a fixed range of bytes, on the heap or in a file mapped `MAP_SHARED`, and a bump allocator that carves it up by offset rather than by pointer. Whatever you lay out inside it refers to the rest of it by offset, so another process can map the same file at a different address and read it unchanged. [arrow-mlake](/s/arrow-mlake) uses it to hand Arrow batches to another process without a copy on the reading side, and [Dista](https://morca.dev/dista/) uses it in its object store.
 
 ## Install
 

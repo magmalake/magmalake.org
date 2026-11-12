@@ -9,7 +9,7 @@ import { tins, statusOf } from "../data/tins";
 const unpublished = tins.filter((t) => statusOf(t) !== "shelf").map((t) => t.name);
 
 const description =
-  "Every magmalake tin, layer by layer — execution, tables and catalogs, file formats, storage, primitives and utilities — each linking to its own page: what it is, how to install it, what proves it and how fast it is.";
+  "Every magmalake tin, layer by layer — durable execution, tables and catalogs, file formats, storage, primitives and utilities — each linking to its own page: what it is, how to install it, what proves it and how fast it is.";
 ---
 
 <Base title="Tins" description={description}>
@@ -18,8 +18,7 @@ const description =
       <p class="eyebrow">The tins</p>
       <h1 class="section-title">Every tin, layer by layer</h1>
       <p class="lede">
-        At the top, execution: Orca schedules pipelines, Dista runs Mojo functions across a
-        cluster, and restate makes a flow durable. Beneath it, Iceberg
+        At the top, execution: restate makes a flow durable. Beneath it, Iceberg
         tables and their catalogs; then the file formats a table is made of, and the
         storage and databases it lives in; then the codecs, hashes and threads they all
         share, and small utilities beside them. I kept every piece separate, so you can
@@ -58,13 +57,13 @@ const description =
             Mojo to Iceberg has to go through.
           </p>
           <p>
-            Then it grew upward. <a href="/s/orca">Orca</a> is the orchestration layer:
-            pipelines as DAGs in Mojo, checked by the compiler, partitioned by time or arbitrary keys
-            and run on cron schedules, with a scheduler that backfills and retries. It loads
-            every month of NYC taxi trips since 2011, 1.44 billion rows, four runs at a time.
-            <a href="/s/dista">Dista</a>, beneath it, runs Mojo functions distributed across a cluster.
-            On those taxi rows in S3 it
-            beats both Ray and a Rust implementation of the same queries.
+            Then it grew upward, into pipelines, which now have a project of their own:
+            <a href="https://morca.dev" rel="noopener">Morca</a>. Its orchestrator runs
+            pipelines written in Mojo and checked by the compiler, and loads every month of NYC
+            taxi trips since 2011, 1.44 billion rows, four runs at a time.
+            <a href="https://morca.dev/dista/" rel="noopener">Dista</a>, also part of Morca, runs
+            Mojo functions across a cluster. On those taxi rows in S3 it beats both Ray and a
+            Rust implementation of the same queries.
           </p>
         </div>
 

@@ -23,7 +23,7 @@ Seven small source deltas, each worth sending upstream:
 - **`eventfd_write` is Linux-only** (`flare/runtime/_balance.mojo`). Unguarded, anything reaching the unified reactor failed to link on macOS.
 - **`libflare_tls` pins itself in memory** with `RTLD_NODELETE` (`flare/tls/ffi/openssl_wrapper.cpp`), because macOS's linker has no `-z nodelete`.
 - **The FFI shims are found next to the executable too** (`flare/utils/_dlopen.mojo`): `$CONDA_PREFIX/lib`, then the executable's directory and its `../lib`, then the rpath. A missing shim raises an Error that says to set `CONDA_PREFIX`.
-- **`fcntl` is declared variadic** (`flare/net/_libc.mojo`), as dista and orca declare it, so flare's HTTP client links beside [Dista](/s/dista) on Linux.
+- **`fcntl` is declared variadic** (`flare/net/_libc.mojo`), as dista and morca declare it, so flare's HTTP client links beside [Dista](https://morca.dev/dista/) on Linux.
 - **`tests/tools/proto_gen.py` decodes `repeated string` and `bytes` one element per field**, as they are never packed.
 
 And packaging: the package is named `flare_mlake` while the module stays `flare`, it depends on [json_mlake](/s/json_mlake) and its fuzz environment on [mozz_mlake](/s/mozz_mlake) instead of upstream's repositories, and [CHANGELOG.md](https://github.com/magmalake/flare_mlake/blob/main/CHANGELOG.md) lists every change as it's made. CI runs upstream's gRPC, HTTP, TLS, net and crypto tests on the packaged build.

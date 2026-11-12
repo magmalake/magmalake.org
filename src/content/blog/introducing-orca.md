@@ -10,6 +10,8 @@ unlisted: false
 draft: false
 ---
 
+*Orca is now Morca, at [morca.dev](https://morca.dev).*
+
 [orca](https://github.com/magmalake/orca.mojo) runs data pipelines written in
 Mojo. A pipeline is Mojo code, and the compiler checks how its steps connect.
 A scheduler starts its runs on a cron schedule, when an upstream table gets a
@@ -136,7 +138,7 @@ machine. The run's state calls go to the API, which writes them to
 Postgres, so the worker holds no database credentials and needs no inbound
 port. Its token is scoped to one pool and can be revoked. If a worker dies,
 its runs are requeued once their heartbeats stop.
-[The workers page](/s/orca/docs/workers) has the details.
+[The workers page](https://morca.dev/docs/workers) has the details.
 
 <figure class="shot">
   <img class="shot__light" src="/blog/introducing-orca/workers-light.webp" alt="The Workers page: one worker of pool bgent, last seen 1 s ago, running run 1331, with 8 CPUs and 11,933 MB" width="1280" height="300" loading="lazy" />
@@ -181,7 +183,7 @@ new run starts while the machine is already stalling on memory
 ([#202](https://github.com/magmalake/orca.mojo/issues/202)). Next is dista
 sizing its in-flight work from the run's grant
 ([dista #123](https://github.com/magmalake/dista.mojo/issues/123)). The
-[roadmap](/s/orca/docs/roadmap) sets out the order and the papers each step
+[roadmap](https://morca.dev/docs/roadmap) sets out the order and the papers each step
 borrows from, from Borg and Autopilot to Dominant Resource Fairness and
 morsel-driven parallelism.
 
@@ -289,6 +291,6 @@ runs its own data checks before a new build goes live, and shows them at
 ## Where to go next
 
 To build a pipeline of your own,
-[Getting started](/getting-started/) sets up magmalake from scratch and
+[Getting started](https://morca.dev/getting-started/) sets up magmalake from scratch and
 builds the census with it. To see where orca is headed, and the papers
-each step borrows from, the [roadmap](/s/orca/docs/roadmap) has the plan.
+each step borrows from, the [roadmap](https://morca.dev/docs/roadmap) has the plan.

@@ -4,16 +4,14 @@
  * index and tags the page with two filters from its path, so a new page is
  * searchable, and scoped, with nothing added:
  *
- *   section  Start here, Orca, Dista, Tins or Blog: the scopes /search offers;
+ *   section  Start here, Tins or Blog: the scopes /search offers;
  *   tin      the tin a /s/<tin>/... page belongs to, for a tin's own search.
  */
-export const SECTIONS = ["Start here", "Orca", "Dista", "Tins", "Blog"] as const;
+export const SECTIONS = ["Start here", "Tins", "Blog"] as const;
 
 export function scopeOf(path: string): { section: string; tin?: string } {
   const p = path.replace(/\/$/, "") || "/";
   const tin = p.match(/^\/s\/([^/]+)/)?.[1];
-  if (tin === "orca") return { section: "Orca", tin };
-  if (tin === "dista") return { section: "Dista", tin };
   if (tin || p === "/tins" || p === "/performance") return { section: "Tins", tin };
   if (p.startsWith("/blog")) return { section: "Blog" };
   return { section: "Start here" };

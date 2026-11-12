@@ -3,77 +3,82 @@ import Base from "../layouts/Base.astro";
 import Hero from "../components/Hero.astro";
 import CodeTabs from "../components/CodeTabs.astro";
 import CodeBlock from "../components/CodeBlock.astro";
-import { headline, images } from "../data/dista";
-import { oneMachine, onAws } from "../data/home";
-
-/** `backticks` in src/data/home.ts become <code>. */
-const code = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/`([^`]+)`/g, "<code>$1</code>");
+import StackDiagram from "../components/StackDiagram.astro";
+import { LIBS } from "../data/gharchive";
+import { MOJOSHELF_INSTALL } from "../data/install";
 
 const description =
-  "Data pipelines in Mojo: checked by the compiler, distributed with Dista, recorded in Postgres so they resume and retry, documented for coding agents, and built on a native Iceberg stack published as tins on mojoshelf.";
+  "Native Mojo data libraries, published as tins on mojoshelf: Parquet, Iceberg, Arrow, Avro, Thrift, the compression codecs, object storage, and Postgres and SQLite clients, with no Python or JVM in the path. Measured against pyarrow, including where they lose. The companion of morca.dev.";
 
-const img = Object.fromEntries(images.rows.map((r) => [r.label, r]));
+const install = `pixi init app -c https://conda.modular.com/max -c conda-forge && cd app
+sed -i.bak 's/^\\[workspace\\]/[workspace]\\npreview = ["pixi-build"]/' pixi.toml
+pixi add "mojo-compiler==1.2.0"
+pixi shelf add parquet-full-mojo    # Parquet with every codec`;
 ---
 
-<Base title="Data processing in Mojo" description={description} bare={false}>
+<Base title="Data libraries in Mojo" description={description} bare={false}>
   <Hero />
 
   <section class="section section--alt" id="what">
     <div class="wrap wrap--wide">
       <div class="home-points">
         <div class="home-point">
-          <h2 class="home-point__title">Checked at compile time</h2>
+          <h2 class="home-point__title">Native formats</h2>
           <p>
-            An <a href="/s/orca">Orca</a> pipeline is a Mojo type. Its steps, their inputs and
-            outputs, its partitions and its schedule are compile-time parameters, so the
-            compiler checks every edge before anything runs, and each step declares the
-            Iceberg tables it reads and writes.
+            <a href="/s/parquet">Parquet</a>, <a href="/s/iceberg">Iceberg</a>,
+            <a href="/s/avro">Avro</a> and <a href="/s/thrift">Thrift</a> are implemented in
+            Mojo, and reads come back as <a href="/s/arrow-mlake">Arrow</a> arrays. Iceberg reads
+            and writes: scan planning, deletes and deletion vectors, appends, overwrites and
+            schema changes, through a filesystem, REST or SQL catalog. Beside them are
+            <a href="/s/objectstore">objectstore</a> for local files, HTTP and S3,
+            <a href="/s/postgres">postgres</a> and <a href="/s/sqlite">sqlite</a> clients and
+            <a href="/s/threads">threads</a>, and a packaged build of upstream's
+            <a href="/s/flare_mlake">flare</a> for networking and HTTP.
+            Snappy, deflate and the hashes are Mojo too; libzstd, liblz4, libbrotli and libcurl
+            are linked.
           </p>
         </div>
 
         <div class="home-point">
-          <h2 class="home-point__title">Scalable and distributed</h2>
+          <h2 class="home-point__title">Measured against pyarrow</h2>
           <p>
-            Steps hand their work to <a href="/s/dista">Dista</a>, which runs Mojo functions
-            across a cluster as tasks and actors, keeping each result on the worker that made
-            it. On AWS, <code>orca aws</code> gives each run workers of its own, scaling up
-            from none while tasks wait.
+            Reading a 1M-row Parquet file on one core takes 3.77 ms, against 8.0 ms for pyarrow
+            on one thread. With four workers it takes 1.96 ms, against 2.57 ms for pyarrow on
+            all ten CPUs. Avro decodes manifest-shaped records 10.7× faster than fastavro. It
+            loses too: pyarrow is about 1.17× faster on nested and mixed data, and about 1.1×
+            ahead on an Iceberg scan. <a href="/performance">The performance page</a> has the
+            numbers and how they were taken.
           </p>
         </div>
 
         <div class="home-point">
-          <h2 class="home-point__title">Reliable</h2>
+          <h2 class="home-point__title">Checked against an outside implementation</h2>
           <p>
-            Every run, attempt and log is recorded in Postgres. A failed step retries, a killed
-            run resumes at the steps that didn't succeed, and a retried commit is recognised
-            rather than written twice. Sensors start a pipeline when a table it reads changes,
-            and lineage traces each snapshot back to the runs and code that made it.
+            Each of magmalake's own tins has a correctness oracle, an outside implementation it
+            has to agree with in CI, and its page says which. They are Apache-2.0 and tested on
+            stable Mojo 1.2.0 and the current nightly, on macOS and Linux.
           </p>
         </div>
 
         <div class="home-point">
-          <h2 class="home-point__title">Agent friendly</h2>
+          <h2 class="home-point__title">Installed from mojoshelf</h2>
           <p>
-            <a href="https://github.com/magmalake/skills" rel="noopener">magmalake's skills</a>
-            teach a coding agent Orca, Dista, a whole magmalake app and fast Mojo data code.
-            <a href="/getting-started">Getting started</a> has them, and the prompt from which
-            an agent built a lake of GitHub activity that now runs on AWS.
+            Each tin is a pixi package on <a href="https://mojoshelf.org" rel="noopener">mojoshelf</a>,
+            added with one command that brings its dependencies with it. Take only the ones you
+            need. <a href={MOJOSHELF_INSTALL} rel="noopener">mojoshelf's guide</a> installs the
+            <code>shelf</code> command.
           </p>
+          <CodeBlock code={install} label="shell" />
         </div>
 
         <div class="home-point">
-          <h2 class="home-point__title">Fast, small, quick to build</h2>
+          <h2 class="home-point__title">The companion of Morca</h2>
           <p>
-            On three nodes, eight queries over 1.4 billion taxi trips in S3 take
-            {headline.dista.toFixed(1)} s a pass on Dista, against {headline.rust.toFixed(1)} s
-            for Rust and {headline.ray.toFixed(1)} s for Ray. Dista's container image is
-            {" "}{img.Dista.gzip} MB compressed, against {img.Rust.gzip} MB for Rust and
-            {" "}{img.Ray.gzip} MB for Ray, and builds from cold in {img.Dista.build} s, against
-            {" "}{img.Rust.build} s for Rust; <a href="/s/dista/performance#images">Dista's
-            performance page</a> has the whole build. Underneath, Parquet, Iceberg and the codecs
-            are Mojo <a href="/tins">tins</a>, measured against pyarrow on
-            <a href="/performance">the performance page</a>, including where they lose.
+            magmalake is the companion of <a href="https://morca.dev" rel="noopener">Morca</a>,
+            which builds data pipelines on these tins.
+            <a href="https://morca.dev/dista/" rel="noopener">Dista</a>, which runs Mojo functions
+            across a cluster, is part of Morca. Both are used to build
+            <a href={LIBS} rel="noopener">mojourney.dev</a>, the census of Mojo on GitHub.
           </p>
         </div>
       </div>
@@ -83,32 +88,20 @@ const img = Object.fromEntries(images.rows.map((r) => [r.label, r]));
   <section class="section" id="examples">
     <div class="wrap wrap--wide">
       <p class="eyebrow">In code</p>
-      <h2 class="section-title">One example per layer</h2>
+      <h2 class="section-title">Three of the tins</h2>
       <CodeTabs />
     </div>
   </section>
 
-  <section class="section section--alt" id="scale">
+  <section class="section section--alt" id="tins">
     <div class="wrap wrap--wide">
-      <p class="eyebrow">Where it runs</p>
-      <h2 class="section-title">One machine, then AWS</h2>
-      <div class="home-scale">
-        {
-          [oneMachine, onAws].map((side) => (
-            <div class="home-scale__side">
-              <h3 class="home-point__title">{side.title}</h3>
-              <ul class="home-scale__points">
-                {side.points.map((p) => <li set:html={code(p)} />)}
-              </ul>
-              <CodeBlock code={side.code} label="shell" />
-            </div>
-          ))
-        }
-      </div>
-      <p class="home-scale__more">
-        <a href="/getting-started/step-by-step#local">Getting started</a> walks through both
-        with a real project.
+      <p class="eyebrow">The tins</p>
+      <h2 class="section-title">Every tin, layer by layer</h2>
+      <p class="lede">
+        Each box links to the tin's page: what it is, how to install it, what proves it and how
+        fast it is. <a href="/tins">The tins page</a> says more about how they fit together.
       </p>
+      <StackDiagram />
     </div>
   </section>
 </Base>
@@ -127,23 +120,6 @@ const img = Object.fromEntries(images.rows.map((r) => [r.label, r]));
     color: var(--text-muted);
     line-height: 1.65;
   }
-  .home-scale {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 2rem 2.5rem;
-  }
-  @media (max-width: 820px) {
-    .home-scale { grid-template-columns: minmax(0, 1fr); }
-  }
-  .home-scale__side { min-width: 0; display: flex; flex-direction: column; }
-  .home-scale__points {
-    margin: 0 0 1.25rem 1.1rem;
-    padding: 0;
-    color: var(--text-muted);
-    line-height: 1.65;
-    flex: 1;
-  }
-  .home-scale__points li { margin-bottom: 0.4rem; }
-  .home-scale__side :global(.codeblock) { margin: 0; }
-  .home-scale__more { margin: 1.75rem 0 0; color: var(--text-muted); }
+  .home-point :global(.codeblock) { margin: 1rem 0 0; }
+  #tins .lede { margin-bottom: 2.5rem; }
 </style>

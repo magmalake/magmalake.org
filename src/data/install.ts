@@ -2,7 +2,7 @@
  * Installing a tin, two ways: with mojoshelf's `pixi shelf add`, or with
  * plain pixi as a git dependency at the commit the tin's version was
  * published from (src/data/tincommits.json, from scripts/tin-commits.mjs).
- * The tin pages, Orca's and Dista's docs, getting started and the tindocs
+ * The tin pages, the maintainers' runbook and the tindocs
  * Markdown (src/integrations/install-tabs.mjs) all build their install tabs
  * here.
  */
