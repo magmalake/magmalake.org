@@ -15,7 +15,7 @@ to reserve, and how many copies should run at once? Get the first wrong and runs
 of memory or hoard a machine. Get the second wrong and a backfill crawls on a
 server that sits half idle.
 
-We build [orca](/s/orca/), a pipeline orchestrator written in Mojo that runs
+We build [Morca](/s/orca/), a pipeline orchestrator written in Mojo that runs
 data pipelines over Iceberg tables. Its [roadmap](/s/orca/docs/roadmap/)
 borrows its shape from Google's
 [Autopilot](https://research.google/pubs/autopilot-workload-autoscaling-at-google-scale/)
@@ -33,7 +33,7 @@ what broke.
 ## The rule
 
 A pipeline opts in with `memory_gb = "auto"` (or `"auto..6"` to cap it at
-6 GB). Before each start, Orca looks at the pipeline's last 20 successful runs
+6 GB). Before each start, Morca looks at the pipeline's last 20 successful runs
 and asks for:
 
 ```text
@@ -114,12 +114,12 @@ memory.pressure  full avg10=93.60 avg60=87.13
 memory.stat      anon 594137088   file 0
 ```
 
-orca already knew this state could happen. It treats a run held at its limit as
+Morca already knew this state could happen. It treats a run held at its limit as
 out of memory, but only once the run's heartbeat goes stale. The heartbeat runs
 on its own thread, which barely allocates, so it stayed fresh while the main
 thread starved.
 
-**Fix** ([orca #279](https://github.com/morca-dev/morca/pull/279)): every
+**Fix** ([Morca #279](https://github.com/morca-dev/morca/pull/279)): every
 scheduler pass checks each run's cgroup. A run at its limit whose tasks are all
 stalled on memory at least half the time (PSI `full avg10 ≥ 50`) for two
 minutes in a row is killed and counts as out of memory. The rerun:
@@ -147,7 +147,7 @@ repeat the same doomed attempts. But nothing ever lowered it; only
 re-registering the pipeline with a different setting cleared it. This is
 exactly the decay Autopilot builds in and our simple rule left out.
 
-**Fix** ([orca #280](https://github.com/morca-dev/morca/pull/280)): orca
+**Fix** ([Morca #280](https://github.com/morca-dev/morca/pull/280)): Morca
 records which run caused the raise and forgets it once 20 of the pipeline's
 runs after that one have succeeded. While the outlier is among the 20 runs the
 request is learned from, the floor protects the next runs; after that, 20 runs
@@ -169,7 +169,7 @@ and every run succeeded on its first try.
 | 64 | 318 MB | 256 → 384 MB | 112 s | held, killed, retried bigger |
 | 65–83 | 341 → 1313 MB | 384 → 1536 MB | 0 s | all first try |
 
-The stall column is new ([orca #283](https://github.com/morca-dev/morca/pull/283)).
+The stall column is new ([Morca #283](https://github.com/morca-dev/morca/pull/283)).
 It records how long each attempt's tasks waited on memory, from the cgroup's
 PSI totals. Here it splits cleanly: zero for every comfortable grant, nearly two
 minutes for the one that was too small. The 15% margin plus the rounding step
@@ -187,13 +187,13 @@ it can give a run at most one. From the seventh run on, every start waited with
 `needs 2 CPUs, more than the 1 this host grants at most`. It would have waited
 forever: a learned request can outgrow the machine it learned on.
 
-**Fix** ([orca #284](https://github.com/morca-dev/morca/pull/284)): a
+**Fix** ([Morca #284](https://github.com/morca-dev/morca/pull/284)): a
 learned CPU request is capped at what the host can give a run. Fewer cores only
 make a run slower. Memory isn't capped the same way, because a run that needs
 more memory than the host has would just be killed, and waiting with a clear
 reason is the better outcome.
 
-Behind this is a design gap rather than a bug: CPU grants are advisory. orca
+Behind this is a design gap rather than a bug: CPU grants are advisory. Morca
 tells a run how many CPUs it was given, but the run's cgroup sets no CPU limit,
 and ballast ignores what it was told. So a run given one CPU peaked at 1.95,
 and the rule learned what runs take, not what they were given. Enforcing the
@@ -210,19 +210,19 @@ same 1 GB, four times, about two minutes each. Then it ended as `interrupted:
 its process stopped, and its retries are spent`, which hides the reason. A
 retry that asks for the same limit is the same attempt again.
 
-**Fix** ([orca #287](https://github.com/morca-dev/morca/pull/287)): a run
+**Fix** ([Morca #287](https://github.com/morca-dev/morca/pull/287)): a run
 killed at its maximum fails on that kill, with the kill as its error. On beta,
 the same day afterwards took one start, and the run's error is the
 out-of-memory reason.
 
-The failures also tripped orca's watchdog, which pauses a pipeline after 6
+The failures also tripped Morca's watchdog, which pauses a pipeline after 6
 failed attempts in an hour. It paused ballast between two of the second run's
-tries. That run still had retries left, so orca left it for the next scheduler
+tries. That run still had retries left, so Morca left it for the next scheduler
 pass to restart, and a paused pipeline starts nothing. It sat `running` for
 over two hours with its process gone. The next deploy waited an hour for it to
 finish, gave up, and left every pipeline on the server paused.
 
-**Fix** ([orca #291](https://github.com/morca-dev/morca/pull/291)): while a
+**Fix** ([Morca #291](https://github.com/morca-dev/morca/pull/291)): while a
 pipeline is paused, a run whose process has stopped goes back to the queue,
 keeping its start count, and unpausing starts it.
 
@@ -234,7 +234,7 @@ limit (2269 MB), peaked at 318 MB and succeeded. The setting does what it says.
 ### A clean rerun: bug 6
 
 Beta's history was a patchwork of images and redeploys, so we ran every
-scenario again on a fresh server (an eight-core lab stack, empty database, orca
+scenario again on a fresh server (an eight-core lab stack, empty database, Morca
 main with all five fixes). All 92 learned runs succeeded. The outlier retried
 512 → 768 → 1152 → 1728 MB, and its raise expired on schedule twenty runs
 later. The pipeline shrank to 0.25 GB once the 300 MB runs left the window.
@@ -246,7 +246,7 @@ means "retry not scheduled yet", so the next scheduler pass scheduled one. On
 beta, a redeploy had hidden it. #287's test had checked too early, before the
 next pass.
 
-**Fix** ([orca #300](https://github.com/morca-dev/morca/pull/300)): a run
+**Fix** ([Morca #300](https://github.com/morca-dev/morca/pull/300)): a run
 that must not be retried records the start it failed on, and the scheduler
 skips it. The test now waits past the time a retry would start. On the lab,
 both over-cap runs failed once and stayed failed.
@@ -256,7 +256,7 @@ both over-cap runs failed once and stayed failed.
 - **Long partition lists.** A run over every day since 2023 printed hundreds of
   dates on its page and in the deploy's progress output. Now it shows the
   first, the last and the count
-  ([orca #277](https://github.com/morca-dev/morca/pull/277)).
+  ([Morca #277](https://github.com/morca-dev/morca/pull/277)).
 - **Settings drift.** The beta stack's settings named its storage bucket in the
   wrong Hetzner location, which surfaced as a 404 from the pre-deploy backup.
 - **Letting an agent deploy.** The test loop (change, build an image, deploy,
@@ -265,10 +265,10 @@ both over-cap runs failed once and stayed failed.
   accepts, and beta's decryption key for our SOPS secrets. Production's secrets
   stay behind a key in the laptop's Secure Enclave.
 
-The loop itself had no releases in it. Each orca fix was pinned by its commit
+The loop itself had no releases in it. Each Morca fix was pinned by its commit
 in a branch of the census, and pushing that branch built an image tagged with
 the commit, which the beta server then ran. A fix went from first noticed to
-running on beta in under an hour, and ships in the next orca release.
+running on beta in under an hour, and ships in the next Morca release.
 
 The loop needs one discipline: a deploy restores the project's configuration.
 It re-registered ballast from beta's own settings in the middle of the
@@ -295,7 +295,7 @@ at 1.5 GB, so we ran the scenario again after the deploy.
 
 ## How many
 
-With runs sized from their own history, orca could answer the second question.
+With runs sized from their own history, Morca could answer the second question.
 We built it in four steps, each tested on a lab stack (a Hetzner CAX31 with 8
 cores and 16 GB, in its own project) with ballast again, and a second test
 pipeline, **spread**, whose step fans out one dista task per day of a month.
@@ -311,7 +311,7 @@ pipeline, **spread**, whose step fans out one dista task per day of a month.
 
 `max_runs = "auto"` starts another run whenever its request fits in what the
 host's running runs weren't granted
-([orca #302](https://github.com/morca-dev/morca/pull/302)). Thirty days of
+([Morca #302](https://github.com/morca-dev/morca/pull/302)). Thirty days of
 ballast ran 3 at once while the learned request was 2 CPUs and 1.5 GB, then 7
 at once (all the lab can grant) as the 1-core days took over the window. No
 orca.toml change but the one key.
@@ -322,14 +322,14 @@ pressure stall information counts a cgroup's stall at its own limit in every
 ancestor, so one starved run looked like a starved host. With one run at a
 time, which is how ballast ran before, it never showed.
 
-**Fix** ([orca #303](https://github.com/morca-dev/morca/pull/303)):
+**Fix** ([Morca #303](https://github.com/morca-dev/morca/pull/303)):
 admission subtracts the stall the runs held at their own limits explain. On
 the rerun the 29 normal days ran 7 at a time while the outlier was being killed
 and retried beside them.
 
 ### H2, a pool of machines: bug 8
 
-orca already had remote workers: `orca worker` on another machine claims a
+Morca already had remote workers: `orca worker` on another machine claims a
 pool's runs over the UI's API. With a second CAX31 and a worker on the lab
 server itself, ballast ran 15 at once (8 and 7, each worker admitting runs
 against its own machine), and the 29 normal days took 55 seconds instead of
@@ -337,14 +337,14 @@ against its own machine), and the 29 normal days took 55 seconds instead of
 
 The UI's "Hosts over time" chart still showed one host: it counted EC2
 instances and the control host, never a self-hosted worker (fixed in
-[orca #305](https://github.com/morca-dev/morca/pull/305)). Adding a machine
+[Morca #305](https://github.com/morca-dev/morca/pull/305)). Adding a machine
 by hand, with a one-command join and drain, is
 [#220](https://github.com/morca-dev/morca/issues/220), for later.
 
 ### H3, a pool that grows and shrinks: limit 1
 
 A pool is now declared in orca.toml, and the scheduler makes and removes its
-machines ([orca #313](https://github.com/morca-dev/morca/pull/313); EC2 in
+machines ([Morca #313](https://github.com/morca-dev/morca/pull/313); EC2 in
 [#321](https://github.com/morca-dev/morca/pull/321)):
 
 ```toml
@@ -361,9 +361,9 @@ idle_seconds = 900
 ```
 
 - **Out of stock.** Hetzner had had no ARM machines in any region the week
-  before, which is why the list has fallbacks and waits. orca tries the type
+  before, which is why the list has fallbacks and waits. Morca tries the type
   it's on in each location, keeps trying it for its `wait`, then moves on.
-- **Architecture is automatic.** orca asks the provider for each type's
+- **Architecture is automatic.** Morca asks the provider for each type's
   architecture and reads the worker image's manifest; a type the image has no
   variant for is skipped, saying so. Nothing in the config names an
   architecture.
@@ -371,19 +371,19 @@ idle_seconds = 900
   worker token; the machine fetches the image, its login and the bucket's
   settings from the UI over TLS. The token is revoked when the machine goes.
 
-On the lab, from an empty pool: 30 ballast runs queued; 21 seconds later orca
+On the lab, from an empty pool: 30 ballast runs queued; 21 seconds later Morca
 made a CAX31 (hel1 had none; nbg1 did); about a minute after the queue it
 joined as a worker; it ran 8 at once; 300 seconds after its last run it was
 deleted. A second machine was refused, not for stock but for the project's
-core quota (`resource_limit_exceeded`), which orca reported rather than taking
+core quota (`resource_limit_exceeded`), which Morca reported rather than taking
 for a shortage. Falling back to a smaller type that fits came next
-([orca #348](https://github.com/morca-dev/morca/pull/348)).
+([Morca #348](https://github.com/morca-dev/morca/pull/348)).
 
 ### H4, one run over several machines: bug 9
 
 A run with dista tasks used to run on one machine. With `workers = N` on a pool
 pipeline it now spreads
-([orca #325](https://github.com/morca-dev/morca/pull/325),
+([Morca #325](https://github.com/morca-dev/morca/pull/325),
 [#334](https://github.com/morca-dev/morca/pull/334)): the worker that
 claims it starts a dista head, a dista worker and the run's driver; other
 workers of the pool with room claim "join run R" and start dista workers
@@ -393,11 +393,11 @@ so the pool grows for it.
 dista had no authentication: anything that reached a head could join a run or
 read its results. Ray's security docs make the same point about Ray, and Ray
 2.52 added a token mode. We did both of the things Ray recommends: the machines
-talk over a private network orca makes for the pool, and each run start gets a
+talk over a private network Morca makes for the pool, and each run start gets a
 token that dista requires on every connection, head and worker-to-worker alike
 ([dista #125](https://github.com/morca-dev/dista/pull/125)).
 
-On the lab, from an empty pool, two runs of spread: orca made two CAX21s on the
+On the lab, from an empty pool, two runs of spread: Morca made two CAX21s on the
 private network; each run's head came up on a private address (10.77.0.2, then
 10.77.0.3), the other machine joined it, and both ran tasks (the one counted
 ran 5 of 31 and 16 of 29); both machines were deleted once idle.
@@ -426,4 +426,4 @@ Left for later: machines a person adds by hand
 follow-ups (fill runs sized like other runs, the pool's status in the UI, the
 quota fallback and clearer machine names,
 [#322](https://github.com/morca-dev/morca/issues/322)) have since merged
-and ship in orca 0.24.0.
+and ship in Morca 0.24.0.
