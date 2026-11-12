@@ -205,6 +205,161 @@ the census console and the orca UI, which have no Worker of their own:
 `worker/mojourney-ph/` (deploy with `npx wrangler deploy -c worker/mojourney-ph/wrangler.jsonc`;
 see its README). The site's own deploy does not include it.
 
+## Maintain and release
+
+A runbook for the person who owns the stack: the pull-request routine, releasing tins and the `shelf` CLI, and where things are. It used to be the site's /getting-started/maintain page. Every command was checked against the source on 2026-11-06 (shelf 0.7.0); where something is a known caveat, it says so. Orca, Dista and the census are now Morca's, at [morca.dev](https://morca.dev): its [runbook](https://morca.dev/getting-started/maintain) covers running them in production.
+
+### Day-to-day pull requests
+
+`main` is protected in every magmalake repository: changes arrive by pull request only, with no direct push and no force push. Cut a branch from a *pushed* main. A squash-merge folds local commits that were never pushed into your PR under your subject, so check first:
+
+```sh
+git checkout main && git pull --ff-only
+git log origin/main..main          # must print nothing
+git checkout -b my-change
+```
+
+Open the PR with `gh pr create` and watch it with `gh pr checks --watch`. Each repository's `ci.yml` sorts a PR before it spends machine time: a docs-only PR (prose and similar files that no test, build or check reads) skips the code jobs, and a release-only PR (only versions, `CHANGELOG.md`, revs and locks change) takes a short path that skips the nightly leg and the heavy tests. The final `ci` job accepts "skipped" for those, so a green check there is the one to merge on.
+
+#### Known flaky tests
+
+A red job is real unless it is one of these three, which fail on a loaded runner:
+
+- Port collisions in the stand-in EC2 tests: "Address already in use" or "stand-in EC2 didn't start".
+- `tests/fleet.sh` failing on "by CPU, highest first", when the machine is busy.
+- `kind` tests that time out inside the vCPU budget.
+
+Rerun only the failed jobs, once:
+
+```sh
+gh run list -R magmalake/orca.mojo --branch my-change -L 3
+gh run rerun <run-id> --failed -R magmalake/orca.mojo
+```
+
+If it passes, merge. If the same job fails twice, or the message is anything else, it is a real failure: read the log (`gh run view <run-id> --log-failed`) and fix it. Do not rerun a third time.
+
+#### CHANGELOG.md conflicts
+
+A repository that has a `changes/` directory next to its CHANGELOG.md keeps a changelog *fragment* per PR instead of editing the changelog, so two open PRs never conflict there. Add yours with `shelf changes new <slug>` (`--bump minor` for a new feature); it writes `changes/<slug>.md`, which you fill in with the entry as it should read. The level is the file name's suffix (`155-fills.minor.md`) or a first line `bump: minor`: `patch`, `minor`, `major` or `breaking`; no level is a patch, and a `### Breaking` or `### Removed` heading makes it breaking. In PR CI, `shelf changes check` fails a PR that changes code without adding or editing a fragment. PRs that change only prose pass, and so do PRs labelled `no-changelog` or `release`.
+
+```sh
+shelf changes new fills --bump minor     # writes changes/fills.minor.md
+shelf changes check                      # what CI runs; compares HEAD with origin/main
+```
+
+Two fragments never conflict, since each PR adds its own file. The repositories that have not moved yet (orca.mojo among them) still use `## Unreleased`: every change adds a line there, so two open PRs conflict. Resolve by keeping both entries. If a release landed in between, the heading is now the version (`## 0.10.0`): put your entry under a fresh `## Unreleased` above it, not under the released version. The level of bump `shelf release` picks comes from these headings, so keep them spelled as the file already does. The design is in [mojoshelf #36](https://github.com/mojoshelf/mojoshelf/issues/36); it needs `shelf` 0.8.0 or later.
+
+### Releasing tins with shelf release
+
+Tins pin each other by git revision, so releasing one means releasing its dependents too. `shelf release` plans that cascade, cuts a release branch in each repository, tests them together, opens the PRs and (with `--merge`) merges and publishes parents first. It needs `gh` logged in with push rights.
+
+#### Before you start
+
+Run it from the directory that holds all the checkouts, with each directory named after its repository (`iceberg.mojo`, `orca.mojo`, ...). The release builds from the **local** checkouts, so a stale one silently leaves merged work out of the release. Pull every involved checkout first:
+
+```sh
+export TMPDIR=/Volumes/ExtNVMe/tmp
+cd /Volumes/ExtNVMe/dev/magmalake
+for r in dista.mojo parquet.mojo iceberg.mojo orca.mojo; do git -C $r pull --ff-only; done
+shelf --version                                  # 0.8.0 or later
+```
+
+Tin names are the registry's, which differ from the directory names. Check one with `curl -s https://mojoshelf.org/api/tins/<name>`: it lists each version and its `commit_sha`. The ones you will use: `parquet-mojo` (and `parquet-full-mojo`, released together with it from the same repository), `iceberg-mojo`, `orca-mojo`, `dista-mojo`; the rest are listed on [the tins page](/tins).
+
+#### Plan, then apply
+
+`plan` changes nothing: it prints the tins to release, in order, with their versions and every pin that moves, and for each tin the changelog fragments it will release with their levels. Read it. A tin you did not name appears when it depends on one you did. A tin's bump is the highest of its fragments' levels (patch when there are none); a repository still on `## Unreleased` gets it from that section's headings instead. Override per tin:
+
+```sh
+shelf release plan orca-mojo --bump orca-mojo=minor
+shelf release plan --changed                    # every checked-out tin with commits since its release
+```
+
+`plan` saves the plan it printed to `.shelf-plan.json`, beside `.shelf-release.json`. When the plan is right, apply it without repeating the tins or the bumps:
+
+```sh
+shelf release apply --wait --merge                # applies .shelf-plan.json
+```
+
+`apply` says which plan it is applying. If any repository's main has moved since the plan was made, it refuses: run `plan` again. This is new in shelf 0.9; with an older shelf, repeat the arguments (`shelf release apply orca-mojo --bump orca-mojo=minor --wait --merge`).
+
+That cuts the branches, builds the release heads together (preflight), opens the PRs, polls their required checks (`--wait`), and merges and publishes each one once its pin on its parent is the parent's current release head (`--merge`). In each release commit the fragments are written into CHANGELOG.md under `## X.Y.Z - date` and deleted. State is kept in `.shelf-release.json`. Other flags worth knowing:
+
+- `--resume`: after an interruption (laptop slept, a check failed and was fixed or rerun). It re-pins what sits below a branch that moved and carries on from the step that stopped.
+- `--publish`: when you merged the PRs by hand, publish each merged release.
+- `--waves`: one level of the graph at a time, each published before the next is cut. Slower, easier to follow when the cascade is large.
+- `--test`: run each tin's `test` task in preflight. `--skip-preflight` skips the combined build; avoid it.
+- `--without <tin>`: leave a tin out, its dependents keep its published version. `--repo name=path`: a checkout somewhere else.
+- `--allow-mismatch` (new in 0.7.0): release even when a dependent pins, or checks out in CI, a tin *outside* the cascade at a different commit than its parents pin it at. A mismatch means two tins would be built against two versions of a third. Use the flag only after you have looked at which tin and why and decided the difference is harmless; otherwise add that tin to the cascade or re-pin it.
+
+**The rule:** a package dependency's `rev` must equal the commit the registry published for that version. A rev that was never published builds on your machine and breaks for everyone else.
+
+#### After a release
+
+```sh
+curl -s https://mojoshelf.org/api/tins/orca-mojo | head -c 600       # newest version, commit_sha
+for r in dista.mojo parquet.mojo iceberg.mojo orca.mojo; do
+  echo $r; gh run list -R magmalake/$r --branch main -L 1
+done
+```
+
+Each released repository's main must be green (a release merge triggers a full CI run on main). Then re-pin the consumers. `mojo-census/pixi.toml` pins `dista-mojo`, `parquet-full-mojo`, `iceberg-mojo`, `orca-mojo` and the rest by `rev`; set each to the published commit, regenerate the lock, and open a PR as in the first section:
+
+```sh
+cd mojo-census && git checkout -b repin
+$EDITOR pixi.toml            # each rev = commit_sha from the registry
+pixi lock
+```
+
+#### When a release goes wrong
+
+- **CI breaks on a sibling after the release.** On 2026-11-06 orca's CI checked parquet out at a stale sha, because the workflow pins its sibling repositories separately from `pixi.toml`. shelf 0.7.0 moves those refs in a release. If CI is red anyway, open `.github/workflows/ci.yml` and compare every sibling `actions/checkout` `ref:` with the registry's commit for that tin; fix it in a PR.
+- **A PR check fails mid-cascade.** Fix or rerun it (see [flaky tests](#flaky)), then `shelf release apply ... --wait --merge --resume` with the same arguments.
+- **Pins stop being its parent's head.** Something merged to a parent while you waited. `--resume` re-pins; if it still refuses, start again from `plan` after pulling.
+- **Merged by hand.** `shelf release apply <tins> --publish`.
+
+### Releasing the shelf CLI
+
+The CLI lives in [mojoshelf](https://github.com/mojoshelf/mojoshelf), with its own procedure. Work in a clean checkout.
+
+1. Bump the version in **all four** places: `crates/mojoshelf/Cargo.toml`, `Cargo.lock` (`cargo update -p mojoshelf`), `pixi.toml` and `recipe.yaml`. recipe.yaml was missed once and the package built under the old version.
+2. Do not commit a stray `pixi.lock` that a local build produced.
+3. Open a PR titled "Release CLI X.Y.Z", wait for green, merge it.
+4. Tag the merge commit and push the tag:
+
+   ```sh
+   git checkout main && git pull --ff-only
+   git tag cli-v0.8.1 && git push origin cli-v0.8.1
+   ```
+5. The `release-cli` workflow builds the package for three platforms, reindexes the channel under `crates/shelf-worker/public/channel` and commits it to main (`gh run watch`). Pull main afterwards.
+6. The workflow's "Deploy Worker" step is **skipped** unless the repository has a `CLOUDFLARE_API_TOKEN` secret (not set yet: [mojoshelf #39](https://github.com/mojoshelf/mojoshelf/issues/39)). Until it is, deploy by hand from an up-to-date main, which has the channel commit, with `wrangler` logged in to the account that owns mojoshelf.org. If the release added a D1 migration, apply it first, because `wrangler deploy` does not (see `OPERATIONS.md`):
+
+   ```sh
+   cd crates/shelf-worker
+   npx wrangler d1 migrations list mojoshelf --remote     # what is pending
+   npx wrangler d1 migrations apply mojoshelf --remote    # only if something is
+   npx wrangler deploy
+   ```
+7. Verify that the channel serves it:
+
+   ```sh
+   pixi global update mojoshelf && shelf --version
+   ```
+
+### Where things are
+
+| Repository | What it is |
+|---|---|
+| [morca-dev/morca](https://github.com/morca-dev/morca) | Morca, the orchestrator, formerly magmalake/orca.mojo. Tin `orca-mojo`. Its own site is [morca.dev](https://morca.dev). |
+| [morca-dev/census](https://github.com/morca-dev/census) | The census behind [mojourney.dev](https://mojourney.dev): three pipelines and the console. Pins every library by commit in `pixi.toml`; not a tin. |
+| [magmalake/iceberg.mojo](https://github.com/magmalake/iceberg.mojo) | Iceberg tables, reads and writes. Tin `iceberg-mojo`. |
+| [magmalake/parquet.mojo](https://github.com/magmalake/parquet.mojo) | Parquet reader and writer; `full/` adds the compression codecs. Tins `parquet-mojo`, `parquet-full-mojo`. |
+| [morca-dev/dista](https://github.com/morca-dev/dista) | Distributed tasks and actors, formerly magmalake/dista.mojo. Tin `dista-mojo`. |
+| [mojoshelf/mojoshelf](https://github.com/mojoshelf/mojoshelf) | The registry (a Cloudflare Worker plus D1), the `shelf` CLI and the conda channel. `OPERATIONS.md` has the Worker's secrets, deploy and database steps. It is in the *mojoshelf* organisation, not magmalake. |
+| [magmalake/magmalake.org](https://github.com/magmalake/magmalake.org) | This site. |
+
+The other tins (objectstore, threads, postgres, zstd and so on) are repositories in the same organisation, named like their tin; the registry lists them all. Issues are tracked per repository, in each one's Issues tab. There are no priority labels, so read the open issues list as it is, and the `release` label where a repository has one. Pull requests are the other queue: `gh pr list -R magmalake/iceberg.mojo`.
+
 ## Conventions
 
 No JavaScript framework, no CSS framework. Two inline scripts — the theme toggle and the
