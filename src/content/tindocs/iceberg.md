@@ -4,7 +4,7 @@ checked: 0.8.6
 
 ## What it's for
 
-iceberg is native Apache Iceberg, the top of the magmalake stack. It reads a table's metadata, plans a scan from its manifests and reads the rows as Arrow, with deletes applied and filters evaluated. It also writes: create, append, delete, overwrite, schema changes and snapshot expiry, committed through a filesystem, REST or SQL catalog. Manifests go through [avro](/s/avro), data files through [parquet](/s/parquet), storage through [objectstore](/s/objectstore), and the SQL catalog through [sqlite](/s/sqlite) or [postgres](/s/postgres). [Orca](/s/orca) pipelines run their steps on [Dista](/s/dista) over Iceberg tables read and committed with it.
+iceberg is native Apache Iceberg, the top of the magmalake stack. It reads a table's metadata, plans a scan from its manifests and reads the rows as Arrow, with deletes applied and filters evaluated. It also writes: create, append, delete, overwrite, schema changes and snapshot expiry, committed through a filesystem, REST or SQL catalog. Manifests go through [avro](/s/avro), data files through [parquet](/s/parquet), storage through [objectstore](/s/objectstore), and the SQL catalog through [sqlite](/s/sqlite) or [postgres](/s/postgres). [Morca](https://morca.dev) pipelines run their steps on [Dista](https://morca.dev/dista/) over Iceberg tables read and committed with it.
 
 ## Install
 

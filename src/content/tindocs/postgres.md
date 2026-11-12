@@ -4,7 +4,7 @@ checked: 0.3.3
 
 ## What it's for
 
-postgres is a PostgreSQL client over libpq: you write the SQL, bind `$1`-style parameters, and read typed rows. It backs the Postgres SQL catalog in [iceberg](/s/iceberg), and it's where [Orca](/s/orca) records runs so they resume where they stopped. `postgres.pool` adds a connection pool for a threaded service, such as one built on [threads](/s/threads). It's a client, not a framework: there's no ORM and no async.
+postgres is a PostgreSQL client over libpq: you write the SQL, bind `$1`-style parameters, and read typed rows. It backs the Postgres SQL catalog in [iceberg](/s/iceberg), and it's where [Morca](https://morca.dev) records runs so they resume where they stopped. `postgres.pool` adds a connection pool for a threaded service, such as one built on [threads](/s/threads). It's a client, not a framework: there's no ORM and no async.
 
 ## Install
 

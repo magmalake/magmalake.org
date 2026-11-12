@@ -28,7 +28,7 @@ export default defineConfig({
     agentMarkdown({
       name: "magmalake",
       summary:
-        "Data pipelines in Mojo: Orca schedules them, Dista runs them across a cluster, and a native Iceberg, Parquet and codec stack, published as tins on mojoshelf, reads and writes the data. No Python or JVM in the path.",
+        "Native Mojo data libraries, published as tins on mojoshelf: Parquet, Iceberg, Arrow, Avro, Thrift, the compression codecs, object storage, Postgres and SQLite clients. No Python or JVM in the path. The companion of https://morca.dev, which builds data pipelines on them.",
       intro: [
         "Every page below is the Markdown twin of a page on https://magmalake.dev: the same URL with .md appended (the home page is /index.md). /llms-full.txt has them all in one file.",
       ],
@@ -39,8 +39,6 @@ export default defineConfig({
       excludeFromFull: isApi,
       sections: [
         { title: "Start here", match: (p) => p === "/" || p.startsWith("/getting-started") },
-        { title: "Orca", match: (p) => p.startsWith("/s/orca") && !isApi(p) },
-        { title: "Dista", match: (p) => p.startsWith("/s/dista") && !isApi(p) },
         {
           title: "Tins",
           match: (p) => p === "/tins" || p === "/performance" || (p.startsWith("/s/") && !isApi(p)),

@@ -1,5 +1,5 @@
-/* The three /getting-started pages. Scoped under .gs so the orca and dista
-   docs, which also use .docs, are untouched. */
+/* The maintainers' runbook, /getting-started/maintain. Scoped under .gs so
+   the tin docs, which also use .docs, are untouched. */
 .gs h2 {
   font-size: 1.6rem;
   margin: 3.25rem 0 0.8rem;

@@ -1,5 +1,3 @@
-import { headline, setup } from "./dista";
-
 export interface Row {
   op: string;
   /** Extra qualifier shown under the operation. */
@@ -395,7 +393,7 @@ export const perfFor = (tin: string): Group[] =>
 
 export const passesFor = (tin: string): Pass[] => passes.filter((p) => p.tin === tin);
 
-/** The few rows /performance keeps, in its order, plus Dista's headline. */
+/** The few rows /performance keeps, in its order. */
 export const highlights: Group = {
   id: "highlights",
   title: "Highlights",
@@ -403,14 +401,6 @@ export const highlights: Group = {
     "The strongest numbers and the clearest losses. Every row links to the tin it belongs to, where the rest of its table is.",
   rows: [
     ...perfGroups.flatMap((g) => g.rows.filter((r) => r.highlight)),
-    {
-      tins: ["dista"],
-      op: "Dista: eight taxi queries over 1.4 billion rows in S3",
-      note: `3 × ${setup.machine.split(",")[0]}, median pass, ${setup.date} — measured on AWS, not on the M4`,
-      result: `${headline.dista.toFixed(1)} s a pass`,
-      lead: true,
-      reference: `Rust ${headline.rust.toFixed(1)} s, Ray ${headline.ray.toFixed(1)} s on the same queries, every answer matching`,
-    },
   ],
 };
 

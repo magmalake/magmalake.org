@@ -9,6 +9,42 @@
 /correctness  /tins  302
 /status       /tins  302
 
-# Orca's roadmap page is gone; its docs say what works, DESIGN.md what's next.
-/s/orca/roadmap  /s/orca/docs  302
-/s/orca/roadmap/  /s/orca/docs  302
+# Orca and Dista moved out of magmalake: they are Morca now, with its own site,
+# and the pages keep their names there. Orca's docs are under /docs (its API
+# reference is /docs/api); Dista's are under /dista. Morca's code and docs
+# still link to mlake.dev/s/orca/docs. 301: the move is permanent. The first
+# rule that matches wins, so the specific ones come first.
+/s/orca/roadmap      https://morca.dev/docs/roadmap/      301
+/s/orca/roadmap/     https://morca.dev/docs/roadmap/      301
+/s/orca/docs         https://morca.dev/docs/              301
+/s/orca/docs/        https://morca.dev/docs/              301
+/s/orca/docs.md      https://morca.dev/docs.md            301
+/s/orca/docs/*       https://morca.dev/docs/:splat        301
+/s/orca/api          https://morca.dev/docs/api/          301
+/s/orca/api/         https://morca.dev/docs/api/          301
+/s/orca/api.md       https://morca.dev/docs/api.md        301
+/s/orca/api/*        https://morca.dev/docs/api/:splat    301
+/s/orca.md           https://morca.dev/index.md           301
+/s/orca              https://morca.dev/                   301
+/s/orca/             https://morca.dev/                   301
+/s/orca/*            https://morca.dev/                   301
+
+/s/dista.md          https://morca.dev/dista/index.md     301
+/s/dista             https://morca.dev/dista/             301
+/s/dista/            https://morca.dev/dista/             301
+/s/dista/*           https://morca.dev/dista/:splat       301
+
+# Getting started built the census on Orca and Dista; it moved with them.
+# The maintainers' runbook, /getting-started/maintain, stays here.
+/getting-started.md                https://morca.dev/getting-started.md                301
+/getting-started                   https://morca.dev/getting-started/                  301
+/getting-started/                  https://morca.dev/getting-started/                  301
+/getting-started/agent.md          https://morca.dev/getting-started/agent.md          301
+/getting-started/agent             https://morca.dev/getting-started/agent/            301
+/getting-started/agent/            https://morca.dev/getting-started/agent/            301
+/getting-started/step-by-step.md   https://morca.dev/getting-started/step-by-step.md   301
+/getting-started/step-by-step      https://morca.dev/getting-started/step-by-step/     301
+/getting-started/step-by-step/     https://morca.dev/getting-started/step-by-step/     301
+/getting-started/develop.md        https://morca.dev/getting-started/develop.md        301
+/getting-started/develop           https://morca.dev/getting-started/develop/          301
+/getting-started/develop/          https://morca.dev/getting-started/develop/          301

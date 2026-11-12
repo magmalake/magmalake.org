@@ -4,7 +4,7 @@ checked: 0.1.2
 
 ## What it's for
 
-k8s is a small Kubernetes client: it creates, gets, lists, watches and deletes Pods, Services and Jobs in a namespace, and reads a pod's log. It's what [Orca](/s/orca) uses to start a Dista cluster for each run. It knows no schema: you write manifests as JSON text and read the objects that come back as [json_mlake](/s/json_mlake) values, by JSON pointer.
+k8s is a small Kubernetes client: it creates, gets, lists, watches and deletes Pods, Services and Jobs in a namespace, and reads a pod's log. It's what [Morca](https://morca.dev) uses to start a Dista cluster for each run. It knows no schema: you write manifests as JSON text and read the objects that come back as [json_mlake](/s/json_mlake) values, by JSON pointer.
 
 ## Install
 
@@ -84,4 +84,4 @@ Also exported: `query_escape(s: String) -> String`, and the YAML reader the kube
 
 ## Tests
 
-`pixi run unit` checks the YAML subset, kubeconfigs and query escaping without a server. `pixi run kind` runs every call against a [kind](https://kind.sigs.k8s.io) cluster; it needs docker, kind and kubectl. [Orca's K8S.md](https://github.com/magmalake/orca.mojo/blob/main/K8S.md) says why the client is small and what it covers.
+`pixi run unit` checks the YAML subset, kubeconfigs and query escaping without a server. `pixi run kind` runs every call against a [kind](https://kind.sigs.k8s.io) cluster; it needs docker, kind and kubectl. [Morca's K8S.md](https://github.com/morca-dev/morca/blob/main/K8S.md) says why the client is small and what it covers.

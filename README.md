@@ -52,8 +52,7 @@ worker/mojourney-ph/    the same proxy as its own Worker on the mojourney.dev zo
 Every tin gets its own small section at `/s/<tin>`, generated from `src/data/tins.ts`:
 an overview, `/docs` (its Markdown in `src/content/tindocs/<tin>.md`) and, when
 `src/data/perf.ts` or the tin has numbers or notes for it, `/performance`. Their header
-and footer are `SectionNav` and `SectionFooter`, the same ones Orca's and Dista's pages
-use, and the list of a tin's pages is `tinLinks` in `src/data/tinpages.ts`: add a page
+and footer are `SectionNav` and `SectionFooter`, and the list of a tin's pages is `tinLinks` in `src/data/tinpages.ts`: add a page
 there and in `src/pages/s/[tin]/`, and every tin's header picks it up.
 
 Content lives in `src/data/*.ts`, so updating a version number or a benchmark is a one-line
@@ -147,8 +146,8 @@ MAX. A file with a top-level `main()` is a program, not API, and is left out, si
 `mojo doc` refuses a package that holds one.
 ## Install tabs
 
-Every `pixi shelf add <tin>` on a tin's overview, in its tindocs Markdown, in Orca's and
-Dista's docs and in getting started has a second tab beside it: the same install with
+Every `pixi shelf add <tin>` on a tin's overview, in its tindocs Markdown, in
+and in the maintainers' runbook has a second tab beside it: the same install with
 plain pixi, as a git dependency at the commit the tin's version was published from. Both
 tabs come from `installTabs` in `src/data/install.ts`. In the tindocs Markdown a remark
 plugin, `src/integrations/install-tabs.mjs`, turns any `sh` block holding
@@ -169,12 +168,12 @@ node scripts/tin-commits.mjs
 writes a static index to `dist/pagefind/`, and Workers static assets serve it like any other
 file, so there's no server. `/search` is the search page: `?q=` is the query and `?tin=<slug>`
 scopes it to one tin. The magnifier in the main header leads there, and so does the one in
-each tin's header (and Orca's and Dista's), which is scoped to that tin.
+each tin's header, which is scoped to that tin.
 
 `src/layouts/Base.astro` handles indexing for every page, from `src/data/search.ts`:
 
 - only `<main>` is indexed (`data-pagefind-body`), so headers and footers are left out;
-- each page is filed under a `section` filter (Start here, Orca, Dista, Tins or Blog), and a
+- each page is filed under a `section` filter (Start here, Tins or Blog), and a
   `/s/<tin>/...` page also under a `tin` filter;
 - 404 and /search are left out.
 

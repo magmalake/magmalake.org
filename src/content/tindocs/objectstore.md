@@ -4,7 +4,7 @@ checked: 0.4.1
 
 ## What it's for
 
-objectstore is where magmalake's bytes come from and go to. One `FileIOResolver` picks a backend by URI scheme (`file://` or a bare path, `http(s)://`, `s3://`, `gs://`, `abfss://`) and gives you files with `length`, `read_all`, `read_range` and writes. [iceberg](/s/iceberg), [Orca](/s/orca) and [Dista](/s/dista) read tables through it, and its `HttpClient` is the HTTPS transport the Iceberg REST catalog uses. It also ships an `objectstore-mojo` CLI (`ls`, `cat`, `head`, `get`, `put`, `rm`, `stat`, `presign`).
+objectstore is where magmalake's bytes come from and go to. One `FileIOResolver` picks a backend by URI scheme (`file://` or a bare path, `http(s)://`, `s3://`, `gs://`, `abfss://`) and gives you files with `length`, `read_all`, `read_range` and writes. [iceberg](/s/iceberg), [Morca](https://morca.dev) and [Dista](https://morca.dev/dista/) read tables through it, and its `HttpClient` is the HTTPS transport the Iceberg REST catalog uses. It also ships an `objectstore-mojo` CLI (`ls`, `cat`, `head`, `get`, `put`, `rm`, `stat`, `presign`).
 
 ## Install
 

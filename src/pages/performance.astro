@@ -13,9 +13,9 @@ import {
 } from "../data/perf";
 
 const description =
-  "The strongest magmalake benchmarks against pyarrow and other references, including where it loses, with links to each tin's full numbers and to Dista's.";
+  "The strongest magmalake benchmarks against pyarrow and other references, including where it loses, with links to each tin's full numbers.";
 
-// Every tin with numbers of its own, in the stack's order; Dista's are on its own pages.
+// Every tin with numbers of its own, in the stack's order.
 const measured = tins.filter((t) => !t.site && perfFor(slugOf(t)).length > 0);
 ---
 
@@ -34,7 +34,6 @@ const measured = tins.filter((t) => !t.site && perfFor(slugOf(t)).length > 0);
         <h2 class="panel__title">Each tin's numbers</h2>
         <ul class="bench-links">
           {measured.map((t) => <li><a href={`${pageOf(t)}/performance`}><code>{t.name}</code></a></li>)}
-          <li><a href="/s/dista/performance"><code>Dista</code></a></li>
         </ul>
         <p class="panel__fine">
           Crossing a process boundary — Arrow Flight, the C Data Interface and shared memory —

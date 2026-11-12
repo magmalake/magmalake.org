@@ -18,7 +18,7 @@ export interface Tin {
   /** The mojoshelf registry name — `shelf add <pkg>`. */
   pkg: string;
   repo: string;
-  /** Its own section of this site, with pages of its own (Orca, Dista).
+  /** Its own section of this site, with pages of its own, when it has one.
    * Every other tin gets a generated page at /s/<name>. */
   site?: string;
   version: string;
@@ -94,42 +94,6 @@ export const readmeOf = (t: Tin): string => t.readme ?? `${t.repo}#readme`;
 export const installOf = (t: Tin): string => `pixi shelf add ${t.pkg}`;
 
 export const tins: Tin[] = [
-  {
-    name: "Orca",
-    pkg: "orca-mojo",
-    repo: "https://github.com/magmalake/orca.mojo",
-    site: "/s/orca",
-    version: "0.23.0",
-    tier: "execution",
-    short: "pipelines as DAGs · cron schedules · backfills",
-    what:
-      "Orchestration for data pipelines written in Mojo: DAGs declared in Mojo and checked by the compiler, partitions by month or day, cron schedules in a time zone, and a scheduler that starts runs, backfills ranges and retries what failed. Steps run on Dista over Iceberg tables, with runs recorded in Postgres.",
-    oracle: "taxibench's table: 2023–2024 NYC taxi trips to the same 79,478,796 rows and column sums",
-    bullets: [
-      "Edges type-checked at compile time; one binary per pipeline",
-      "A killed run resumes where it stopped; a retried commit is recognised, not repeated",
-      "Every month since 2011, 1.44 billion rows, backfilled four runs at a time",
-      "A web UI next; lineage and Kubernetes after",
-    ],
-  },
-  {
-    name: "Dista",
-    pkg: "dista-mojo",
-    repo: "https://github.com/magmalake/dista.mojo",
-    site: "/s/dista",
-    version: "0.3.0",
-    tier: "execution",
-    short: "distributed tasks · actors · results that stay on workers",
-    what:
-      "Distributed tasks for Mojo: declare a function as a task, call it, and the work runs across a cluster, with large results staying on the worker that computed them. One binary for every role, on a laptop or on Kubernetes.",
-    oracle: "Ray and Rust on the same queries: answers identical on 3, 6 and 12 nodes",
-    bullets: [
-      "Tasks on other tasks' results, gathers, Arrow batches between tasks",
-      "A head that restarts: workers rejoin, drivers resume",
-      "Actors: state on a worker of its own, calls in order",
-      "1.4 billion taxi rows in S3: 3.8 s a pass on 12 nodes, against 6.7 s for Rust and 15.4 s for Ray",
-    ],
-  },
   {
     name: "iceberg",
     short: "metadata · scan planning · read · write · REST, SQL and filesystem catalogs",
@@ -547,7 +511,7 @@ export const tins: Tin[] = [
     tier: "utility",
     short: "the Kubernetes API from Mojo",
     what:
-      "A small Kubernetes client for Mojo: pods, jobs and services created, listed, watched and deleted, and pods' logs, in a pod with its service account or from a kubeconfig. It is what Orca uses to start a Dista cluster per run.",
+      "A small Kubernetes client for Mojo: pods, jobs and services created, listed, watched and deleted, and pods' logs, in a pod with its service account or from a kubeconfig. It is what Morca uses to start a Dista cluster per run.",
     oracle: "Every call against a live kind cluster in CI",
     bullets: [
       "Manifests go in as JSON text; objects come back as json values, read with JSON pointers",
