@@ -38,7 +38,10 @@
 /s/dista/*           https://morca.dev/dista/:splat       301
 
 # Getting started built the census on Orca and Dista; it moved with them.
-# The maintainers' runbook, /getting-started/maintain, stays here.
+# The maintainers' runbook moved to the site repository's README.
+/getting-started/maintain.md       https://github.com/magmalake/magmalake.org#maintain-and-release   301
+/getting-started/maintain          https://github.com/magmalake/magmalake.org#maintain-and-release   301
+/getting-started/maintain/         https://github.com/magmalake/magmalake.org#maintain-and-release   301
 /getting-started.md                https://morca.dev/getting-started.md                301
 /getting-started                   https://morca.dev/getting-started/                  301
 /getting-started/                  https://morca.dev/getting-started/                  301
