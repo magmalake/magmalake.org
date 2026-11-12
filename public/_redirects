@@ -12,8 +12,12 @@
 # Orca and Dista moved out of magmalake: they are Morca now, with its own site,
 # and the pages keep their names there. Orca's docs are under /docs (its API
 # reference is /docs/api); Dista's are under /dista. Morca's code and docs
-# still link to mlake.dev/s/orca/docs. 301: the move is permanent. The first
-# rule that matches wins, so the specific ones come first.
+# still link to mlake.dev/s/orca/docs. 301: the move is permanent.
+#
+# Keep the rules from overlapping. In production a catch-all /s/orca/* beat
+# the more specific rules above it and sent every Orca URL to morca.dev's home
+# page, though wrangler dev honoured the order. Orca only had /s/orca, its
+# docs and its API, so there is no catch-all.
 /s/orca/roadmap      https://morca.dev/docs/roadmap/      301
 /s/orca/roadmap/     https://morca.dev/docs/roadmap/      301
 /s/orca/docs         https://morca.dev/docs/              301
@@ -27,7 +31,6 @@
 /s/orca.md           https://morca.dev/index.md           301
 /s/orca              https://morca.dev/                   301
 /s/orca/             https://morca.dev/                   301
-/s/orca/*            https://morca.dev/                   301
 
 /s/dista.md          https://morca.dev/dista/index.md     301
 /s/dista             https://morca.dev/dista/             301
