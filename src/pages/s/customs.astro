@@ -1,0 +1,51 @@
+---
+/**
+ * customs, /s/customs: what it checks and how to keep an import it would
+ * report. The guide is Markdown beside this page (_customs.md, which the
+ * underscore keeps from being a page of its own), in the tins' docs style.
+ */
+import "../../styles/tin.css";
+import Base from "../../layouts/Base.astro";
+import { Content } from "./_customs.md";
+
+const description =
+  "customs: checks a Mojo project's imports and how it builds its tests. No import cycles, each name from the module that defines it, no unused imports.";
+
+const repo = "https://github.com/magmalake/customs";
+const releases = `${repo}/releases`;
+---
+
+<Base title="customs" description={description}>
+  <section class="section">
+    <div class="wrap wrap--wide">
+      <p class="eyebrow">Software</p>
+      <h1 class="section-title">customs</h1>
+      <p class="lede">
+        Checks what a Mojo project imports, and how it builds its tests: the mistakes the
+        compiler lets through. One static binary, written in Rust, run in CI by every magmalake
+        tin.
+      </p>
+
+      <div class="actions">
+        <a class="btn btn--primary" href={repo} rel="noopener">GitHub</a>
+        <a class="btn" href={releases} rel="noopener">Releases</a>
+      </div>
+
+      <div class="tp__docs guide">
+        <Content />
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 1.75rem;
+  }
+  .guide {
+    margin-top: 2.5rem;
+  }
+</style>
